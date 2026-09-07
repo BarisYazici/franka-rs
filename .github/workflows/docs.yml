@@ -1,0 +1,104 @@
+name: Docs
+
+# Builds the mdBook site under docs/book/ together with the crate's rustdoc, and publishes
+# both to GitHub Pages: the book at the site root, the API reference at /api/franka/.
+#
+# Repository setting required: this uses actions/deploy-pages, which needs
+# Settings -> Pages -> Build and deployment -> Source set to "GitHub Actions"
+# (not "Deploy from a branch"). Until that is set the build succeeds and the deploy step
+# fails.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; never cancel one in flight, so a half-published site cannot
+# outlive the run that made it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  MDBOOK_VERSION: 0.5.4
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Prefer the prebuilt release archive (a few seconds); fall back to building it, so a
+      # renamed or missing asset degrades to slow rather than to broken.
+      - name: Install mdBook ${{ env.MDBOOK_VERSION }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          if curl -fsSL "$url" | tar -xz -C "$HOME/.local/bin"; then
+            echo "installed mdBook from the release archive"
+          else
+            echo "release archive unavailable, building mdBook from source"
+            cargo install mdbook --locked --version "$MDBOOK_VERSION" --root "$HOME/.local"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # book.toml sets build-dir = ../../target/book, so the site root is target/book.
+      - name: Build the book
+        run: mdbook build docs/book
+
+      # The book's own Rust snippets, compiled for real. They are built into a scratch
+      # target directory outside ./target on purpose: rustdoc's `-L` resolution fails with
+      # E0464 if the search path holds more than one `libfranka-<hash>.rlib`, which a cache
+      # restored from an earlier run can easily contain.
+      - name: Test the book's code samples
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/booktest
+        run: |
+          cargo build -p franka-rs -p franka-sim-test
+          mdbook test docs/book \
+            -L "$CARGO_TARGET_DIR/debug,$CARGO_TARGET_DIR/debug/deps"
+
+      # -D warnings makes a broken intra-doc link fail the build rather than ship a dead
+      # link into the published reference.
+      - name: Build the API reference
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps -p franka-rs
+
+      # The library target is named `franka`, so this lands at /api/franka/index.html --
+      # which is what the book's "API reference" page links to, relatively.
+      - name: Place the API reference under book/api/
+        run: |
+          mkdir -p target/book/api
+          cp -a target/doc/. target/book/api/
+          touch target/book/.nojekyll
+          test -f target/book/api/franka/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/book
+
+  # Only ever publishes main, including when the workflow is dispatched by hand from a
+  # branch: a manual run on a branch still builds, but does not overwrite the live site.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

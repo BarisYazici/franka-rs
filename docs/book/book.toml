@@ -1,0 +1,23 @@
+[book]
+title = "franka-rs"
+description = "A pure-Rust client for the Franka Control Interface (FCI v10 / FR3 and FCI v5 / FER)."
+authors = ["Baris Yazici"]
+language = "en"
+src = "src"
+
+[build]
+# Out of the source tree, so a local `mdbook build` leaves nothing untracked behind:
+# /target is already gitignored.
+build-dir = "../../target/book"
+create-missing = false
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/BarisYazici/franka-rs"
+edit-url-template = "https://github.com/BarisYazici/franka-rs/edit/main/docs/book/{path}"
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
