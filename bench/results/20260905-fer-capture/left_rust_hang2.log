@@ -1,0 +1,4 @@
+tcpdump: listening on <iface>, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+31412 packets captured
+31412 packets received by filter
+0 packets dropped by kernel

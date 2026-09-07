@@ -1,0 +1,87 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.20.4",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 2,
+  "order_in_cell": 2,
+  "cell_first_client": "rust",
+  "host": "127.0.0.1",
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 30001,
+  "wall_s": 30.0134,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 30000,
+    "min": 34.23,
+    "p50": 999.929,
+    "p99": 1042.96,
+    "p999": 1125.772,
+    "max": 4526.819,
+    "mean": 1000.372,
+    "max_at_cycle": 17349
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 30001,
+    "min": 18.734,
+    "p50": 29.213,
+    "p99": 62.598,
+    "p999": 85.56,
+    "max": 219.871,
+    "mean": 32.147,
+    "max_at_cycle": 25312
+  },
+  "model_us": {
+    "n": 30001,
+    "min": 17.131,
+    "p50": 27.281,
+    "p99": 58.486,
+    "p999": 78.874,
+    "max": 191.114,
+    "mean": 29.593,
+    "max_at_cycle": 25312
+  },
+  "controller": {
+    "tau_max_abs": 1.925269,
+    "ee_deviation_max_m": 0.047862,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 0,
+    "states": 0,
+    "max_consecutive": 0,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.99,
+    "avg": 0.999933,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 30000
+  },
+  "cpu": {
+    "user_s": 1.286071,
+    "sys_s": 0.224874,
+    "total_s": 1.510945,
+    "percent": 5.034235,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 30004,
+    "invol_ctx_switches": 0
+  }
+}

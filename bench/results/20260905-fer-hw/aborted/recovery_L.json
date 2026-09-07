@@ -1,0 +1,34 @@
+{
+  "host": "L",
+  "mode_before": "Reflex",
+  "errors_before": [],
+  "recover_requested": true,
+  "recovered": true,
+  "recovery_error": null,
+  "home_requested": false,
+  "home_speed": 0.2,
+  "homed": false,
+  "home_error": null,
+  "mode": "Idle",
+  "errors": [],
+  "has_errors": false,
+  "ready": true,
+  "q": [
+    -0.000235,
+    -0.784925,
+    2.1e-05,
+    -2.359224,
+    0.000336,
+    1.570035,
+    0.785234
+  ],
+  "tau_J": [
+    0.158445,
+    -3.823606,
+    -0.751325,
+    22.443859,
+    0.51791,
+    2.360889,
+    -0.031851
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 3,
+  "order_in_cell": 2,
+  "cell_first_client": "cpp",
+  "host": "<robot-ip>",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 30001,
+  "wall_s": 30.005005,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 30000,
+    "min": 19.996,
+    "p50": 999.92,
+    "p99": 1087.107,
+    "p999": 1163.453,
+    "max": 2397.008,
+    "mean": 999.999,
+    "max_at_cycle": 27742
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 30001,
+    "min": 3.568,
+    "p50": 15.07,
+    "p99": 37.446,
+    "p999": 42.333,
+    "max": 52.415,
+    "mean": 16.663,
+    "max_at_cycle": 17465
+  },
+  "model_us": {
+    "n": 30001,
+    "min": 2.628,
+    "p50": 13.768,
+    "p99": 34.767,
+    "p999": 36.782,
+    "max": 38.727,
+    "mean": 15.241,
+    "max_at_cycle": 1711
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.941988,
+    "ee_deviation_max_m": 0.048308,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 0,
+    "states": 0,
+    "max_consecutive": 0,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.99,
+    "avg": 0.9998,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 30000
+  },
+  "cpu": {
+    "user_s": 0.361278,
+    "sys_s": 0.722557,
+    "total_s": 1.083835,
+    "percent": 3.612181,
+    "minor_faults": 35,
+    "major_faults": 0,
+    "vol_ctx_switches": 30002,
+    "invol_ctx_switches": 0
+  }
+}

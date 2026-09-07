@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "timestamp": "20260904T152938",
+    "hostname": "redacted",
+    "kernel": "6.8.0-generic",
+    "kernel_full": "Linux 6.8.0-generic SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+    "preempt_rt": false,
+    "sys_kernel_realtime": false,
+    "cpu_model": "a 2021 laptop-class x86-64 CPU",
+    "ulimit_l": "unlimited",
+    "sched_rt_runtime_us": "950000",
+    "docker_image": "franka-sim:dev",
+    "docker_image_id": "sha256:c10a58691d5b1823e33c212d92f71034cd99d2f509fe19e60987b60c76c4c7c0",
+    "sim_cpu_shares": 4096,
+    "git_rev": "a987dc56aaad3cdec540402cabe72b253e63f9d9",
+    "git_dirty": true,
+    "libfranka": "<libfranka 0.20.4 build>/libfranka.so.0.20",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "gcc": "c++ 11.4.0",
+    "cyclictest": null,
+    "stress_ng": null,
+    "duration_s": 30,
+    "reps": 3,
+    "variants": "model"
+  },
+  "cells": [
+    {
+      "variant": "model",
+      "condition": "plain",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.8873333333332,
+        "p99": 1047.2536666666667,
+        "p999": 1119.6556666666665,
+        "max": 2659.152,
+        "mean": 1000.3486666666668,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 29.301666666666666,
+        "p99": 60.655,
+        "p999": 84.581,
+        "max": 266.781,
+        "mean": 32.029333333333334,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 27.272666666666666,
+        "p99": 56.88566666666666,
+        "p999": 79.00133333333333,
+        "max": 263.428,
+        "mean": 29.578333333333333,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9999889999999999,
+      "cpu_percent": 5.260107666666666,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 1.940209,
+        "ee_deviation_max_m": 0.047865
+      }
+    },
+    {
+      "variant": "model",
+      "condition": "plain",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.8209999999999,
+        "p99": 1048.4393333333335,
+        "p999": 1162.8263333333334,
+        "max": 4206.964,
+        "mean": 1000.4093333333334,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 11.484666666666667,
+        "p99": 36.963,
+        "p999": 44.02866666666667,
+        "max": 196.149,
+        "mean": 13.190333333333333,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 9.556333333333333,
+        "p99": 33.346333333333334,
+        "p999": 37.059666666666665,
+        "max": 193.606,
+        "mean": 11.386666666666665,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.999978,
+      "cpu_percent": 2.851387666666666,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 1.940337,
+        "ee_deviation_max_m": 0.047877
+      }
+    },
+    {
+      "variant": "model",
+      "condition": "rt",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.9733333333334,
+        "p99": 1083.669,
+        "p999": 1705.964,
+        "max": 5448.9,
+        "mean": 1003.2163333333333,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 33.26466666666666,
+        "p99": 73.24866666666667,
+        "p999": 106.96733333333333,
+        "max": 234.429,
+        "mean": 36.488,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 30.799333333333333,
+        "p99": 67.01266666666666,
+        "p999": 96.31733333333334,
+        "max": 227.676,
+        "mean": 33.42733333333333,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9999666666666668,
+      "cpu_percent": 5.741710333333334,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 1.9402,
+        "ee_deviation_max_m": 0.047923
+      }
+    },
+    {
+      "variant": "model",
+      "condition": "rt",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.8726666666666,
+        "p99": 1046.936,
+        "p999": 1140.5083333333334,
+        "max": 3627.624,
+        "mean": 1000.2833333333333,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 12.455333333333334,
+        "p99": 37.00066666666667,
+        "p999": 42.82233333333334,
+        "max": 76.696,
+        "mean": 13.575000000000001,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 10.788666666666666,
+        "p99": 32.933,
+        "p999": 36.83233333333333,
+        "max": 75.612,
+        "mean": 11.815666666666667,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.999978,
+      "cpu_percent": 2.8997356666666665,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 1.940137,
+        "ee_deviation_max_m": 0.047871
+      }
+    }
+  ]
+}

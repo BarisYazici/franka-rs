@@ -1,0 +1,476 @@
+{
+  "meta": {
+    "timestamp": "20260904T162559",
+    "hostname": "redacted",
+    "kernel": "6.8.0-generic",
+    "kernel_full": "Linux 6.8.0-generic SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+    "preempt_rt": false,
+    "sys_kernel_realtime": false,
+    "cpu_model": "a 2021 laptop-class x86-64 CPU",
+    "ulimit_l": "unlimited",
+    "sched_rt_runtime_us": "950000",
+    "docker_image": "franka-sim:dev",
+    "docker_image_id": "sha256:c10a58691d5b1823e33c212d92f71034cd99d2f509fe19e60987b60c76c4c7c0",
+    "sim_cpu_shares": 4096,
+    "git_rev": "cca30673309a1357e7bcb731b6b8d7708c239860",
+    "git_dirty": true,
+    "libfranka": "<libfranka 0.20.4 build>/libfranka.so.0.20",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "gcc": "c++ 11.4.0",
+    "cyclictest": null,
+    "stress_ng": null,
+    "duration_s": 30,
+    "reps": 3,
+    "variants": "model",
+    "hardware": true,
+    "hardware_stage": "c",
+    "host": "<robot-ip>",
+    "pause_s": 20,
+    "home_speed": 0.2
+  },
+  "cells": [
+    {
+      "variant": "model",
+      "condition": "rt",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.5983333333334,
+        "p99": 1096.2863333333332,
+        "p999": 1153.0016666666668,
+        "max": 2341.214,
+        "mean": 999.9989999999999,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 25.249333333333336,
+        "p99": 54.17633333333333,
+        "p999": 72.45433333333334,
+        "max": 578.305,
+        "mean": 27.477999999999998,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 23.483,
+        "p99": 50.059333333333335,
+        "p999": 66.51266666666666,
+        "max": 576.362,
+        "mean": 25.45566666666667,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9997333333333334,
+      "cpu_percent": 5.912820333333333,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 4.017248,
+        "ee_deviation_max_m": 0.048366
+      }
+    },
+    {
+      "variant": "model",
+      "condition": "rt",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.803,
+        "p99": 1085.2956666666666,
+        "p999": 1183.7563333333335,
+        "max": 2397.008,
+        "mean": 999.9990000000001,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 14.120666666666667,
+        "p99": 37.364333333333335,
+        "p999": 43.157999999999994,
+        "max": 66.753,
+        "mean": 15.378666666666668,
+        "n": 90003,
+        "reps": 3
+      },
+      "model_us": {
+        "p50": 12.814,
+        "p99": 34.470333333333336,
+        "p999": 38.719,
+        "max": 65.831,
+        "mean": 13.906666666666666,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9997889999999999,
+      "cpu_percent": 3.297948,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 3.979791,
+        "ee_deviation_max_m": 0.048387
+      }
+    }
+  ],
+  "hardware": {
+    "stage": {
+      "stage": "c",
+      "status": "ok",
+      "host": "<robot-ip>",
+      "reps": 3,
+      "duration_s": 30,
+      "pause_s": 20,
+      "home_speed": 0.2,
+      "reflex_events": 0,
+      "max_reflex_events": 2
+    },
+    "runs": [
+      {
+        "name": "cpp_model_rt_r1",
+        "lang": "cpp",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 16.837,
+          "p50": 21.509,
+          "p99": 51.946,
+          "p999": 67.085,
+          "max": 166.365,
+          "mean": 23.614,
+          "max_at_cycle": 28243
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 18.382,
+          "p50": 23.27,
+          "p99": 55.755,
+          "p999": 72.467,
+          "max": 194.05,
+          "mean": 25.694,
+          "max_at_cycle": 28243
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 35.272,
+          "p50": 999.508,
+          "p99": 1105.613,
+          "p999": 1161.692,
+          "max": 2341.214,
+          "mean": 999.999,
+          "max_at_cycle": 12190
+        },
+        "lost_cycles": 0,
+        "success_min": 0.99,
+        "success_avg": 0.999667,
+        "cpu_percent": 4.678213,
+        "tau_max_abs": 3.965756,
+        "ee_deviation_max_m": 0.048359,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20.0,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      },
+      {
+        "name": "rust_model_rt_r1",
+        "lang": "rust",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 2.646,
+          "p50": 12.54,
+          "p99": 33.245,
+          "p999": 36.6,
+          "max": 65.831,
+          "mean": 12.62,
+          "max_at_cycle": 5395
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 3.55,
+          "p50": 13.878,
+          "p99": 35.566,
+          "p999": 41.631,
+          "max": 66.753,
+          "mean": 14.159,
+          "max_at_cycle": 5395
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 470.59,
+          "p50": 999.682,
+          "p99": 1079.169,
+          "p999": 1158.242,
+          "max": 1501.039,
+          "mean": 1000.0,
+          "max_at_cycle": 21633
+        },
+        "lost_cycles": 0,
+        "success_min": 1.0,
+        "success_avg": 1.0,
+        "cpu_percent": 2.734457,
+        "tau_max_abs": 3.941026,
+        "ee_deviation_max_m": 0.048366,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      },
+      {
+        "name": "rust_model_rt_r2",
+        "lang": "rust",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 2.65,
+          "p50": 12.134,
+          "p99": 35.399,
+          "p999": 42.775,
+          "max": 54.287,
+          "mean": 13.859,
+          "max_at_cycle": 14560
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 3.55,
+          "p50": 13.414,
+          "p99": 39.081,
+          "p999": 45.51,
+          "max": 58.159,
+          "mean": 15.314,
+          "max_at_cycle": 14560
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 12.217,
+          "p50": 999.807,
+          "p99": 1089.611,
+          "p999": 1229.574,
+          "max": 2347.184,
+          "mean": 999.998,
+          "max_at_cycle": 5502
+        },
+        "lost_cycles": 0,
+        "success_min": 0.99,
+        "success_avg": 0.999567,
+        "cpu_percent": 3.547206,
+        "tau_max_abs": 3.979791,
+        "ee_deviation_max_m": 0.048387,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      },
+      {
+        "name": "cpp_model_rt_r2",
+        "lang": "cpp",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 16.716,
+          "p50": 21.329,
+          "p99": 46.348,
+          "p999": 69.345,
+          "max": 229.015,
+          "mean": 22.84,
+          "max_at_cycle": 10383
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 18.318,
+          "p50": 23.129,
+          "p99": 51.749,
+          "p999": 75.437,
+          "max": 231.522,
+          "mean": 24.897,
+          "max_at_cycle": 10383
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 31.504,
+          "p50": 999.663,
+          "p99": 1096.771,
+          "p999": 1150.469,
+          "max": 2173.832,
+          "mean": 999.997,
+          "max_at_cycle": 6537
+        },
+        "lost_cycles": 0,
+        "success_min": 0.99,
+        "success_avg": 0.999833,
+        "cpu_percent": 7.436062,
+        "tau_max_abs": 3.945965,
+        "ee_deviation_max_m": 0.048366,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20.0,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      },
+      {
+        "name": "cpp_model_rt_r3",
+        "lang": "cpp",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 16.632,
+          "p50": 27.611,
+          "p99": 51.884,
+          "p999": 63.108,
+          "max": 576.362,
+          "mean": 29.913,
+          "max_at_cycle": 12603
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 18.18,
+          "p50": 29.349,
+          "p99": 55.025,
+          "p999": 69.459,
+          "max": 578.305,
+          "mean": 31.843,
+          "max_at_cycle": 12603
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 30.218,
+          "p50": 999.624,
+          "p99": 1086.475,
+          "p999": 1146.844,
+          "max": 2282.688,
+          "mean": 1000.001,
+          "max_at_cycle": 21921
+        },
+        "lost_cycles": 0,
+        "success_min": 0.99,
+        "success_avg": 0.9997,
+        "cpu_percent": 5.624186,
+        "tau_max_abs": 4.017248,
+        "ee_deviation_max_m": 0.048339,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20.0,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      },
+      {
+        "name": "rust_model_rt_r3",
+        "lang": "rust",
+        "provenance": "harness",
+        "cycles": 30001,
+        "model_us": {
+          "n": 30001,
+          "min": 2.628,
+          "p50": 13.768,
+          "p99": 34.767,
+          "p999": 36.782,
+          "max": 38.727,
+          "mean": 15.241,
+          "max_at_cycle": 1711
+        },
+        "compute_us": {
+          "n": 30001,
+          "min": 3.568,
+          "p50": 15.07,
+          "p99": 37.446,
+          "p999": 42.333,
+          "max": 52.415,
+          "mean": 16.663,
+          "max_at_cycle": 17465
+        },
+        "interval_us": {
+          "n": 30000,
+          "min": 19.996,
+          "p50": 999.92,
+          "p99": 1087.107,
+          "p999": 1163.453,
+          "max": 2397.008,
+          "mean": 999.999,
+          "max_at_cycle": 27742
+        },
+        "lost_cycles": 0,
+        "success_min": 0.99,
+        "success_avg": 0.9998,
+        "cpu_percent": 3.612181,
+        "tau_max_abs": 3.941988,
+        "ee_deviation_max_m": 0.048308,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      }
+    ]
+  }
+}

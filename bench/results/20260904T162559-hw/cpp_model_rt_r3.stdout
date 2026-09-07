@@ -1,0 +1,101 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.20.4",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 3,
+  "order_in_cell": 1,
+  "cell_first_client": "cpp",
+  "host": "<robot-ip>",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 30001,
+  "wall_s": 30.005568,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 30000,
+    "min": 30.218,
+    "p50": 999.624,
+    "p99": 1086.475,
+    "p999": 1146.844,
+    "max": 2282.688,
+    "mean": 1000.001,
+    "max_at_cycle": 21921
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 30001,
+    "min": 18.18,
+    "p50": 29.349,
+    "p99": 55.025,
+    "p999": 69.459,
+    "max": 578.305,
+    "mean": 31.843,
+    "max_at_cycle": 12603
+  },
+  "model_us": {
+    "n": 30001,
+    "min": 16.632,
+    "p50": 27.611,
+    "p99": 51.884,
+    "p999": 63.108,
+    "max": 576.362,
+    "mean": 29.913,
+    "max_at_cycle": 12603
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20.0,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 4.017248,
+    "ee_deviation_max_m": 0.048339,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 0,
+    "states": 0,
+    "max_consecutive": 0,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.99,
+    "avg": 0.9997,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 30000
+  },
+  "cpu": {
+    "user_s": 1.150872,
+    "sys_s": 0.536697,
+    "total_s": 1.687569,
+    "percent": 5.624186,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 30001,
+    "invol_ctx_switches": 0
+  }
+}

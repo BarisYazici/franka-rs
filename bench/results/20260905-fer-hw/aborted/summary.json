@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "timestamp": "20260905T191844",
+    "robot": "FER",
+    "robot_arm": "FER L",
+    "host": "L",
+    "nic": "onboard",
+    "robot_system_version": "4.2.1",
+    "fci_version": 5,
+    "hostname": "redacted",
+    "kernel": "6.8.0-generic",
+    "preempt_rt": false,
+    "cpu_model": "a 2021 laptop-class x86-64 CPU",
+    "ulimit_l": "unlimited",
+    "sched_rt_runtime_us": "950000",
+    "libfranka": "<a libfranka 0.9.2 build>/libfranka.so.0.9",
+    "libfranka_version": "0.9.2",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "gcc": "c++ 11.4.0",
+    "git_rev": "7ba49f9ea7eb0b87e092efc26e16be1448cd249d",
+    "git_dirty": true,
+    "cyclictest": null,
+    "stress_ng": null,
+    "duration_s": 30,
+    "hardware": true,
+    "pause_s": 20,
+    "home_speed": 0.2,
+    "variants": "model",
+    "conditions": "rt",
+    "docker": "none started; no container involved"
+  },
+  "cells": []
+}

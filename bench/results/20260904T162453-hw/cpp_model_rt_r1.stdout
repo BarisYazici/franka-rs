@@ -1,0 +1,101 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.20.4",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 1,
+  "cell_first_client": "cpp",
+  "host": "<robot-ip>",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29994,
+  "wall_s": 30.003704,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29993,
+    "min": 31.76,
+    "p50": 999.666,
+    "p99": 1087.246,
+    "p999": 1185.795,
+    "max": 4548.087,
+    "mean": 1000.23,
+    "max_at_cycle": 16779
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29994,
+    "min": 19.222,
+    "p50": 32.583,
+    "p99": 60.176,
+    "p999": 89.397,
+    "max": 251.341,
+    "mean": 34.745,
+    "max_at_cycle": 1513
+  },
+  "model_us": {
+    "n": 29994,
+    "min": 17.52,
+    "p50": 30.512,
+    "p99": 55.689,
+    "p999": 80.179,
+    "max": 248.832,
+    "mean": 32.383,
+    "max_at_cycle": 1513
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20.0,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.946406,
+    "ee_deviation_max_m": 0.04835,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 4,
+    "states": 7,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.96,
+    "avg": 0.99947,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 29993
+  },
+  "cpu": {
+    "user_s": 0.787826,
+    "sys_s": 0.988058,
+    "total_s": 1.775884,
+    "percent": 5.918883,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29992,
+    "invol_ctx_switches": 2
+  }
+}

@@ -1,0 +1,20 @@
+# steady state (back to back, warm core)
+gravity          p50    2.464  p90    2.469  p99    2.472  min    2.455  mean    2.471
+coriolis         p50    0.248  p90    0.256  p99    0.268  min    0.240  mean    0.250
+mass             p50    0.978  p90    0.981  p99    1.224  min    0.973  mean    0.990
+pose_ee          p50    0.105  p90    0.107  p99    0.118  min    0.102  mean    0.106
+zero_jacobian_ee p50    0.157  p90    0.168  p99    0.171  min    0.147  mean    0.160
+five-call        p50    3.964  p90    3.973  p99    3.989  min    3.948  mean    3.972
+
+# duty cycled (~1 ms idle before each cycle, as in a 1 kHz control loop)
+five-call        p50   21.374  p90   21.756  p99   30.053  min    3.964  mean   17.773
+
+# duty cycled, after N iterations of untimed filler work
+filler 0         p50   21.330  p90   21.671  p99   29.327  min    3.962  mean   16.490
+filler 500       p50   20.853  p90   21.776  p99   26.857  min    3.963  mean   16.638
+filler 1500      p50    9.767  p90   18.478  p99   21.930  min    3.963  mean   10.138
+filler 4000      p50    3.982  p90    4.095  p99    9.835  min    3.961  mean    4.216
+filler 12000     p50    3.980  p90    4.040  p99    5.436  min    3.961  mean    4.044
+filler 40000     p50    3.983  p90    4.125  p99    6.823  min    3.961  mean    4.106
+
+checksum 625952.081583

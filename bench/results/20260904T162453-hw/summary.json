@@ -1,0 +1,152 @@
+{
+  "meta": {
+    "timestamp": "20260904T162453",
+    "hostname": "redacted",
+    "kernel": "6.8.0-generic",
+    "kernel_full": "Linux 6.8.0-generic SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+    "preempt_rt": false,
+    "sys_kernel_realtime": false,
+    "cpu_model": "a 2021 laptop-class x86-64 CPU",
+    "ulimit_l": "unlimited",
+    "sched_rt_runtime_us": "950000",
+    "docker_image": "franka-sim:dev",
+    "docker_image_id": "sha256:c10a58691d5b1823e33c212d92f71034cd99d2f509fe19e60987b60c76c4c7c0",
+    "sim_cpu_shares": 4096,
+    "git_rev": "b686e761d98a75617a9980730925ea7fcece1453",
+    "git_dirty": false,
+    "libfranka": "<libfranka 0.20.4 build>/libfranka.so.0.20",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "gcc": "c++ 11.4.0",
+    "cyclictest": null,
+    "stress_ng": null,
+    "duration_s": 30,
+    "reps": 1,
+    "variants": "model",
+    "hardware": true,
+    "hardware_stage": "b",
+    "host": "<robot-ip>",
+    "pause_s": 20,
+    "home_speed": 0.2
+  },
+  "cells": [
+    {
+      "variant": "model",
+      "condition": "rt",
+      "client": "cpp",
+      "reps": 1,
+      "cycles": 29994.0,
+      "interval_us": {
+        "p50": 999.666,
+        "p99": 1087.246,
+        "p999": 1185.795,
+        "max": 4548.087,
+        "mean": 1000.23,
+        "n": 29993,
+        "reps": 1
+      },
+      "latency_us": null,
+      "compute_us": {
+        "p50": 32.583,
+        "p99": 60.176,
+        "p999": 89.397,
+        "max": 251.341,
+        "mean": 34.745,
+        "n": 29994,
+        "reps": 1
+      },
+      "model_us": {
+        "p50": 30.512,
+        "p99": 55.689,
+        "p999": 80.179,
+        "max": 248.832,
+        "mean": 32.383,
+        "n": 29994,
+        "reps": 1
+      },
+      "lost_cycles": 4.0,
+      "lost_states": 7.0,
+      "max_consecutive": 1,
+      "success_min": 0.96,
+      "success_avg": 0.99947,
+      "cpu_percent": 5.918883,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1
+      ],
+      "backwards_time_steps": 0,
+      "controller": {
+        "tau_max_abs": 3.946406,
+        "ee_deviation_max_m": 0.04835
+      }
+    }
+  ],
+  "hardware": {
+    "stage": {
+      "stage": "b",
+      "status": "ok",
+      "host": "<robot-ip>",
+      "reps": 1,
+      "duration_s": 30,
+      "pause_s": 20,
+      "home_speed": 0.2,
+      "reflex_events": 0,
+      "max_reflex_events": 2
+    },
+    "runs": [
+      {
+        "name": "cpp_model_rt_r1",
+        "lang": "cpp",
+        "provenance": "harness",
+        "cycles": 29994,
+        "model_us": {
+          "n": 29994,
+          "min": 17.52,
+          "p50": 30.512,
+          "p99": 55.689,
+          "p999": 80.179,
+          "max": 248.832,
+          "mean": 32.383,
+          "max_at_cycle": 1513
+        },
+        "compute_us": {
+          "n": 29994,
+          "min": 19.222,
+          "p50": 32.583,
+          "p99": 60.176,
+          "p999": 89.397,
+          "max": 251.341,
+          "mean": 34.745,
+          "max_at_cycle": 1513
+        },
+        "interval_us": {
+          "n": 29993,
+          "min": 31.76,
+          "p50": 999.666,
+          "p99": 1087.246,
+          "p999": 1185.795,
+          "max": 4548.087,
+          "mean": 1000.23,
+          "max_at_cycle": 16779
+        },
+        "lost_cycles": 4,
+        "success_min": 0.96,
+        "success_avg": 0.99947,
+        "cpu_percent": 5.918883,
+        "tau_max_abs": 3.946406,
+        "ee_deviation_max_m": 0.04835,
+        "guard": {
+          "enabled": true,
+          "tau_limit_nm": 20.0,
+          "ee_deviation_limit_m": 0.1,
+          "tripped": false,
+          "reason": null,
+          "cycle": 0,
+          "tau_at_trip": 0.0,
+          "ee_deviation_at_trip": 0.0
+        },
+        "control_exception": null,
+        "reflex_events_before_run": 0
+      }
+    ]
+  }
+}

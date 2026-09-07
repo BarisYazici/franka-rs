@@ -1,0 +1,17 @@
+{
+  "stage": "A",
+  "status": "aborted",
+  "host": "L",
+  "robot": "FER L",
+  "reps": 0,
+  "runs_completed": 0,
+  "duration_s": 30,
+  "pause_s": 20,
+  "home_speed": 0.2,
+  "reflex_events": 1,
+  "automatic_error_recovery_used": false,
+  "abort_reason": "bench_model_control exited 1 during its own homing move: Move kReflexAborted, last_motion_errors=[joint_motion_generator_velocity_discontinuity]; no control loop ran and no run JSON was written",
+  "robot_mode_after": "Reflex",
+  "root_cause": "examples/common MotionGenerator seeds q_start from robot_state.q (libfranka 0.20.4/0.21.x) instead of robot_state.q_d (libfranka 0.9.2)",
+  "see": "full write-up kept privately"
+}

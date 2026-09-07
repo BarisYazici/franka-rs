@@ -1,0 +1,11 @@
+{
+  "stage": "b",
+  "status": "ok",
+  "host": "<robot-ip>",
+  "reps": 1,
+  "duration_s": 30,
+  "pause_s": 20,
+  "home_speed": 0.2,
+  "reflex_events": 0,
+  "max_reflex_events": 2
+}

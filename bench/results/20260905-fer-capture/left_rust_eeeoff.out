@@ -1,0 +1,119 @@
+RealtimeConfig: ignore
+WARNING: This example will move the robot! Please make sure to have the user stop button at hand!
+Press Enter to continue...
+Finished moving to initial joint configuration.
+
+Starting communication test.
+#100 Current success rate: 0.97
+#200 Current success rate: 0.95
+#300 Current success rate: 0.97
+#400 Current success rate: 0.95
+#500 Current success rate: 1.00
+#600 Current success rate: 0.96
+#700 Current success rate: 0.96
+#800 Current success rate: 1.00
+#900 Current success rate: 0.95
+#1000 Current success rate: 0.97
+#1100 Current success rate: 0.97
+#1200 Current success rate: 0.97
+#1300 Current success rate: 0.97
+#1400 Current success rate: 0.96
+#1500 Current success rate: 0.97
+#1600 Current success rate: 0.98
+#1700 Current success rate: 0.97
+#1800 Current success rate: 0.99
+#1900 Current success rate: 1.00
+#2000 Current success rate: 1.00
+#2100 Current success rate: 1.00
+#2200 Current success rate: 1.00
+#2300 Current success rate: 0.95
+#2400 Current success rate: 0.98
+#2500 Current success rate: 1.00
+#2600 Current success rate: 1.00
+#2700 Current success rate: 1.00
+#2800 Current success rate: 1.00
+#2900 Current success rate: 1.00
+#3000 Current success rate: 0.99
+#3100 Current success rate: 0.97
+#3200 Current success rate: 0.98
+#3300 Current success rate: 1.00
+#3400 Current success rate: 0.97
+#3500 Current success rate: 1.00
+#3600 Current success rate: 0.99
+#3700 Current success rate: 1.00
+#3800 Current success rate: 1.00
+#3900 Current success rate: 1.00
+#4000 Current success rate: 0.99
+#4100 Current success rate: 0.98
+#4200 Current success rate: 0.99
+#4300 Current success rate: 0.97
+#4400 Current success rate: 0.99
+#4500 Current success rate: 0.97
+#4600 Current success rate: 0.98
+#4700 Current success rate: 0.99
+#4800 Current success rate: 0.96
+#4900 Current success rate: 0.97
+#5000 Current success rate: 0.98
+#5100 Current success rate: 1.00
+#5200 Current success rate: 0.97
+#5300 Current success rate: 0.98
+#5400 Current success rate: 1.00
+#5500 Current success rate: 1.00
+#5600 Current success rate: 0.98
+#5700 Current success rate: 0.95
+#5800 Current success rate: 1.00
+#5900 Current success rate: 0.98
+#6000 Current success rate: 0.96
+#6100 Current success rate: 0.95
+#6200 Current success rate: 1.00
+#6300 Current success rate: 0.96
+#6400 Current success rate: 0.98
+#6500 Current success rate: 0.99
+#6600 Current success rate: 1.00
+#6700 Current success rate: 0.96
+#6800 Current success rate: 0.98
+#6900 Current success rate: 0.94
+#7000 Current success rate: 0.99
+#7100 Current success rate: 0.99
+#7200 Current success rate: 0.97
+#7300 Current success rate: 0.97
+#7400 Current success rate: 0.99
+#7500 Current success rate: 1.00
+#7600 Current success rate: 0.95
+#7700 Current success rate: 0.97
+#7800 Current success rate: 0.96
+#7900 Current success rate: 0.96
+#8000 Current success rate: 0.98
+#8100 Current success rate: 0.97
+#8200 Current success rate: 0.99
+#8300 Current success rate: 1.00
+#8400 Current success rate: 1.00
+#8500 Current success rate: 0.97
+#8600 Current success rate: 1.00
+#8700 Current success rate: 1.00
+#8800 Current success rate: 0.98
+#8900 Current success rate: 0.99
+#9000 Current success rate: 0.98
+#9100 Current success rate: 1.00
+#9200 Current success rate: 1.00
+#9300 Current success rate: 1.00
+#9400 Current success rate: 1.00
+#9500 Current success rate: 1.00
+#9600 Current success rate: 1.00
+#9700 Current success rate: 0.99
+#9800 Current success rate: 0.96
+#9900 Current success rate: 0.98
+
+Finished test, shutting down example
+
+
+#######################################################
+The control loop did not get executed 89 times in the
+last 10000 milliseconds! (lost 89 robot states)
+
+Control command success rate of 9911 samples: 
+Max: 1.00
+Avg: 0.98
+Min: 0.92
+#######################################################
+

@@ -1,0 +1,435 @@
+{
+  "meta": {
+    "timestamp": "20260904T143155",
+    "hostname": "redacted",
+    "kernel": "6.8.0-generic",
+    "kernel_full": "Linux 6.8.0-generic SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+    "preempt_rt": false,
+    "sys_kernel_realtime": false,
+    "cpu_model": "a 2021 laptop-class x86-64 CPU",
+    "ulimit_l": "unlimited",
+    "sched_rt_runtime_us": "950000",
+    "docker_image": "franka-sim:dev",
+    "docker_image_id": "sha256:c10a58691d5b1823e33c212d92f71034cd99d2f509fe19e60987b60c76c4c7c0",
+    "sim_cpu_shares": 4096,
+    "git_rev": "15a00b2810cd0693757cf476c7cb29945584dac0",
+    "git_dirty": true,
+    "libfranka": "<libfranka 0.20.4 build>/libfranka.so.0.20",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "gcc": "c++ 11.4.0",
+    "cyclictest": null,
+    "stress_ng": null,
+    "duration_s": 30,
+    "reps": 3
+  },
+  "cells": [
+    {
+      "variant": "control",
+      "condition": "plain",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.968,
+        "p99": 1060.885,
+        "p999": 1142.3966666666668,
+        "max": 1775.568,
+        "mean": 1000.3739999999999,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 1.0,
+      "success_avg": 1.0,
+      "cpu_percent": 2.700961,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "control",
+      "condition": "plain",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.9200000000001,
+        "p99": 1057.0876666666666,
+        "p999": 1146.8443333333332,
+        "max": 4753.837,
+        "mean": 1000.5193333333333,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 1.0,
+      "success_avg": 1.0,
+      "cpu_percent": 2.375553,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "control",
+      "condition": "rt",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30000.333333333332,
+      "interval_us": {
+        "p50": 1000.003,
+        "p99": 1070.9506666666666,
+        "p999": 1171.277,
+        "max": 4665.139,
+        "mean": 1000.6413333333334,
+        "n": 89998,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.3333333333333333,
+      "lost_states": 0.6666666666666666,
+      "max_consecutive": 1,
+      "success_min": 0.97,
+      "success_avg": 0.9999446666666666,
+      "cpu_percent": 2.725944333333333,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "control",
+      "condition": "rt",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30000.333333333332,
+      "interval_us": {
+        "p50": 999.948,
+        "p99": 1050.107,
+        "p999": 1135.5516666666665,
+        "max": 4719.272,
+        "mean": 1000.3146666666667,
+        "n": 89998,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.3333333333333333,
+      "lost_states": 0.6666666666666666,
+      "max_consecutive": 1,
+      "success_min": 0.97,
+      "success_avg": 0.9999669999999999,
+      "cpu_percent": 2.3557390000000002,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "control",
+      "condition": "rt_load",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.9200000000001,
+        "p99": 1341.219,
+        "p999": 3858.5336666666662,
+        "max": 8032.7,
+        "mean": 1014.3926666666666,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 1.0,
+      "success_avg": 1.0,
+      "cpu_percent": 2.389643,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "control",
+      "condition": "rt_load",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30000.333333333332,
+      "interval_us": {
+        "p50": 1000.0123333333335,
+        "p99": 1438.942,
+        "p999": 4012.0733333333333,
+        "max": 9856.642,
+        "mean": 1017.3969999999999,
+        "n": 89998,
+        "reps": 3
+      },
+      "latency_us": null,
+      "lost_cycles": 0.3333333333333333,
+      "lost_states": 0.6666666666666666,
+      "max_consecutive": 1,
+      "success_min": 0.97,
+      "success_avg": 0.9999669999999999,
+      "cpu_percent": 1.8657486666666667,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "plain",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 1000.0353333333333,
+        "p99": 1066.0566666666666,
+        "p999": 1186.2206666666668,
+        "max": 4544.207,
+        "mean": 1001.0,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 17.365,
+        "p99": 38.80266666666667,
+        "p999": 65.00466666666667,
+        "max": 638.706,
+        "mean": 17.430333333333333,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 1.0,
+      "success_avg": 1.0,
+      "cpu_percent": 3.032079,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "plain",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 29999.666666666668,
+      "interval_us": {
+        "p50": 999.8376666666667,
+        "p99": 1065.4313333333332,
+        "p999": 1586.7286666666666,
+        "max": 4745.854,
+        "mean": 1001.6063333333333,
+        "n": 89996,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 12.077999999999998,
+        "p99": 25.883666666666667,
+        "p999": 37.04833333333333,
+        "max": 501.063,
+        "mean": 11.745,
+        "n": 89999,
+        "reps": 3
+      },
+      "lost_cycles": 0.6666666666666666,
+      "lost_states": 1.3333333333333333,
+      "max_consecutive": 1,
+      "success_min": 0.97,
+      "success_avg": 0.999923,
+      "cpu_percent": 2.3853453333333334,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "rt",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.9123333333333,
+        "p99": 1046.0633333333333,
+        "p999": 1139.8590000000002,
+        "max": 4252.408,
+        "mean": 1000.4593333333333,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 17.383666666666667,
+        "p99": 35.870666666666665,
+        "p999": 57.854000000000006,
+        "max": 816.462,
+        "mean": 17.237333333333336,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9999776666666667,
+      "cpu_percent": 2.988004333333333,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "rt",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.864,
+        "p99": 1054.443,
+        "p999": 1134.1823333333334,
+        "max": 4771.917,
+        "mean": 1000.2976666666667,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 11.922666666666666,
+        "p99": 28.272000000000002,
+        "p999": 39.74766666666667,
+        "max": 396.128,
+        "mean": 11.626333333333333,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.98,
+      "success_avg": 0.9999666666666668,
+      "cpu_percent": 2.3761406666666667,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "rt_load",
+      "client": "cpp",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.922,
+        "p99": 1093.0116666666665,
+        "p999": 2865.982,
+        "max": 7106.398,
+        "mean": 1005.8806666666666,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 16.473666666666666,
+        "p99": 28.19333333333333,
+        "p999": 85.84100000000001,
+        "max": 425.655,
+        "mean": 16.44666666666667,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 1.0,
+      "success_avg": 1.0,
+      "cpu_percent": 2.7580906666666665,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        1,
+        2
+      ],
+      "backwards_time_steps": 0
+    },
+    {
+      "variant": "active",
+      "condition": "rt_load",
+      "client": "rust",
+      "reps": 3,
+      "cycles": 30001.0,
+      "interval_us": {
+        "p50": 999.9830000000001,
+        "p99": 1101.7633333333333,
+        "p999": 2411.9113333333335,
+        "max": 6082.943,
+        "mean": 1004.57,
+        "n": 90000,
+        "reps": 3
+      },
+      "latency_us": {
+        "p50": 8.330333333333334,
+        "p99": 14.268,
+        "p999": 38.46366666666666,
+        "max": 380.782,
+        "mean": 8.526,
+        "n": 90003,
+        "reps": 3
+      },
+      "lost_cycles": 0.0,
+      "lost_states": 0.0,
+      "max_consecutive": 0,
+      "success_min": 0.99,
+      "success_avg": 0.9999776666666667,
+      "cpu_percent": 1.6943210000000002,
+      "server_lost_lines": 0,
+      "orders_in_cell": [
+        1,
+        2,
+        2
+      ],
+      "backwards_time_steps": 0
+    }
+  ]
+}

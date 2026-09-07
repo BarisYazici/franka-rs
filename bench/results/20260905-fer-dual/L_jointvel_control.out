@@ -1,0 +1,22 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "control",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 0,
+  "cell_first_client": "unspecified",
+  "host": "L",
+  "duration_s": 10.000000,
+  "limit_rate": true,
+  "cycles": 9979,
+  "wall_s": 10.006153,
+  "sched": {"policy": "FIFO", "priority": 99},
+  "sched_at_start": {"policy": "FIFO", "priority": 80},
+  "mlockall": {"requested": true, "ok": true, "error": null, "rlimit_memlock": "unlimited"},
+  "interval_us": {"n": 9978, "min": 5.704, "p50": 999.121, "p99": 1271.584, "p999": 3847.844, "max": 5034.986, "mean": 1002.296, "max_at_cycle": 5536},
+  "latency_us": null,
+  "lost": {"cycles": 20, "states": 23, "max_consecutive": 1, "backwards_time_steps": 0},
+  "success_rate": {"min": 0.930000, "avg": 0.984666, "max": 1.000000, "final": 0.990000, "n": 9978},
+  "cpu": {"user_s": 0.078637, "sys_s": 0.186480, "total_s": 0.265117, "percent": 2.649540, "minor_faults": 0, "major_faults": 0, "vol_ctx_switches": 9929, "invol_ctx_switches": 0}
+}

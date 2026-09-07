@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 1,
+  "cell_first_client": "rust",
+  "host": "L",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29968,
+  "wall_s": 30.206129,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29967,
+    "min": 8.586,
+    "p50": 999.386,
+    "p99": 1173.119,
+    "p999": 4027.571,
+    "max": 7646.309,
+    "mean": 1001.084,
+    "max_at_cycle": 1655
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29968,
+    "min": 4.919,
+    "p50": 17.854,
+    "p99": 39.924,
+    "p999": 54.57,
+    "max": 78.884,
+    "mean": 18.092,
+    "max_at_cycle": 15756
+  },
+  "model_us": {
+    "n": 29968,
+    "min": 4.013,
+    "p50": 16.702,
+    "p99": 38.637,
+    "p999": 53.097,
+    "max": 77.628,
+    "mean": 16.871,
+    "max_at_cycle": 15756
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.920297,
+    "ee_deviation_max_m": 0.04807,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 27,
+    "states": 33,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.89,
+    "avg": 0.985089,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 29967
+  },
+  "cpu": {
+    "user_s": 0.691839,
+    "sys_s": 0.402859,
+    "total_s": 1.094698,
+    "percent": 3.624092,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29861,
+    "invol_ctx_switches": 0
+  }
+}

@@ -1,0 +1,4 @@
+Motion finished commanded, but the robot is still moving! ["joint_motion_generator_velocity_discontinuity"]
+control_command_success_rate: 1
+franka error: Motion finished commanded, but the robot is still moving! ["joint_motion_generator_velocity_discontinuity"]
+control_command_success_rate: 1

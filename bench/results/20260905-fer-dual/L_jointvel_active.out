@@ -1,0 +1,22 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "active",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 0,
+  "cell_first_client": "unspecified",
+  "host": "L",
+  "duration_s": 10.000000,
+  "limit_rate": null,
+  "cycles": 9957,
+  "wall_s": 10.005922,
+  "sched": {"policy": "FIFO", "priority": 99},
+  "sched_at_start": {"policy": "FIFO", "priority": 80},
+  "mlockall": {"requested": true, "ok": true, "error": null, "rlimit_memlock": "unlimited"},
+  "interval_us": {"n": 9956, "min": 3.403, "p50": 999.213, "p99": 1236.553, "p999": 3967.771, "max": 5056.848, "mean": 1004.497, "max_at_cycle": 5961},
+  "latency_us": {"n": 9957, "min": 1.705, "p50": 11.211, "p99": 21.143, "p999": 33.221, "max": 2146.432, "mean": 11.836, "max_at_cycle": 9956},
+  "lost": {"cycles": 36, "states": 45, "max_consecutive": 2, "backwards_time_steps": 0},
+  "success_rate": {"min": 0.920000, "avg": 0.981149, "max": 1.000000, "final": 0.970000, "n": 9956},
+  "cpu": {"user_s": 0.127675, "sys_s": 0.127675, "total_s": 0.255350, "percent": 2.551989, "minor_faults": 39, "major_faults": 0, "vol_ctx_switches": 9890, "invol_ctx_switches": 0}
+}

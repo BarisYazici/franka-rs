@@ -1,0 +1,34 @@
+{
+  "host": "R",
+  "mode_before": "Idle",
+  "errors_before": [],
+  "recover_requested": false,
+  "recovered": false,
+  "recovery_error": null,
+  "home_requested": false,
+  "home_speed": 0.2,
+  "homed": false,
+  "home_error": null,
+  "mode": "Idle",
+  "errors": [],
+  "has_errors": false,
+  "ready": true,
+  "q": [
+    -0.000244,
+    -0.753849,
+    -0.000795,
+    -2.381143,
+    -0.000473,
+    1.573693,
+    0.785879
+  ],
+  "tau_J": [
+    0.430785,
+    -5.695668,
+    -0.242333,
+    23.549879,
+    0.975767,
+    2.445546,
+    -0.098528
+  ]
+}

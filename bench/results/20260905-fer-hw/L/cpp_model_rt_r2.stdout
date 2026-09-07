@@ -1,0 +1,101 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.9.2",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 2,
+  "order_in_cell": 2,
+  "cell_first_client": "rust",
+  "host": "L",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29967,
+  "wall_s": 30.206125,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29966,
+    "min": 10.841,
+    "p50": 999.461,
+    "p99": 1232.822,
+    "p999": 4041.179,
+    "max": 5550.203,
+    "mean": 1001.119,
+    "max_at_cycle": 23711
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29967,
+    "min": 5.416,
+    "p50": 6.014,
+    "p99": 27.283,
+    "p999": 38.154,
+    "max": 47.915,
+    "mean": 7.55,
+    "max_at_cycle": 2609
+  },
+  "model_us": {
+    "n": 29967,
+    "min": 4.013,
+    "p50": 4.401,
+    "p99": 22.279,
+    "p999": 31.789,
+    "max": 43.394,
+    "mean": 5.822,
+    "max_at_cycle": 28315
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20.0,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.939291,
+    "ee_deviation_max_m": 0.047939,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 26,
+    "states": 34,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.92,
+    "avg": 0.986849,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 29966
+  },
+  "cpu": {
+    "user_s": 0.375531,
+    "sys_s": 0.351132,
+    "total_s": 0.726663,
+    "percent": 2.405681,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29814,
+    "invol_ctx_switches": 0
+  }
+}

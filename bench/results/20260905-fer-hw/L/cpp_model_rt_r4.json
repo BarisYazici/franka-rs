@@ -1,0 +1,101 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.9.2",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 4,
+  "order_in_cell": 2,
+  "cell_first_client": "rust",
+  "host": "L",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29962,
+  "wall_s": 30.206684,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29961,
+    "min": 10.801,
+    "p50": 999.553,
+    "p99": 1146.426,
+    "p999": 3927.328,
+    "max": 5918.277,
+    "mean": 1001.288,
+    "max_at_cycle": 19542
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29962,
+    "min": 5.449,
+    "p50": 5.769,
+    "p99": 27.262,
+    "p999": 37.579,
+    "max": 47.844,
+    "mean": 7.171,
+    "max_at_cycle": 0
+  },
+  "model_us": {
+    "n": 29962,
+    "min": 4.012,
+    "p50": 4.178,
+    "p99": 22.137,
+    "p999": 30.814,
+    "max": 43.248,
+    "mean": 5.486,
+    "max_at_cycle": 20420
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20.0,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.997126,
+    "ee_deviation_max_m": 0.047966,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 29,
+    "states": 39,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.91,
+    "avg": 0.987469,
+    "max": 1.0,
+    "final": 0.98,
+    "n": 29961
+  },
+  "cpu": {
+    "user_s": 0.480886,
+    "sys_s": 0.305574,
+    "total_s": 0.78646,
+    "percent": 2.603596,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29870,
+    "invol_ctx_switches": 0
+  }
+}

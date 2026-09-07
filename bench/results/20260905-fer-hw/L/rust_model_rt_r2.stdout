@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 2,
+  "order_in_cell": 1,
+  "cell_first_client": "rust",
+  "host": "L",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29962,
+  "wall_s": 30.205834,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29961,
+    "min": 9.2,
+    "p50": 999.418,
+    "p99": 1166.036,
+    "p999": 3952.115,
+    "max": 7219.119,
+    "mean": 1001.288,
+    "max_at_cycle": 8780
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29962,
+    "min": 5.425,
+    "p50": 13.208,
+    "p99": 32.195,
+    "p999": 39.76,
+    "max": 57.041,
+    "mean": 14.037,
+    "max_at_cycle": 7037
+  },
+  "model_us": {
+    "n": 29962,
+    "min": 4.478,
+    "p50": 11.676,
+    "p99": 26.7,
+    "p999": 37.434,
+    "max": 56.068,
+    "mean": 12.482,
+    "max_at_cycle": 7037
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.983068,
+    "ee_deviation_max_m": 0.047911,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 33,
+    "states": 39,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.88,
+    "avg": 0.989498,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 29961
+  },
+  "cpu": {
+    "user_s": 0.618581,
+    "sys_s": 0.356515,
+    "total_s": 0.975096,
+    "percent": 3.228171,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29859,
+    "invol_ctx_switches": 0
+  }
+}

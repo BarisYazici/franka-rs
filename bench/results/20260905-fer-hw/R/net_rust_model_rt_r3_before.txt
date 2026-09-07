@@ -1,0 +1,14 @@
+Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits
+Ip: 1 64 37806317 0 1 0 0 0 31138820 26678832 20 220 0 13333656 6666828 0 0 0 0 26678832
+Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors
+Udp: 6776258 1002 245642 2607234 245642 0 0 271 0
+nic usb-ethernet
+    RX:  bytes packets errors dropped  missed   mcast           
+    1076457779  971294      0       0       0       0 
+    TX:  bytes packets errors dropped carrier collsns           
+     116383889  416798      0       0       0       0 
+     tx_errors: 0
+     rx_errors: 0
+     rx_missed: 0
+     align_errors: 0
+     tx_underrun: 0

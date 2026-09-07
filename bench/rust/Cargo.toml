@@ -1,0 +1,40 @@
+# Standalone crate: the empty `[workspace]` table below keeps it out of the repository's
+# root workspace (`/Cargo.toml`), so the workspace and its Cargo.lock stay untouched.
+[workspace]
+
+[package]
+name = "franka-bench"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "franka_bench"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench_joint_velocity"
+path = "src/main.rs"
+
+[[bin]]
+name = "bench_model_control"
+path = "src/bin/bench_model_control.rs"
+
+[[bin]]
+name = "robot_probe"
+path = "src/bin/robot_probe.rs"
+
+[dependencies]
+franka-rs = { path = "../../crates/franka-rs" }
+libc = "0.2"
+# The linear algebra of the `model` variant, matching Eigen on the C++ side. Same major
+# version the crate itself uses, so no second copy of nalgebra is built.
+nalgebra = "0.35"
+
+[profile.release]
+# Explicit so the C++ and Rust binaries are demonstrably built the same way: both are
+# optimised at level 3 (`-O3` for C++). `debug` only adds symbols, it does not change codegen.
+opt-level = 3
+debug = true

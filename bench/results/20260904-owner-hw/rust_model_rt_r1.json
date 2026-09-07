@@ -1,0 +1,89 @@
+{
+  "provenance": "owner",
+  "note": "Run by the owner by hand from a terminal (no chrt, no mlockall; the library raised its own thread to SCHED_FIFO 99). JSON pasted in verbatim; not produced by the harness.",
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 0,
+  "cell_first_client": "unspecified",
+  "host": "<robot-ip>",
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 30001,
+  "wall_s": 30.00468,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "OTHER",
+    "priority": 0
+  },
+  "mlockall": {
+    "requested": false,
+    "ok": false,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 30000,
+    "min": 12.693,
+    "p50": 999.463,
+    "p99": 1088.539,
+    "p999": 1198.491,
+    "max": 2359.262,
+    "mean": 999.999,
+    "max_at_cycle": 16080
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 30001,
+    "min": 3.601,
+    "p50": 16.408,
+    "p99": 39.198,
+    "p999": 43.496,
+    "max": 71.856,
+    "mean": 16.72,
+    "max_at_cycle": 29515
+  },
+  "model_us": {
+    "n": 30001,
+    "min": 2.68,
+    "p50": 14.678,
+    "p99": 35.284,
+    "p999": 37.123,
+    "max": 49.516,
+    "mean": 14.661,
+    "max_at_cycle": 29515
+  },
+  "controller": {
+    "tau_max_abs": 4.173913,
+    "ee_deviation_max_m": 0.048185,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 0,
+    "states": 0,
+    "max_consecutive": 0,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.99,
+    "avg": 0.999733,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 30000
+  },
+  "cpu": {
+    "user_s": 0.767994,
+    "sys_s": 0.255214,
+    "total_s": 1.023208,
+    "percent": 3.410161,
+    "minor_faults": 41,
+    "major_faults": 0,
+    "vol_ctx_switches": 30003,
+    "invol_ctx_switches": 0
+  }
+}

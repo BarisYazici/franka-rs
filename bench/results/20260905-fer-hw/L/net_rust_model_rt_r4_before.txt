@@ -1,0 +1,30 @@
+Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits
+Ip: 1 64 37415963 0 1 0 0 0 30932511 26476059 20 220 0 12965566 6482783 0 0 0 0 26476059
+Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors
+Udp: 6587928 969 245642 2420056 245642 0 0 260 0
+nic onboard
+    RX:  bytes packets errors dropped  missed   mcast           
+    9006245376 7466818      0       0       0       0 
+    TX:  bytes packets errors dropped carrier collsns           
+     823458752 2171058      0       0       0       0 
+     rx_errors: 0
+     tx_errors: 0
+     tx_dropped: 0
+     rx_length_errors: 0
+     rx_over_errors: 0
+     rx_crc_errors: 0
+     rx_frame_errors: 0
+     rx_missed_errors: 0
+     tx_aborted_errors: 0
+     tx_carrier_errors: 0
+     tx_fifo_errors: 0
+     tx_heartbeat_errors: 0
+     tx_window_errors: 0
+     tx_deferred_ok: 0
+     rx_long_length_errors: 0
+     rx_short_length_errors: 0
+     rx_align_errors: 0
+     rx_csum_offload_errors: 0
+     dropped_smbus: 0
+     uncorr_ecc_errors: 0
+     corr_ecc_errors: 0

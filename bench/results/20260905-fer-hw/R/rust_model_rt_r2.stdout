@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 2,
+  "order_in_cell": 1,
+  "cell_first_client": "rust",
+  "host": "R",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29886,
+  "wall_s": 30.205014,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29885,
+    "min": 12.313,
+    "p50": 998.947,
+    "p99": 1178.647,
+    "p999": 4043.598,
+    "max": 6347.735,
+    "mean": 1003.83,
+    "max_at_cycle": 1267
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29886,
+    "min": 4.925,
+    "p50": 17.591,
+    "p99": 36.035,
+    "p999": 44.856,
+    "max": 50.946,
+    "mean": 17.917,
+    "max_at_cycle": 16656
+  },
+  "model_us": {
+    "n": 29886,
+    "min": 4.023,
+    "p50": 16.367,
+    "p99": 34.263,
+    "p999": 43.188,
+    "max": 49.708,
+    "mean": 16.675,
+    "max_at_cycle": 29227
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.613067,
+    "ee_deviation_max_m": 0.04722,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 81,
+    "states": 115,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.93,
+    "avg": 0.989232,
+    "max": 1.0,
+    "final": 0.97,
+    "n": 29885
+  },
+  "cpu": {
+    "user_s": 0.577631,
+    "sys_s": 0.533263,
+    "total_s": 1.110894,
+    "percent": 3.677846,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29750,
+    "invol_ctx_switches": 0
+  }
+}

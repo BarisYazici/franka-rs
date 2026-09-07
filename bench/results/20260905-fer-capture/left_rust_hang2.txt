@@ -1,0 +1,304 @@
+====================================================================================================
+Franka Emika Robot (FER, FCI v5) robot-state arrival analysis
+capture            : left_rust_hang2.pcap
+flow               : robot <robot-ip>:55552 -> client <host-ip>:58005
+thresholds         : gap >= 1.50 ms, burst window 3.0 ms, state/command match +/- 2.0 ms
+wire offsets       : state message_id/robot-time u64 LE @0, command message_id u64 LE @0
+====================================================================================================
+
+-- capture ---------------------------------------------------------
+  link-layer types           : 1
+  packets read               : 31412  (IPv4: 31412)
+  reassembled UDP datagrams  : 20470
+  incomplete fragment sets   : 0
+  snaplen-truncated datagrams: 0
+  datagrams outside the flow : 0
+  capture span               : 10.364 s
+
+-- robot -> host state stream --------------------------------------
+  complete state datagrams   : 10365
+  payload lengths            : 2373 B x10365
+  IP fragments per datagram  : 2
+  message_id range           : 18283396 .. 18293760
+  expected from id range     : 10365
+  missing ids                : 0  (max consecutive: 0, duplicates: 0)
+
+  inter-arrival and fragment timing (microseconds)
+  state gap, FIRST fragment    n=10364   min=      0.0  p50=    999.4  p99=   1337.6  p999=   4004.4  max=   6910.8  mean=   1000.0
+  state gap, LAST fragment     n=10364   min=      0.0  p50=    999.4  p99=   1337.7  p999=   4004.4  max=   6910.8  mean=   1000.0
+  first->last fragment         n=10365   min=      0.0  p50=      0.0  p99=      0.3  p999=     95.4  max=    105.8  mean=      0.4
+    of those, exactly 0 us      : 0 of 10365 (0.0%)
+
+-- state gaps >= 1.50 ms --------------------------------------------
+     t_off[s]     gap_us  gap_last_us    id_before     id_after  consec  robot_dt_ms  next_3ms
+    0.083767     1734.3       1734.2     18283478     18283479  yes               1      3 cadence
+    0.085706     1658.1       1658.1     18283480     18283481  yes               1      3 cadence
+    0.361720     1654.0       1654.0     18283756     18283757  yes               1      3 cadence
+    0.463755     2732.6       2732.6     18283857     18283858  yes               1      4 BURST
+    0.663787     2838.3       2838.2     18284057     18284058  yes               1      4 BURST
+    0.757727     1767.5       1767.4     18284152     18284153  yes               1      0 cadence
+    0.761771     4044.2       4044.2     18284153     18284154  yes               1      6 BURST
+    0.861695     1692.7       1692.7     18284256     18284257  yes               1      3 cadence
+    1.074514     1555.3       1555.3     18284469     18284470  yes               1      3 cadence
+    1.076520     2006.5       2006.5     18284470     18284471  yes               1      4 BURST
+    1.173746     2714.8       2714.8     18284567     18284568  yes               1      4 BURST
+    1.676485     2512.2       2512.1     18285070     18285071  yes               1      4 BURST
+    1.718118     2187.3       2187.2     18285112     18285113  yes               1      4 BURST
+    1.773713     1755.3       1755.3     18285168     18285169  yes               1      3 cadence
+    1.776674     2961.1       2961.1     18285169     18285170  yes               1      5 BURST
+    1.876488     1981.9       1981.9     18285270     18285271  yes               1      4 BURST
+    2.076481     1533.1       1533.0     18285471     18285472  yes               1      3 cadence
+    2.213732     2789.0       2789.0     18285607     18285608  yes               1      4 BURST
+    2.293765     4819.6       4819.5     18285685     18285686  yes               1      6 BURST
+    2.304504     1579.3       1579.3     18285699     18285700  yes               1      3 cadence
+    2.385741     3741.9       3741.9     18285778     18285779  yes               1      5 BURST
+    2.481726     2712.1       2712.1     18285875     18285876  yes               1      4 BURST
+    2.717737     1816.9       1816.8     18286112     18286113  yes               1      3 cadence
+    2.794918     1987.6       1987.6     18286189     18286190  yes               1      3 cadence
+    2.889718     2801.5       2801.5     18286283     18286284  yes               1      4 BURST
+    2.983744     1738.7       1738.7     18286378     18286379  yes               1      3 cadence
+    2.985672     1588.3       1588.3     18286380     18286381  yes               1      3 cadence
+    3.085683     1702.7       1702.7     18286480     18286481  yes               1      3 cadence
+    3.297699     2753.8       2753.8     18286691     18286692  yes               1      4 BURST
+    3.496485     2515.7       2515.7     18286890     18286891  yes               1      4 BURST
+    3.597702     2765.0       2764.9     18286991     18286992  yes               1      4 BURST
+    3.697671     1728.2       1728.2     18287092     18287093  yes               1      3 cadence
+    3.699877     2206.0       2206.1     18287093     18287094  yes               1      4 BURST
+    3.793694     2753.5       2753.5     18287187     18287188  yes               1      4 BURST
+    3.893706     2756.0       2756.0     18287287     18287288  yes               1      4 BURST
+    3.993705     1795.7       1795.7     18287388     18287389  yes               1      3 cadence
+    3.996154     2138.8       2138.9     18287390     18287391  yes               1      4 BURST
+    4.113715     2817.5       2817.5     18287507     18287508  yes               1      4 BURST
+    4.241283     3381.7       3381.6     18287634     18287635  yes               1      5 BURST
+    4.301734     3777.5       3777.5     18287694     18287695  yes               1      5 BURST
+    4.401738     5305.2       5305.3     18287792     18287793  yes               1      7 BURST
+    4.497669     1706.2       1706.1     18287892     18287893  yes               1      1 cadence
+    4.501657     3651.3       3734.0     18287894     18287895  yes               1      5 BURST
+    4.596525     2570.5       2570.5     18287990     18287991  yes               1      4 BURST
+    4.697706     1787.7       1787.7     18288092     18288093  yes               1      3 cadence
+    4.717658     1771.8       1771.8     18288112     18288113  yes               1      3 cadence
+    5.014700     1787.7       1787.6     18288409     18288410  yes               1      3 cadence
+    5.016445     1745.2       1745.2     18288410     18288411  yes               1      4 BURST
+    5.115631     1668.3       1668.2     18288510     18288511  yes               1      3 cadence
+    5.411474     1538.2       1538.2     18288806     18288807  yes               1      3 cadence
+    5.704431     1519.0       1518.9     18289099     18289100  yes               1      3 cadence
+    5.809670     3272.5       3272.4     18289202     18289203  yes               1      5 BURST
+    5.909671     3733.2       3733.2     18289302     18289303  yes               1      5 BURST
+    6.018529     1632.9       1632.9     18289413     18289414  yes               1      1 cadence
+    6.021680     2747.3       2747.3     18289415     18289416  yes               1      4 BURST
+    6.113765     3893.0       3893.0     18289506     18289507  yes               1      5 BURST
+    6.216486     2611.1       2611.1     18289610     18289611  yes               1      4 BURST
+    6.255713     1768.9       1768.8     18289650     18289651  yes               1      3 cadence
+    6.440547     1602.6       1602.6     18289835     18289836  yes               1      3 cadence
+    6.515498     3555.7       3555.7     18289908     18289909  yes               1      5 BURST
+    6.617651     1709.8       1709.7     18290012     18290013  yes               1      0 cadence
+    6.621655     4004.4       4004.4     18290013     18290014  yes               1      6 BURST
+    7.021666     4698.6       4698.6     18290413     18290414  yes               1      6 BURST
+    7.121650     3720.2       3720.2     18290514     18290515  yes               1      5 BURST
+    7.233697     3830.4       3830.3     18290626     18290627  yes               1      5 BURST
+    7.321622     1689.6       1689.3     18290716     18290717  yes               1      3 cadence
+    7.324493     2563.0       2563.0     18290718     18290719  yes               1      4 BURST
+    7.400455     1597.6       1597.6     18290795     18290796  yes               1      3 cadence
+    7.426444     1523.3       1523.3     18290821     18290822  yes               1      0 cadence
+    7.429657     3213.7       3213.7     18290822     18290823  yes               1      5 BURST
+    7.511340     2504.7       2504.8     18290905     18290906  yes               1      4 BURST
+    8.336415     2508.6       2508.6     18291730     18291731  yes               1      4 BURST
+    8.400684     1772.2       1772.2     18291795     18291796  yes               1      3 cadence
+    8.433658     1717.9       1718.0     18291828     18291829  yes               1      3 cadence
+    8.541662     3731.3       3731.3     18291934     18291935  yes               1      5 BURST
+    8.641676     4771.8       4771.8     18292033     18292034  yes               1      6 BURST
+    8.718054     2232.7       2232.7     18292112     18292113  yes               1      4 BURST
+    8.737634     2648.5       2648.5     18292131     18292132  yes               1      4 BURST
+    8.841649     4689.9       4689.9     18292233     18292234  yes               1      6 BURST
+    8.945642     4799.5       4799.4     18292337     18292338  yes               1      6 BURST
+    9.056418     3445.8       3445.8     18292449     18292450  yes               1      5 BURST
+    9.152741     1893.8       1893.7     18292547     18292548  yes               1      3 cadence
+    9.253755     6910.8       6910.8     18292643     18292644  yes               1      8 BURST
+    9.349626     3713.8       3713.8     18292742     18292743  yes               1      5 BURST
+    9.449635     2792.4       2792.3     18292843     18292844  yes               1      4 BURST
+    9.553651     1813.6       1813.6     18292948     18292949  yes               1      3 cadence
+    9.556079     2089.4       2089.4     18292950     18292951  yes               1      4 BURST
+    9.657623     2770.0       2770.0     18293051     18293052  yes               1      4 BURST
+    9.761628     1803.4       1803.4     18293156     18293157  yes               1      3 cadence
+    9.849639     2753.2       2753.0     18293243     18293244  yes               1      4 BURST
+    9.953622     2689.6       2689.6     18293347     18293348  yes               1      4 BURST
+   10.073792     4961.1       4961.1     18293465     18293466  yes               1      6 BURST
+   10.165643     4828.9       4828.9     18293557     18293558  yes               1      6 BURST
+   10.201604     1787.6       1787.6     18293596     18293597  yes               1      3 cadence
+   10.264384     1554.7       1554.7     18293659     18293660  yes               1      3 cadence
+   10.301635     2814.6       2814.6     18293695     18293696  yes               1      4 BURST
+   10.356386     2560.6       2560.6     18293750     18293751  yes               1      4 BURST
+
+-- robot clock minus arrival (drift) -------------------------------
+  offset is (message_id ms) - (first-fragment arrival), zeroed on the first state.
+  min / max / range          : -5.755 / 0.247 / 6.003 ms
+  first / last               : 0.000 / 0.061 ms
+  -5.755 ms |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%| 0.247 ms
+  jumps >= 1.50 ms           : 52
+     t_off=  0.463755 s  delta=   -1.733 ms  ids 18283857 -> 18283858 (consecutive)
+     t_off=  0.663787 s  delta=   -1.838 ms  ids 18284057 -> 18284058 (consecutive)
+     t_off=  0.761771 s  delta=   -3.044 ms  ids 18284153 -> 18284154 (consecutive)
+     t_off=  1.173746 s  delta=   -1.715 ms  ids 18284567 -> 18284568 (consecutive)
+     t_off=  1.676485 s  delta=   -1.512 ms  ids 18285070 -> 18285071 (consecutive)
+     t_off=  1.776674 s  delta=   -1.961 ms  ids 18285169 -> 18285170 (consecutive)
+     t_off=  2.213732 s  delta=   -1.789 ms  ids 18285607 -> 18285608 (consecutive)
+     t_off=  2.293765 s  delta=   -3.820 ms  ids 18285685 -> 18285686 (consecutive)
+     t_off=  2.385741 s  delta=   -2.742 ms  ids 18285778 -> 18285779 (consecutive)
+     t_off=  2.481726 s  delta=   -1.712 ms  ids 18285875 -> 18285876 (consecutive)
+     t_off=  2.889718 s  delta=   -1.802 ms  ids 18286283 -> 18286284 (consecutive)
+     t_off=  3.297699 s  delta=   -1.754 ms  ids 18286691 -> 18286692 (consecutive)
+     t_off=  3.496485 s  delta=   -1.516 ms  ids 18286890 -> 18286891 (consecutive)
+     t_off=  3.597702 s  delta=   -1.765 ms  ids 18286991 -> 18286992 (consecutive)
+     t_off=  3.793694 s  delta=   -1.753 ms  ids 18287187 -> 18287188 (consecutive)
+     t_off=  3.893706 s  delta=   -1.756 ms  ids 18287287 -> 18287288 (consecutive)
+     t_off=  4.113715 s  delta=   -1.817 ms  ids 18287507 -> 18287508 (consecutive)
+     t_off=  4.241283 s  delta=   -2.382 ms  ids 18287634 -> 18287635 (consecutive)
+     t_off=  4.301734 s  delta=   -2.778 ms  ids 18287694 -> 18287695 (consecutive)
+     t_off=  4.401738 s  delta=   -4.305 ms  ids 18287792 -> 18287793 (consecutive)
+     t_off=  4.501657 s  delta=   -2.651 ms  ids 18287894 -> 18287895 (consecutive)
+     t_off=  4.596525 s  delta=   -1.570 ms  ids 18287990 -> 18287991 (consecutive)
+     t_off=  5.809670 s  delta=   -2.272 ms  ids 18289202 -> 18289203 (consecutive)
+     t_off=  5.909671 s  delta=   -2.733 ms  ids 18289302 -> 18289303 (consecutive)
+     t_off=  6.021680 s  delta=   -1.747 ms  ids 18289415 -> 18289416 (consecutive)
+     t_off=  6.113765 s  delta=   -2.893 ms  ids 18289506 -> 18289507 (consecutive)
+     t_off=  6.216486 s  delta=   -1.611 ms  ids 18289610 -> 18289611 (consecutive)
+     t_off=  6.515498 s  delta=   -2.556 ms  ids 18289908 -> 18289909 (consecutive)
+     t_off=  6.621655 s  delta=   -3.004 ms  ids 18290013 -> 18290014 (consecutive)
+     t_off=  7.021666 s  delta=   -3.699 ms  ids 18290413 -> 18290414 (consecutive)
+     t_off=  7.121650 s  delta=   -2.720 ms  ids 18290514 -> 18290515 (consecutive)
+     t_off=  7.233697 s  delta=   -2.830 ms  ids 18290626 -> 18290627 (consecutive)
+     t_off=  7.324493 s  delta=   -1.563 ms  ids 18290718 -> 18290719 (consecutive)
+     t_off=  7.429657 s  delta=   -2.214 ms  ids 18290822 -> 18290823 (consecutive)
+     t_off=  7.511340 s  delta=   -1.505 ms  ids 18290905 -> 18290906 (consecutive)
+     t_off=  8.336415 s  delta=   -1.509 ms  ids 18291730 -> 18291731 (consecutive)
+     t_off=  8.541662 s  delta=   -2.731 ms  ids 18291934 -> 18291935 (consecutive)
+     t_off=  8.641676 s  delta=   -3.772 ms  ids 18292033 -> 18292034 (consecutive)
+     t_off=  8.737634 s  delta=   -1.649 ms  ids 18292131 -> 18292132 (consecutive)
+     t_off=  8.841649 s  delta=   -3.690 ms  ids 18292233 -> 18292234 (consecutive)
+     t_off=  8.945642 s  delta=   -3.800 ms  ids 18292337 -> 18292338 (consecutive)
+     t_off=  9.056418 s  delta=   -2.446 ms  ids 18292449 -> 18292450 (consecutive)
+     t_off=  9.253755 s  delta=   -5.911 ms  ids 18292643 -> 18292644 (consecutive)
+     t_off=  9.349626 s  delta=   -2.714 ms  ids 18292742 -> 18292743 (consecutive)
+     t_off=  9.449635 s  delta=   -1.792 ms  ids 18292843 -> 18292844 (consecutive)
+     t_off=  9.657623 s  delta=   -1.770 ms  ids 18293051 -> 18293052 (consecutive)
+     t_off=  9.849639 s  delta=   -1.753 ms  ids 18293243 -> 18293244 (consecutive)
+     t_off=  9.953622 s  delta=   -1.690 ms  ids 18293347 -> 18293348 (consecutive)
+     t_off= 10.073792 s  delta=   -3.961 ms  ids 18293465 -> 18293466 (consecutive)
+     t_off= 10.165643 s  delta=   -3.829 ms  ids 18293557 -> 18293558 (consecutive)
+     t_off= 10.301635 s  delta=   -1.815 ms  ids 18293695 -> 18293696 (consecutive)
+     t_off= 10.356386 s  delta=   -1.561 ms  ids 18293750 -> 18293751 (consecutive)
+
+-- host -> robot command stream ------------------------------------
+  command datagrams          : 10105
+  message_id range           : 18283405 .. 18293557  (missing: 48)
+  command send interval        n=10104   min=    105.6  p50=    999.3  p99=   1268.8  p999=   4017.8  max=   6959.6  mean=   1004.7
+  gaps >= 1.50 ms            : 93  (1 unmatched by a state gap)
+     t_off[s]     gap_us    id_before     id_after  matches a state gap
+    0.083812     1739.2     18283478     18283479  yes (state gap 1734.3 us: client was waiting)
+    0.085717     1636.3     18283480     18283481  yes (state gap 1734.3 us: client was waiting)
+    0.160012     5937.6     18283550     18283556  NO  -> the client itself was late
+    0.361833     1609.8     18283756     18283757  yes (state gap 1654.0 us: client was waiting)
+    0.463866     2717.3     18283857     18283858  yes (state gap 2732.6 us: client was waiting)
+    0.663958     2873.2     18284057     18284058  yes (state gap 2838.3 us: client was waiting)
+    0.757838     1743.2     18284152     18284153  yes (state gap 1767.5 us: client was waiting)
+    0.761928     4089.5     18284153     18284154  yes (state gap 1767.5 us: client was waiting)
+    0.861811     1674.3     18284256     18284257  yes (state gap 1692.7 us: client was waiting)
+    1.074659     1589.5     18284469     18284470  yes (state gap 1555.3 us: client was waiting)
+    1.076667     2008.1     18284470     18284471  yes (state gap 1555.3 us: client was waiting)
+    1.173869     2693.7     18284567     18284568  yes (state gap 2714.8 us: client was waiting)
+    1.676637     2522.5     18285070     18285071  yes (state gap 2512.2 us: client was waiting)
+    1.718257     2182.7     18285112     18285113  yes (state gap 2187.3 us: client was waiting)
+    1.773825     1733.2     18285168     18285169  yes (state gap 1755.3 us: client was waiting)
+    1.776816     2990.6     18285169     18285170  yes (state gap 1755.3 us: client was waiting)
+    1.876625     2007.2     18285270     18285271  yes (state gap 1981.9 us: client was waiting)
+    2.076594     1503.7     18285471     18285472  yes (state gap 1533.1 us: client was waiting)
+    2.213887     2829.7     18285607     18285608  yes (state gap 2789.0 us: client was waiting)
+    2.293879     4779.1     18285685     18285686  yes (state gap 4819.6 us: client was waiting)
+    2.304617     1539.7     18285699     18285700  yes (state gap 1579.3 us: client was waiting)
+    2.385889     3744.2     18285778     18285779  yes (state gap 3741.9 us: client was waiting)
+    2.481871     2715.2     18285875     18285876  yes (state gap 2712.1 us: client was waiting)
+    2.717894     1802.9     18286112     18286113  yes (state gap 1816.9 us: client was waiting)
+    2.795039     1963.4     18286189     18286190  yes (state gap 1987.6 us: client was waiting)
+    2.889867     2807.1     18286283     18286284  yes (state gap 2801.5 us: client was waiting)
+    2.983879     1758.6     18286378     18286379  yes (state gap 1738.7 us: client was waiting)
+    2.985811     1614.4     18286380     18286381  yes (state gap 1738.7 us: client was waiting)
+    3.085794     1678.3     18286480     18286481  yes (state gap 1702.7 us: client was waiting)
+    3.297835     2751.7     18286691     18286692  yes (state gap 2753.8 us: client was waiting)
+    3.496625     2520.5     18286890     18286891  yes (state gap 2515.7 us: client was waiting)
+    3.597839     2746.0     18286991     18286992  yes (state gap 2765.0 us: client was waiting)
+    3.697816     1758.3     18287092     18287093  yes (state gap 1728.2 us: client was waiting)
+    3.700001     2185.4     18287093     18287094  yes (state gap 1728.2 us: client was waiting)
+    3.793845     2762.6     18287187     18287188  yes (state gap 2753.5 us: client was waiting)
+    3.893856     2793.1     18287287     18287288  yes (state gap 2756.0 us: client was waiting)
+    3.993818     1753.9     18287388     18287389  yes (state gap 1795.7 us: client was waiting)
+    3.996303     2175.9     18287390     18287391  yes (state gap 1795.7 us: client was waiting)
+    4.113853     2822.2     18287507     18287508  yes (state gap 2817.5 us: client was waiting)
+    4.241426     3370.9     18287634     18287635  yes (state gap 3381.7 us: client was waiting)
+    4.301870     3798.6     18287694     18287695  yes (state gap 3777.5 us: client was waiting)
+    4.401905     5330.6     18287792     18287793  yes (state gap 5305.2 us: client was waiting)
+    4.497781     1672.6     18287892     18287893  yes (state gap 1706.2 us: client was waiting)
+    4.501858     3740.3     18287894     18287895  yes (state gap 1706.2 us: client was waiting)
+    4.596664     2573.6     18287990     18287991  yes (state gap 2570.5 us: client was waiting)
+    4.697850     1794.9     18288092     18288093  yes (state gap 1787.7 us: client was waiting)
+    4.717814     1770.7     18288112     18288113  yes (state gap 1771.8 us: client was waiting)
+    5.014812     1746.7     18288409     18288410  yes (state gap 1787.7 us: client was waiting)
+    5.016582     1770.1     18288410     18288411  yes (state gap 1787.7 us: client was waiting)
+    5.115744     1637.3     18288510     18288511  yes (state gap 1668.3 us: client was waiting)
+    5.411620     1571.1     18288806     18288807  yes (state gap 1538.2 us: client was waiting)
+    5.704571     1515.9     18289099     18289100  yes (state gap 1519.0 us: client was waiting)
+    5.809784     3240.2     18289202     18289203  yes (state gap 3272.5 us: client was waiting)
+    5.909786     3711.3     18289302     18289303  yes (state gap 3733.2 us: client was waiting)
+    6.018664     1617.9     18289413     18289414  yes (state gap 1632.9 us: client was waiting)
+    6.021819     2774.9     18289415     18289416  yes (state gap 1632.9 us: client was waiting)
+    6.113929     3921.8     18289506     18289507  yes (state gap 3893.0 us: client was waiting)
+    6.216634     2646.9     18289610     18289611  yes (state gap 2611.1 us: client was waiting)
+    6.255826     1744.9     18289650     18289651  yes (state gap 1768.9 us: client was waiting)
+    6.440679     1603.8     18289835     18289836  yes (state gap 1602.6 us: client was waiting)
+    6.515613     3531.7     18289908     18289909  yes (state gap 3555.7 us: client was waiting)
+    6.617764     1677.4     18290012     18290013  yes (state gap 1709.8 us: client was waiting)
+    6.621781     4017.8     18290013     18290014  yes (state gap 1709.8 us: client was waiting)
+    7.021790     4684.1     18290413     18290414  yes (state gap 4698.6 us: client was waiting)
+    7.121769     3705.9     18290514     18290515  yes (state gap 3720.2 us: client was waiting)
+    7.233839     3835.3     18290626     18290627  yes (state gap 3830.4 us: client was waiting)
+    7.321757     1681.7     18290716     18290717  yes (state gap 1689.6 us: client was waiting)
+    7.324634     2592.1     18290718     18290719  yes (state gap 1689.6 us: client was waiting)
+    7.400571     1555.9     18290795     18290796  yes (state gap 1597.6 us: client was waiting)
+    7.426585     1527.5     18290821     18290822  yes (state gap 1523.3 us: client was waiting)
+    7.429801     3215.5     18290822     18290823  yes (state gap 1523.3 us: client was waiting)
+    7.511457     2489.9     18290905     18290906  yes (state gap 2504.7 us: client was waiting)
+    8.336557     2519.2     18291730     18291731  yes (state gap 2508.6 us: client was waiting)
+    8.400820     1769.4     18291795     18291796  yes (state gap 1772.2 us: client was waiting)
+    8.433796     1720.2     18291828     18291829  yes (state gap 1717.9 us: client was waiting)
+    8.541804     3736.5     18291934     18291935  yes (state gap 3731.3 us: client was waiting)
+    8.641799     4754.9     18292033     18292034  yes (state gap 4771.8 us: client was waiting)
+    8.718200     2266.0     18292112     18292113  yes (state gap 2232.7 us: client was waiting)
+    8.737773     2651.6     18292131     18292132  yes (state gap 2648.5 us: client was waiting)
+    8.841764     4692.6     18292233     18292234  yes (state gap 4689.9 us: client was waiting)
+    8.945762     4768.5     18292337     18292338  yes (state gap 4799.5 us: client was waiting)
+    9.056550     3464.6     18292449     18292450  yes (state gap 3445.8 us: client was waiting)
+    9.152854     1894.2     18292547     18292548  yes (state gap 1893.8 us: client was waiting)
+    9.253917     6959.6     18292643     18292644  yes (state gap 6910.8 us: client was waiting)
+    9.349739     3714.9     18292742     18292743  yes (state gap 3713.8 us: client was waiting)
+    9.449776     2773.5     18292843     18292844  yes (state gap 2792.4 us: client was waiting)
+    9.553785     1834.4     18292948     18292949  yes (state gap 1813.6 us: client was waiting)
+    9.556216     2113.3     18292950     18292951  yes (state gap 1813.6 us: client was waiting)
+    9.657762     2765.1     18293051     18293052  yes (state gap 2770.0 us: client was waiting)
+    9.761761     1795.4     18293156     18293157  yes (state gap 1803.4 us: client was waiting)
+    9.849783     2744.9     18293243     18293244  yes (state gap 2753.2 us: client was waiting)
+    9.953758     2686.1     18293347     18293348  yes (state gap 2689.6 us: client was waiting)
+   10.073942     4980.0     18293465     18293466  yes (state gap 4961.1 us: client was waiting)
+
+====================================================================================================
+CLASSIFICATION: MIXED (97 transit gaps vs 1 host-only gap: predominantly ROBOT_OR_WIRE)
+====================================================================================================
+97 of 10365 state datagrams arrived more than 1.50 ms after the previous one; 97 of those gaps
+carried the very next message_id (the robot's own clock advanced by only 1, 1, 1, 1, 1 ms while
+the wire stayed silent), 0 skipped at least one id, and 60 were followed by a burst of more than 3
+datagrams within 3.0 ms. 93 command gap(s) of the same size were seen; 92 of them line up (+/- 2.0
+ms) with a state gap (the client was simply waiting for a state) and 1 do not (the client itself
+was late). The robot-clock-minus-arrival offset moved over a range of 6.003 ms with 52 jump(s) of
+at least 1.50 ms. Verdict MIXED (97 transit gaps vs 1 host-only gap: predominantly ROBOT_OR_WIRE):
+97 gap(s) were already present in the arrival timestamps (robot or wire) and 1 command gap(s) had
+no matching state gap (the client stalling on its own), a ratio of 97:1 towards transit, so both
+sides contribute but the transit side accounts for almost all of it.
+====================================================================================================

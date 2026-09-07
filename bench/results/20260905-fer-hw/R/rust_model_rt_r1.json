@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 1,
+  "order_in_cell": 1,
+  "cell_first_client": "rust",
+  "host": "R",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29858,
+  "wall_s": 30.205587,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29857,
+    "min": 11.259,
+    "p50": 999.026,
+    "p99": 1166.831,
+    "p999": 4111.909,
+    "max": 5324.684,
+    "mean": 1004.773,
+    "max_at_cycle": 14095
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29858,
+    "min": 4.983,
+    "p50": 9.671,
+    "p99": 29.576,
+    "p999": 44.631,
+    "max": 55.05,
+    "mean": 9.88,
+    "max_at_cycle": 26408
+  },
+  "model_us": {
+    "n": 29858,
+    "min": 4.044,
+    "p50": 8.338,
+    "p99": 27.393,
+    "p999": 42.694,
+    "max": 53.579,
+    "mean": 8.514,
+    "max_at_cycle": 26408
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.114,
+    "ee_deviation_max_m": 0.047244,
+    "gravity_checksum": -0.0
+  },
+  "lost": {
+    "cycles": 102,
+    "states": 143,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.93,
+    "avg": 0.987579,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 29857
+  },
+  "cpu": {
+    "user_s": 0.449833,
+    "sys_s": 0.301725,
+    "total_s": 0.751558,
+    "percent": 2.488142,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29706,
+    "invol_ctx_switches": 0
+  }
+}

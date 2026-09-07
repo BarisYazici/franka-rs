@@ -1,0 +1,66 @@
+From 7249f7a76881a8988551e542a8f2491ecf0378da Mon Sep 17 00:00:00 2001
+From: franka-rs contributors <noreply@example.invalid>
+Date: Fri, 4 Sep 2026 16:55:13 +0200
+Subject: [PATCH] Avoid the per-call joint-vector allocation and the duplicate
+ forward pass in the kinematics path
+
+computeForwardKinematics() and computeJacobian() each built a heap-allocated
+Eigen::VectorXd from the seven joint positions on every call. Copy into the
+existing fixed-size member q_eigen_ instead (the dynamics entry points already
+do this), so the kinematics entry points no longer allocate dynamic memory.
+
+computeJacobian() also ran forwardKinematics() a second time before
+updateFramePlacement() although computeJointJacobians() had just filled
+data.oMi; drop the redundant pass.
+
+Results are unchanged; all unit tests pass.
+---
+ src/robot_model.cpp | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/src/robot_model.cpp b/src/robot_model.cpp
+index 618ca82..d1959b9 100644
+--- a/src/robot_model.cpp
++++ b/src/robot_model.cpp
+@@ -208,12 +208,12 @@ pinocchio::Data& RobotModel::computeForwardKinematics(
+   // forwardKinematics() overwrites everything the callers read. data_kinematics_ is kept
+   // separate from data_/data_gravity_ so the dynamics results cannot be affected.
+ 
+-  // Convert joint positions array to Eigen vector
+-  Eigen::VectorXd q_vec =
+-      Eigen::Map<const Eigen::VectorXd>(q.data(), static_cast<Eigen::Index>(last_joint_index_));
++  // Copy the joint positions into the fixed-size member vector instead of a heap-allocated
++  // Eigen::VectorXd: this keeps the forward-kinematics path free of dynamic memory allocation.
++  copyToEigenQ(q);
+ 
+   // Perform forward kinematics
+-  pinocchio::forwardKinematics(pinocchio_model_, data_kinematics_, q_vec);
++  pinocchio::forwardKinematics(pinocchio_model_, data_kinematics_, q_eigen_);
+ 
+   return data_kinematics_;
+ }
+@@ -281,15 +281,15 @@ std::array<double, 42> RobotModel::computeJacobian(
+   // getJointJacobian()/getFrameJacobian() below read back.
+   pinocchio::Data& data = data_kinematics_;
+ 
+-  // Convert joint positions array to Eigen vector
+-  Eigen::VectorXd q_vec = Eigen::Map<const Eigen::VectorXd>(q.data(), 7);
++  // Copy the joint positions into the fixed-size member vector (no dynamic allocation).
++  copyToEigenQ(q);
+ 
+-  // Compute joint jacobians
+-  pinocchio::computeJointJacobians(pinocchio_model_, data, q_vec);
++  // Compute joint jacobians. This also runs the forward kinematics pass and fills data.oMi,
++  // so no separate forwardKinematics() call is needed before updating a frame placement.
++  pinocchio::computeJointJacobians(pinocchio_model_, data, q_eigen_);
+ 
+-  // If computing for a frame, perform forward kinematics and update frame placement
++  // If computing for a frame, update its placement from the joint placements just computed
+   if (!is_joint) {
+-    pinocchio::forwardKinematics(pinocchio_model_, data, q_vec);
+     pinocchio::updateFramePlacement(pinocchio_model_, data, frame_or_joint_index);
+   }
+ 
+-- 
+2.34.1
+

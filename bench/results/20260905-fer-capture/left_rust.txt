@@ -1,0 +1,407 @@
+====================================================================================================
+Franka Emika Robot (FER, FCI v5) robot-state arrival analysis
+capture            : left_rust.pcap
+flow               : robot <robot-ip>:55552 -> client <host-ip>:45877
+thresholds         : gap >= 1.50 ms, burst window 3.0 ms, state/command match +/- 2.0 ms
+wire offsets       : state message_id/robot-time u64 LE @0, command message_id u64 LE @0
+====================================================================================================
+
+-- capture ---------------------------------------------------------
+  link-layer types           : 1
+  packets read               : 30724  (IPv4: 30724)
+  reassembled UDP datagrams  : 20413
+  incomplete fragment sets   : 1
+  snaplen-truncated datagrams: 0
+  datagrams outside the flow : 0
+  capture span               : 16.494 s
+
+-- robot -> host state stream --------------------------------------
+  complete state datagrams   : 10310
+  payload lengths            : 2373 B x10310
+  IP fragments per datagram  : 2
+  message_id range           : 17898336 .. 17908645
+  expected from id range     : 10310
+  missing ids                : 0  (max consecutive: 0, duplicates: 0)
+
+  inter-arrival and fragment timing (microseconds)
+  state gap, FIRST fragment    n=10309   min=      0.0  p50=   1598.9  p99=   1840.0  p999=   6646.6  max=   9939.4  mean=   1600.0
+  state gap, LAST fragment     n=10309   min=   -249.9  p50=   1598.9  p99=   1840.0  p999=   6646.6  max=  11309.5  mean=   1600.0
+  first->last fragment         n=10310   min=      0.0  p50=      0.0  p99=      0.0  p999=     31.8  max=   9742.8  mean=      1.1
+    of those, exactly 0 us      : 10283 of 10310 (99.7%)  - the capture clock cannot resolve the two fragments
+
+-- state gaps >= 1.50 ms --------------------------------------------
+     t_off[s]     gap_us  gap_last_us    id_before     id_after  consec  robot_dt_ms  next_3ms
+    0.001803     1803.2       1803.2     17898336     17898337  yes               1      1 cadence
+    0.004950     1712.4       1712.4     17898338     17898339  yes               1      1 cadence
+    0.008183     1765.2       1765.2     17898340     17898341  yes               1      1 cadence
+    0.011206     1569.8       1569.8     17898342     17898343  yes               1      1 cadence
+    0.012929     1722.5       1722.5     17898343     17898344  yes               1      1 cadence
+    0.014467     1538.2       1538.2     17898344     17898345  yes               1      0 cadence
+    0.019043     4575.2       4575.2     17898345     17898346  yes               1      3 BURST
+    0.020884     1736.9       1736.9     17898348     17898349  yes               1      1 cadence
+    0.023947     1603.9       1603.9     17898350     17898351  yes               1      1 cadence
+    0.025529     1582.0       1582.0     17898351     17898352  yes               1      1 cadence
+    0.027202     1672.5       1672.5     17898352     17898353  yes               1      1 cadence
+    0.028770     1568.8       1568.8     17898353     17898354  yes               1      1 cadence
+    0.030327     1556.9       1556.9     17898354     17898355  yes               1      1 cadence
+    0.031937     1609.4       1609.4     17898355     17898356  yes               1      1 cadence
+    0.033547     1610.4       1610.4     17898356     17898357  yes               1      1 cadence
+    0.035172     1625.1       1625.1     17898357     17898358  yes               1      1 cadence
+    0.036789     1617.2       1617.2     17898358     17898359  yes               1      1 cadence
+    0.038327     1537.4       1537.4     17898359     17898360  yes               1      1 cadence
+    0.039924     1597.4       1597.4     17898360     17898361  yes               1      1 cadence
+    0.041521     1597.2       1597.2     17898361     17898362  yes               1      1 cadence
+    0.043124     1603.0       1603.0     17898362     17898363  yes               1      1 cadence
+    0.044728     1604.1       1604.1     17898363     17898364  yes               1      1 cadence
+    0.046399     1670.8       1670.8     17898364     17898365  yes               1      1 cadence
+    0.047994     1594.8       1594.8     17898365     17898366  yes               1      1 cadence
+    0.049564     1570.2       1570.2     17898366     17898367  yes               1      1 cadence
+    0.051158     1593.6       1593.6     17898367     17898368  yes               1      1 cadence
+    0.052858     1700.5       1700.5     17898368     17898369  yes               1      0 cadence
+    0.056346     3488.0       3507.6     17898369     17898370  yes               1      3 BURST
+    0.059134     1523.8       1523.8     17898372     17898373  yes               1      1 cadence
+    0.060727     1593.0       1593.0     17898373     17898374  yes               1      1 cadence
+    0.062316     1588.9       1588.9     17898374     17898375  yes               1      1 cadence
+    0.063941     1626.0       1626.0     17898375     17898376  yes               1      1 cadence
+    0.065523     1582.0       1582.0     17898376     17898377  yes               1      1 cadence
+    0.067123     1599.8       1599.8     17898377     17898378  yes               1      1 cadence
+    0.068770     1646.6       1646.6     17898378     17898379  yes               1      1 cadence
+    0.070358     1588.4       1588.4     17898379     17898380  yes               1      1 cadence
+    0.071917     1559.1       1559.1     17898380     17898381  yes               1      1 cadence
+    0.073500     1582.8       1582.8     17898381     17898382  yes               1      1 cadence
+    0.075106     1605.8       1605.8     17898382     17898383  yes               1      1 cadence
+    0.076722     1616.0       1616.0     17898383     17898384  yes               1      1 cadence
+    0.078317     1595.6       1595.6     17898384     17898385  yes               1      1 cadence
+    0.079908     1590.0       1590.0     17898385     17898386  yes               1      1 cadence
+    0.081510     1602.6       1602.6     17898386     17898387  yes               1      1 cadence
+    0.083098     1587.8       1587.8     17898387     17898388  yes               1      1 cadence
+    0.084705     1606.9       1606.9     17898388     17898389  yes               1      1 cadence
+    0.086308     1603.2       1603.2     17898389     17898390  yes               1      1 cadence
+    0.087950     1641.6       1641.6     17898390     17898391  yes               1      1 cadence
+    0.089785     1835.1       1835.1     17898391     17898392  yes               1      1 cadence
+    0.091347     1561.9       1561.9     17898392     17898393  yes               1      1 cadence
+    0.092902     1555.1       1555.1     17898393     17898394  yes               1      1 cadence
+    0.096013     1658.2       1658.2     17898395     17898396  yes               1      1 cadence
+    0.097601     1588.5       1588.5     17898396     17898397  yes               1      1 cadence
+    0.099203     1601.6       1601.6     17898397     17898398  yes               1      1 cadence
+    0.100761     1558.2       1558.2     17898398     17898399  yes               1      1 cadence
+    0.102384     1622.8       1622.8     17898399     17898400  yes               1      1 cadence
+    0.104008     1623.9       1623.9     17898400     17898401  yes               1      1 cadence
+    0.105576     1568.1       1568.1     17898401     17898402  yes               1      1 cadence
+    0.107176     1599.9       1599.9     17898402     17898403  yes               1      1 cadence
+    0.108797     1620.9       1620.9     17898403     17898404  yes               1      1 cadence
+    0.110461     1664.4       1664.4     17898404     17898405  yes               1      1 cadence
+    0.112059     1597.9       1597.9     17898405     17898406  yes               1      0 cadence
+    0.116950     4890.8       4910.4     17898406     17898407  yes               1      4 BURST
+    0.119932     1586.0       1586.0     17898410     17898411  yes               1      1 cadence
+    0.121522     1590.0       1590.0     17898411     17898412  yes               1      1 cadence
+    0.123197     1674.6       1674.6     17898412     17898413  yes               1      1 cadence
+    0.124747     1550.4       1550.4     17898413     17898414  yes               1      1 cadence
+    0.126301     1553.9       1553.9     17898414     17898415  yes               1      1 cadence
+    0.127913     1611.8       1611.8     17898415     17898416  yes               1      1 cadence
+    0.129719     1806.2       1806.2     17898416     17898417  yes               1      1 cadence
+    0.132891     1770.2       1770.2     17898418     17898419  yes               1      1 cadence
+    0.136010     1621.1       1621.1     17898420     17898421  yes               1      1 cadence
+    0.137553     1543.0       1543.0     17898421     17898422  yes               1      1 cadence
+    0.139175     1622.0       1622.0     17898422     17898423  yes               1      1 cadence
+    0.140709     1533.8       1533.8     17898423     17898424  yes               1      1 cadence
+    0.142344     1634.9       1634.9     17898424     17898425  yes               1      1 cadence
+    0.143942     1598.9       1598.9     17898425     17898426  yes               1      1 cadence
+    0.145519     1576.8       1576.8     17898426     17898427  yes               1      1 cadence
+    0.147131     1611.9       1611.9     17898427     17898428  yes               1      1 cadence
+    0.148770     1639.0       1639.0     17898428     17898429  yes               1      1 cadence
+    0.150325     1554.9       1554.9     17898429     17898430  yes               1      1 cadence
+    0.151973     1647.9       1647.9     17898430     17898431  yes               1      1 cadence
+    0.153535     1562.4       1562.4     17898431     17898432  yes               1      1 cadence
+    0.155104     1569.0       1569.0     17898432     17898433  yes               1      1 cadence
+    0.156703     1598.9       1598.9     17898433     17898434  yes               1      1 cadence
+    0.158297     1593.5       1593.5     17898434     17898435  yes               1      1 cadence
+    0.159897     1600.9       1600.9     17898435     17898436  yes               1      1 cadence
+    0.161532     1635.0       1635.0     17898436     17898437  yes               1      1 cadence
+    0.163104     1571.2       1571.2     17898437     17898438  yes               1      1 cadence
+    0.164695     1591.5       1591.5     17898438     17898439  yes               1      1 cadence
+    0.166301     1606.0       1606.0     17898439     17898440  yes               1      1 cadence
+    0.168145     1844.0       1844.0     17898440     17898441  yes               1      1 cadence
+    0.171215     1583.1       1583.1     17898442     17898443  yes               1      1 cadence
+    0.172833     1617.5       1617.5     17898443     17898444  yes               1      1 cadence
+    0.174453     1620.1       1620.1     17898444     17898445  yes               1      0 cadence
+    0.179559     5105.8       5105.8     17898445     17898446  yes               1      4 BURST
+    0.183915     1582.6       1582.6     17898450     17898451  yes               1      1 cadence
+    0.185506     1591.2       1591.2     17898451     17898452  yes               1      1 cadence
+    0.187207     1701.0       1701.0     17898452     17898453  yes               1      1 cadence
+    0.188754     1547.1       1547.1     17898453     17898454  yes               1      1 cadence
+    0.190341     1586.9       1586.9     17898454     17898455  yes               1      1 cadence
+    0.191914     1572.8       1572.8     17898455     17898456  yes               1      1 cadence
+    0.193511     1596.6       1596.6     17898456     17898457  yes               1      1 cadence
+    0.195104     1593.1       1593.1     17898457     17898458  yes               1      1 cadence
+    0.196696     1592.4       1592.4     17898458     17898459  yes               1      1 cadence
+    0.198303     1606.6       1606.6     17898459     17898460  yes               1      1 cadence
+    0.199901     1597.8       1597.8     17898460     17898461  yes               1      1 cadence
+    0.201507     1606.5       1606.5     17898461     17898462  yes               1      1 cadence
+    0.203101     1594.1       1594.1     17898462     17898463  yes               1      1 cadence
+    0.204722     1621.2       1621.2     17898463     17898464  yes               1      1 cadence
+    0.206316     1593.9       1593.9     17898464     17898465  yes               1      1 cadence
+    0.207921     1604.8       1604.8     17898465     17898466  yes               1      1 cadence
+    0.209502     1581.2       1581.2     17898466     17898467  yes               1      1 cadence
+    0.211108     1606.1       1606.1     17898467     17898468  yes               1      1 cadence
+    0.212704     1596.0       1596.0     17898468     17898469  yes               1      1 cadence
+    0.214309     1604.9       1604.9     17898469     17898470  yes               1      1 cadence
+    0.215900     1590.4       1590.4     17898470     17898471  yes               1      1 cadence
+    0.217498     1598.8       1598.8     17898471     17898472  yes               1      1 cadence
+    0.219101     1602.2       1602.2     17898472     17898473  yes               1      1 cadence
+    0.220705     1604.0       1604.0     17898473     17898474  yes               1      1 cadence
+    0.222308     1603.4       1603.4     17898474     17898475  yes               1      1 cadence
+    0.223897     1589.2       1589.2     17898475     17898476  yes               1      1 cadence
+    0.225503     1606.1       1606.1     17898476     17898477  yes               1      1 cadence
+    0.227103     1599.9       1599.9     17898477     17898478  yes               1      1 cadence
+    0.228696     1593.2       1593.2     17898478     17898479  yes               1      1 cadence
+    0.230307     1610.8       1610.8     17898479     17898480  yes               1      1 cadence
+    0.231902     1595.0       1595.0     17898480     17898481  yes               1      1 cadence
+    0.233504     1602.1       1602.1     17898481     17898482  yes               1      1 cadence
+    0.235096     1592.0       1592.0     17898482     17898483  yes               1      1 cadence
+    0.236694     1597.9       1597.9     17898483     17898484  yes               1      1 cadence
+    0.238303     1609.0       1609.0     17898484     17898485  yes               1      1 cadence
+    0.239925     1621.8       1621.8     17898485     17898486  yes               1      1 cadence
+    0.241512     1587.0       1587.0     17898486     17898487  yes               1      1 cadence
+    0.243095     1582.6       1582.6     17898487     17898488  yes               1      1 cadence
+    0.244697     1602.1       1602.1     17898488     17898489  yes               1      1 cadence
+    0.246304     1607.1       1607.1     17898489     17898490  yes               1      1 cadence
+    0.247896     1592.4       1592.4     17898490     17898491  yes               1      1 cadence
+    0.249572     1676.1       1676.1     17898491     17898492  yes               1      1 cadence
+    0.251260     1687.8       1687.8     17898492     17898493  yes               1      1 cadence
+    0.254293     1575.4       1575.4     17898494     17898495  yes               1      1 cadence
+    0.255893     1599.6       1599.6     17898495     17898496  yes               1      1 cadence
+    0.257661     1768.1       1768.1     17898496     17898497  yes               1      1 cadence
+    0.260808     1695.2       1695.2     17898498     17898499  yes               1      1 cadence
+    0.262348     1540.8       1540.8     17898499     17898500  yes               1      1 cadence
+    0.263896     1548.1       1548.1     17898500     17898501  yes               1      1 cadence
+    0.265498     1601.1       1601.1     17898501     17898502  yes               1      1 cadence
+    0.267126     1628.5       1628.5     17898502     17898503  yes               1      1 cadence
+    0.268799     1673.0       1673.0     17898503     17898504  yes               1      1 cadence
+    0.270319     1520.2       1520.2     17898504     17898505  yes               1      1 cadence
+    0.271906     1586.4       1586.4     17898505     17898506  yes               1      1 cadence
+    0.273519     1613.6       1613.6     17898506     17898507  yes               1      1 cadence
+    0.275222     1702.5       1702.5     17898507     17898508  yes               1      1 cadence
+    0.276823     1601.1       1601.1     17898508     17898509  yes               1      1 cadence
+    0.278353     1529.5       1529.5     17898509     17898510  yes               1      1 cadence
+    0.279893     1540.8       1540.8     17898510     17898511  yes               1      1 cadence
+    0.281545     1651.9       1651.9     17898511     17898512  yes               1      1 cadence
+    0.283221     1676.0       1676.0     17898512     17898513  yes               1      1 cadence
+    0.286296     1582.9       1582.9     17898514     17898515  yes               1      1 cadence
+    0.287948     1652.2       1652.2     17898515     17898516  yes               1      1 cadence
+    0.289675     1727.1       1727.1     17898516     17898517  yes               1      1 cadence
+    0.291189     1513.9       1513.9     17898517     17898518  yes               1      1 cadence
+    0.292713     1524.1       1524.1     17898518     17898519  yes               1      1 cadence
+    0.294441     1727.9       1727.9     17898519     17898520  yes               1      1 cadence
+    0.297469     1612.5       1612.5     17898521     17898522  yes               1      1 cadence
+    0.299110     1641.1       1641.1     17898522     17898523  yes               1      1 cadence
+    0.300655     1545.2       1545.2     17898523     17898524  yes               1      1 cadence
+    0.302266     1611.0       1611.0     17898524     17898525  yes               1      1 cadence
+    0.303874     1608.6       1608.6     17898525     17898526  yes               1      1 cadence
+    0.305458     1583.4       1583.4     17898526     17898527  yes               1      1 cadence
+    0.307048     1589.9       1589.9     17898527     17898528  yes               1      1 cadence
+    0.308683     1634.9       1634.9     17898528     17898529  yes               1      1 cadence
+    0.310295     1612.5       1612.5     17898529     17898530  yes               1      1 cadence
+    0.311891     1596.4       1596.4     17898530     17898531  yes               1      1 cadence
+    0.313468     1576.9       1576.9     17898531     17898532  yes               1      1 cadence
+    0.315061     1593.0       1593.0     17898532     17898533  yes               1      1 cadence
+    0.316633     1571.5       1571.5     17898533     17898534  yes               1      1 cadence
+    0.318271     1638.4       1638.4     17898534     17898535  yes               1      1 cadence
+    0.319855     1583.4       1583.4     17898535     17898536  yes               1      1 cadence
+    0.321501     1646.6       1646.6     17898536     17898537  yes               1      1 cadence
+    0.323144     1643.1       1643.1     17898537     17898538  yes               1      1 cadence
+    0.324662     1517.6       1517.6     17898538     17898539  yes               1      1 cadence
+    0.326243     1581.2       1581.2     17898539     17898540  yes               1      1 cadence
+    0.327852     1608.6       1608.6     17898540     17898541  yes               1      1 cadence
+    0.329526     1673.9       1673.9     17898541     17898542  yes               1      1 cadence
+    0.331149     1623.6       1623.6     17898542     17898543  yes               1      1 cadence
+    0.332662     1512.2       1512.2     17898543     17898544  yes               1      1 cadence
+    0.334249     1586.9       1586.9     17898544     17898545  yes               1      1 cadence
+    0.335840     1592.0       1592.0     17898545     17898546  yes               1      1 cadence
+    0.337430     1589.4       1589.4     17898546     17898547  yes               1      1 cadence
+    0.339063     1633.5       1633.5     17898547     17898548  yes               1      1 cadence
+    0.340640     1576.4       1576.4     17898548     17898549  yes               1      1 cadence
+    0.342264     1624.2       1624.2     17898549     17898550  yes               1      1 cadence
+    0.344016     1751.9       1751.9     17898550     17898551  yes               1      1 cadence
+    0.347040     1534.9       1534.9     17898552     17898553  yes               1      1 cadence
+    0.348657     1617.1       1617.1     17898553     17898554  yes               1      1 cadence
+    0.350233     1575.5       1575.5     17898554     17898555  yes               1      1 cadence
+    0.351843     1610.4       1610.4     17898555     17898556  yes               1      1 cadence
+    0.353445     1602.1       1602.1     17898556     17898557  yes               1      1 cadence
+    0.355054     1609.5       1609.5     17898557     17898558  yes               1      1 cadence
+    0.356655     1600.6       1600.6     17898558     17898559  yes               1      1 cadence
+    0.358257     1601.9       1601.9     17898559     17898560  yes               1      1 cadence
+  ... 9620 more rows suppressed (--max-rows)
+
+-- robot clock minus arrival (drift) -------------------------------
+  offset is (message_id ms) - (first-fragment arrival), zeroed on the first state.
+  min / max / range          : -6184.996 / 0.000 / 6184.996 ms
+  first / last               : 0.000 / -6184.996 ms
+  -6184.996 ms |%%%%%%%%########********++++++++========--------::::::::........        | 0.000 ms
+  jumps >= 1.50 ms           : 75
+     t_off=  0.019043 s  delta=   -3.575 ms  ids 17898345 -> 17898346 (consecutive)
+     t_off=  0.056346 s  delta=   -2.488 ms  ids 17898369 -> 17898370 (consecutive)
+     t_off=  0.116950 s  delta=   -3.891 ms  ids 17898406 -> 17898407 (consecutive)
+     t_off=  0.179559 s  delta=   -4.106 ms  ids 17898445 -> 17898446 (consecutive)
+     t_off=  1.113454 s  delta=   -3.606 ms  ids 17899029 -> 17899030 (consecutive)
+     t_off=  1.409756 s  delta=   -7.197 ms  ids 17899212 -> 17899213 (consecutive)
+     t_off=  1.582542 s  delta=   -3.983 ms  ids 17899322 -> 17899323 (consecutive)
+     t_off=  1.729698 s  delta=   -2.364 ms  ids 17899415 -> 17899416 (consecutive)
+     t_off=  1.908914 s  delta=   -2.450 ms  ids 17899527 -> 17899528 (consecutive)
+     t_off=  2.068930 s  delta=   -4.081 ms  ids 17899626 -> 17899627 (consecutive)
+     t_off=  2.234056 s  delta=   -4.155 ms  ids 17899729 -> 17899730 (consecutive)
+     t_off=  2.234076 s  delta=   +1.980 ms  ids 17899730 -> 17899732 (id skipped)
+     t_off=  2.386062 s  delta=   -5.921 ms  ids 17899823 -> 17899824 (consecutive)
+     t_off=  2.553144 s  delta=   -3.175 ms  ids 17899929 -> 17899930 (consecutive)
+     t_off=  2.708506 s  delta=   -3.578 ms  ids 17900026 -> 17900027 (consecutive)
+     t_off=  2.888087 s  delta=   -2.394 ms  ids 17900139 -> 17900140 (consecutive)
+     t_off=  2.894522 s  delta=   -5.435 ms  ids 17900141 -> 17900142 (consecutive)
+     t_off=  3.027532 s  delta=   -7.422 ms  ids 17900223 -> 17900224 (consecutive)
+     t_off=  3.201719 s  delta=   -2.340 ms  ids 17900335 -> 17900336 (consecutive)
+     t_off=  3.521684 s  delta=   -2.449 ms  ids 17900535 -> 17900536 (consecutive)
+     t_off=  3.589008 s  delta=   -2.392 ms  ids 17900577 -> 17900578 (consecutive)
+     t_off=  3.604457 s  delta=   -3.661 ms  ids 17900586 -> 17900587 (consecutive)
+     t_off=  3.699386 s  delta=   -4.180 ms  ids 17900645 -> 17900646 (consecutive)
+     t_off=  3.844918 s  delta=   -2.321 ms  ids 17900737 -> 17900738 (consecutive)
+     t_off=  4.164926 s  delta=   -2.557 ms  ids 17900937 -> 17900938 (consecutive)
+     t_off=  4.334503 s  delta=   -5.598 ms  ids 17901041 -> 17901042 (consecutive)
+     t_off=  4.641626 s  delta=   -3.932 ms  ids 17901234 -> 17901235 (consecutive)
+     t_off=  4.801640 s  delta=   -2.342 ms  ids 17901335 -> 17901336 (consecutive)
+     t_off=  4.974513 s  delta=   -4.118 ms  ids 17901442 -> 17901443 (consecutive)
+     t_off=  5.164904 s  delta=   -4.106 ms  ids 17901561 -> 17901562 (consecutive)
+     t_off=  5.326475 s  delta=   -2.508 ms  ids 17901663 -> 17901664 (consecutive)
+     t_off=  5.332823 s  delta=   -5.347 ms  ids 17901665 -> 17901666 (consecutive)
+     t_off=  5.460884 s  delta=   -4.007 ms  ids 17901746 -> 17901747 (consecutive)
+     t_off=  5.755235 s  delta=   -2.399 ms  ids 17901931 -> 17901932 (consecutive)
+     t_off=  5.785256 s  delta=   -3.688 ms  ids 17901949 -> 17901950 (consecutive)
+     t_off=  6.270320 s  delta=   -5.445 ms  ids 17902251 -> 17902252 (consecutive)
+     t_off=  6.425158 s  delta=   -1.970 ms  ids 17902350 -> 17902351 (consecutive)
+     t_off=  6.585154 s  delta=   -1.909 ms  ids 17902450 -> 17902451 (consecutive)
+     t_off=  7.572870 s  delta=   -5.641 ms  ids 17903065 -> 17903066 (consecutive)
+     t_off=  7.732842 s  delta=   -5.670 ms  ids 17903165 -> 17903166 (consecutive)
+     t_off=  8.059249 s  delta=   -4.088 ms  ids 17903370 -> 17903371 (consecutive)
+     t_off=  8.537127 s  delta=   -1.951 ms  ids 17903670 -> 17903671 (consecutive)
+     t_off=  9.020944 s  delta=   -5.800 ms  ids 17903970 -> 17903971 (consecutive)
+     t_off=  9.177162 s  delta=   -3.631 ms  ids 17904069 -> 17904070 (consecutive)
+     t_off=  9.339257 s  delta=   -5.742 ms  ids 17904169 -> 17904170 (consecutive)
+     t_off=  9.895492 s  delta=   -1.959 ms  ids 17904519 -> 17904520 (consecutive)
+     t_off= 10.145607 s  delta=   -5.507 ms  ids 17904673 -> 17904674 (consecutive)
+     t_off= 10.305620 s  delta=   -8.801 ms  ids 17904771 -> 17904772 (consecutive)
+     t_off= 10.468920 s  delta=   -8.939 ms  ids 17904873 -> 17904874 (consecutive)
+     t_off= 10.649284 s  delta=   -5.372 ms  ids 17904988 -> 17904989 (consecutive)
+     t_off= 10.834690 s  delta=   -1.969 ms  ids 17905106 -> 17905107 (consecutive)
+     t_off= 10.952025 s  delta=   -5.370 ms  ids 17905177 -> 17905178 (consecutive)
+     t_off= 12.599165 s  delta=   -1.690 ms  ids 17906209 -> 17906210 (consecutive)
+     t_off= 13.068559 s  delta=   -5.375 ms  ids 17906500 -> 17906501 (consecutive)
+     t_off= 13.236769 s  delta=   -5.512 ms  ids 17906605 -> 17906606 (consecutive)
+     t_off= 13.236788 s  delta=   +1.980 ms  ids 17906606 -> 17906608 (id skipped)
+     t_off= 13.236820 s  delta=   +1.968 ms  ids 17906607 -> 17906609 (id skipped)
+     t_off= 13.306088 s  delta=   -3.021 ms  ids 17906650 -> 17906651 (consecutive)
+     t_off= 13.313540 s  delta=   -2.418 ms  ids 17906655 -> 17906656 (consecutive)
+     t_off= 13.396767 s  delta=   -4.115 ms  ids 17906706 -> 17906707 (consecutive)
+     t_off= 13.556760 s  delta=   -5.495 ms  ids 17906805 -> 17906806 (consecutive)
+     t_off= 13.716761 s  delta=   -4.065 ms  ids 17906906 -> 17906907 (consecutive)
+     t_off= 13.716781 s  delta=   +1.980 ms  ids 17906907 -> 17906909 (id skipped)
+     t_off= 14.039701 s  delta=   -2.036 ms  ids 17907109 -> 17907110 (consecutive)
+     t_off= 14.196796 s  delta=   -4.140 ms  ids 17907206 -> 17907207 (consecutive)
+     t_off= 14.508075 s  delta=   -6.515 ms  ids 17907399 -> 17907400 (consecutive)
+     t_off= 14.670078 s  delta=   -5.163 ms  ids 17907501 -> 17907502 (consecutive)
+     t_off= 14.841074 s  delta=   -3.380 ms  ids 17907609 -> 17907610 (consecutive)
+     t_off= 15.364408 s  delta=   -2.208 ms  ids 17907937 -> 17907938 (consecutive)
+     t_off= 15.489475 s  delta=   -2.424 ms  ids 17908015 -> 17908016 (consecutive)
+     t_off= 15.655938 s  delta=   -5.677 ms  ids 17908117 -> 17908118 (consecutive)
+     t_off= 15.809510 s  delta=   -5.647 ms  ids 17908213 -> 17908214 (consecutive)
+     t_off= 15.982341 s  delta=   -5.644 ms  ids 17908321 -> 17908322 (consecutive)
+     t_off= 16.319857 s  delta=   -2.566 ms  ids 17908533 -> 17908535 (id skipped)
+     t_off= 16.319876 s  delta=   +1.980 ms  ids 17908534 -> 17908536 (id skipped)
+
+-- host -> robot command stream ------------------------------------
+  command datagrams          : 10103
+  message_id range           : 17898346 .. 17908523  (missing: 75)
+  command send interval        n=10102   min=      6.6  p50=    998.9  p99=   1156.2  p999=   4163.6  max=   7059.1  mean=   1007.2
+  gaps >= 1.50 ms            : 69  (69 unmatched by a state gap)
+     t_off[s]     gap_us    id_before     id_after  matches a state gap
+  -10574.740258     2131.1     17898369     17898370  NO  -> the client itself was late
+  -10574.702261     3127.1     17898406     17898407  NO  -> the client itself was late
+  -10574.663276     3136.8     17898445     17898446  NO  -> the client itself was late
+  -10574.589492     5974.5     17898516     17898522  NO  -> the client itself was late
+  -10574.079468     2855.6     17899029     17899030  NO  -> the client itself was late
+  -10573.894235     5143.8     17899212     17899213  NO  -> the client itself was late
+  -10573.786254     3087.1     17899322     17899323  NO  -> the client itself was late
+  -10573.694303     2079.9     17899415     17899416  NO  -> the client itself was late
+  -10573.582274     2046.8     17899527     17899528  NO  -> the client itself was late
+  -10573.482252     3204.3     17899626     17899627  NO  -> the client itself was late
+  -10573.379101     3193.4     17899729     17899730  NO  -> the client itself was late
+  -10573.284083     4274.0     17899823     17899824  NO  -> the client itself was late
+  -10573.179641     2583.7     17899929     17899930  NO  -> the client itself was late
+  -10573.082490     2907.2     17900026     17900027  NO  -> the client itself was late
+  -10572.970261     2178.8     17900139     17900140  NO  -> the client itself was late
+  -10572.966253     3900.4     17900141     17900142  NO  -> the client itself was late
+  -10572.883175     5248.5     17900223     17900224  NO  -> the client itself was late
+  -10572.774221     2125.9     17900335     17900336  NO  -> the client itself was late
+  -10572.574294     2155.4     17900535     17900536  NO  -> the client itself was late
+  -10572.532228     2111.0     17900577     17900578  NO  -> the client itself was late
+  -10572.522572     2892.3     17900586     17900587  NO  -> the client itself was late
+  -10572.463234     3209.3     17900645     17900646  NO  -> the client itself was late
+  -10572.372220     2106.3     17900737     17900738  NO  -> the client itself was late
+  -10572.172220     2283.2     17900937     17900938  NO  -> the client itself was late
+  -10572.066224     4151.2     17901041     17901042  NO  -> the client itself was late
+  -10571.874370     3028.3     17901234     17901235  NO  -> the client itself was late
+  -10571.774270     2134.4     17901335     17901336  NO  -> the client itself was late
+  -10571.666230     3242.6     17901442     17901443  NO  -> the client itself was late
+  -10571.547271     3193.7     17901561     17901562  NO  -> the client itself was late
+  -10571.446266     2210.7     17901663     17901664  NO  -> the client itself was late
+  -10571.442345     3814.1     17901665     17901666  NO  -> the client itself was late
+  -10571.362336     3093.6     17901746     17901747  NO  -> the client itself was late
+  -10571.178322     2103.0     17901931     17901932  NO  -> the client itself was late
+  -10571.159582     2877.7     17901949     17901950  NO  -> the client itself was late
+  -10570.856403     4021.1     17902251     17902252  NO  -> the client itself was late
+  -10570.759590     1850.2     17902350     17902351  NO  -> the client itself was late
+  -10570.659602     1838.6     17902450     17902451  NO  -> the client itself was late
+  -10570.042286     4163.6     17903065     17903066  NO  -> the client itself was late
+  -10569.942322     4166.2     17903165     17903166  NO  -> the client itself was late
+  -10569.738270     3220.9     17903370     17903371  NO  -> the client itself was late
+  -10569.439608     1873.5     17903670     17903671  NO  -> the client itself was late
+  -10569.137210     4279.0     17903970     17903971  NO  -> the client itself was late
+  -10569.039586     2924.5     17904069     17904070  NO  -> the client itself was late
+  -10568.938263     4256.0     17904169     17904170  NO  -> the client itself was late
+  -10568.590674     1818.3     17904519     17904520  NO  -> the client itself was late
+  -10568.434354     4032.7     17904673     17904674  NO  -> the client itself was late
+  -10568.334324     6099.7     17904771     17904772  NO  -> the client itself was late
+  -10568.232367     7059.1     17904872     17904873  NO  -> the client itself was late
+  -10568.119482     4010.5     17904988     17904989  NO  -> the client itself was late
+  -10568.003633     1901.0     17905106     17905107  NO  -> the client itself was late
+  -10567.930343     3944.2     17905177     17905178  NO  -> the client itself was late
+  -10566.900853     1685.3     17906209     17906210  NO  -> the client itself was late
+  -10566.607515     3929.1     17906500     17906501  NO  -> the client itself was late
+  -10566.502385     4053.0     17906605     17906606  NO  -> the client itself was late
+  -10566.459055     2463.3     17906650     17906651  NO  -> the client itself was late
+  -10566.454324     2157.4     17906655     17906656  NO  -> the client itself was late
+  -10566.402362     3128.1     17906706     17906707  NO  -> the client itself was late
+  -10566.302380     4036.5     17906805     17906806  NO  -> the client itself was late
+  -10566.202386     3147.7     17906906     17906907  NO  -> the client itself was late
+  -10566.000480     1923.3     17907109     17907110  NO  -> the client itself was late
+  -10565.902339     3185.1     17907206     17907207  NO  -> the client itself was late
+  -10565.707810     4655.4     17907399     17907400  NO  -> the client itself was late
+  -10565.606567     3826.2     17907501     17907502  NO  -> the client itself was late
+  -10565.499688     2715.6     17907609     17907610  NO  -> the client itself was late
+  -10565.172294     2266.6     17907937     17907938  NO  -> the client itself was late
+  -10565.094408     2133.4     17908015     17908016  NO  -> the client itself was late
+  -10564.990416     4138.1     17908117     17908118  NO  -> the client itself was late
+  -10564.894400     4131.0     17908213     17908214  NO  -> the client itself was late
+  -10564.786382     4140.3     17908321     17908322  NO  -> the client itself was late
+
+====================================================================================================
+CLASSIFICATION: MIXED (9820 transit gaps vs 69 host-only gaps: predominantly ROBOT_OR_WIRE)
+====================================================================================================
+9820 of 10310 state datagrams arrived more than 1.50 ms after the previous one; 9819 of those gaps
+carried the very next message_id (the robot's own clock advanced by only 1, 1, 1, 1, 1 ms while
+the wire stayed silent), 1 skipped at least one id, and 56 were followed by a burst of more than 2
+datagrams within 3.0 ms. 69 command gap(s) of the same size were seen; 0 of them line up (+/- 2.0
+ms) with a state gap (the client was simply waiting for a state) and 69 do not (the client itself
+was late). The robot-clock-minus-arrival offset moved over a range of 6184.996 ms with 75 jump(s)
+of at least 1.50 ms. Verdict MIXED (9820 transit gaps vs 69 host-only gaps: predominantly
+ROBOT_OR_WIRE): 9820 gap(s) were already present in the arrival timestamps (robot or wire) and 69
+command gap(s) had no matching state gap (the client stalling on its own), a ratio of 142:1
+towards transit, so both sides contribute but the transit side accounts for almost all of it.
+====================================================================================================

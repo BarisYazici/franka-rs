@@ -1,0 +1,94 @@
+2026-09-04 12:47:12,945 INFO franka_sim.franka_sim_server: New connection from 127.0.0.1:45602
+2026-09-04 12:47:12,945 INFO franka_sim.robot_state: Robot state initialized
+2026-09-04 12:47:12,945 INFO franka_sim.franka_sim_server: Waiting for initial connect command...
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Connect payload hex: 0a0059b9
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Received version: 10, network UDP port: 47449
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Sent response: command=kConnect, command_id=0, status=kSuccess
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Sent connect response
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: TCP message handler thread started
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Started TCP message handler thread
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Starting UDP transmission to 127.0.0.1:47449
+2026-09-04 12:47:12,946 INFO franka_sim.franka_sim_server: Command handler thread started
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Starting UDP command polling
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Starting UDP transmission to 127.0.0.1:47449
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Processing command: kGetRobotModel (ID: 1)
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Handling GetRobotModel command
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Sent GetRobotModel response (14893 URDF bytes)
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Processing command: kSetCollisionBehavior (ID: 2)
+2026-09-04 12:47:12,947 INFO franka_sim.franka_sim_server: Handling SetCollisionBehavior command
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Received SetCollisionBehavior command with values:
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Sent SetCollisionBehavior success response
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Processing command: kSetJointImpedance (ID: 3)
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Handling SetJointImpedance command
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Received SetJointImpedance command with values:
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Sent SetJointImpedance success response
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Processing command: kSetCartesianImpedance (ID: 4)
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Handling SetCartesianImpedance command
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Received SetCartesianImpedance command with values:
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Sent SetCartesianImpedance success response
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Processing command: kMove (ID: 5)
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Received Move command: controller_mode=kJointImpedance, motion_generator_mode=kJointPosition
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Setting control mode to POSITION
+2026-09-04 12:47:12,948 INFO franka_sim.mujoco_franka_sim: Switching control mode to: position
+2026-09-04 12:47:12,948 INFO franka_sim.franka_sim_server: Sending kMotionStarted response
+2026-09-04 12:47:12,949 INFO franka_sim.franka_sim_server: Sent Move response: command_id=5, status=kMotionStarted
+2026-09-04 12:47:12,949 INFO franka_sim.franka_sim_server: Motion started with ID: 5
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Motion finished: switching to position control and holding position
+2026-09-04 12:47:13,165 INFO franka_sim.mujoco_franka_sim: Switching control mode to: position
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Control session ended (motion finished): idle hold engaged
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Sent Move success response for motion ID: 5
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Processing command: kSetCollisionBehavior (ID: 6)
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Handling SetCollisionBehavior command
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Received SetCollisionBehavior command with values:
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Sent SetCollisionBehavior success response
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Processing command: kMove (ID: 7)
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Received Move command: controller_mode=kJointImpedance, motion_generator_mode=kJointVelocity
+2026-09-04 12:47:13,165 INFO franka_sim.franka_sim_server: Setting control mode to VELOCITY
+2026-09-04 12:47:13,165 INFO franka_sim.mujoco_franka_sim: Switching control mode to: velocity
+2026-09-04 12:47:13,166 INFO franka_sim.franka_sim_server: Sending kMotionStarted response
+2026-09-04 12:47:13,166 INFO franka_sim.franka_sim_server: Sent Move response: command_id=7, status=kMotionStarted
+2026-09-04 12:47:13,166 INFO franka_sim.franka_sim_server: Motion started with ID: 7
+2026-09-04 12:47:13,947 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 974.6Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:14,947 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 975.8Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:15,948 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 978.3Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:16,949 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 978.4Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:17,949 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 983.0Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:18,950 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 982.1Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:19,951 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 979.3Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:20,952 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 980.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:21,953 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 850.7Hz, Genesis Time: 0.00ms, Total Cycle: 0.07ms
+2026-09-04 12:47:22,954 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 960.5Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:23,954 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 981.7Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:24,955 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 952.3Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:25,956 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 978.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:26,957 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 979.1Hz, Genesis Time: 0.00ms, Total Cycle: 0.04ms
+2026-09-04 12:47:27,958 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 972.3Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:28,960 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 954.1Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:29,961 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 971.4Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:30,962 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 934.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:31,963 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 966.1Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:32,964 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 974.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:33,965 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 976.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:34,966 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 973.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.04ms
+2026-09-04 12:47:35,966 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 975.9Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:36,967 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 983.3Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:37,830 INFO franka_sim.mujoco_franka_sim: simulation running at 1.00x real time
+2026-09-04 12:47:37,967 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 975.0Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:38,968 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 977.2Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:39,969 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 955.6Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:40,970 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 946.5Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:41,970 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 974.8Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:42,970 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 970.7Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:43,972 INFO franka_sim.franka_sim_server: State Update Stats - Freq: 978.1Hz, Genesis Time: 0.00ms, Total Cycle: 0.05ms
+2026-09-04 12:47:44,188 INFO franka_sim.franka_sim_server: Motion finished: switching to position control and holding position
+2026-09-04 12:47:44,188 INFO franka_sim.mujoco_franka_sim: Switching control mode to: position
+2026-09-04 12:47:44,188 INFO franka_sim.franka_sim_server: Control session ended (motion finished): idle hold engaged
+2026-09-04 12:47:44,191 INFO franka_sim.franka_sim_server: Sent Move success response for motion ID: 7
+2026-09-04 12:47:44,192 INFO franka_sim.franka_sim_server: Client disconnected (end of session): Failed to receive message header
+2026-09-04 12:47:44,192 INFO franka_sim.franka_sim_server: Connection error: Resetting state and waiting for new client...
+2026-09-04 12:47:44,192 INFO franka_sim.franka_sim_server: TCP message handler thread ending
+2026-09-04 12:47:44,193 INFO franka_sim.franka_sim_server: Closing client connection
+2026-09-04 12:47:44,193 INFO franka_sim.robot_state: Robot state initialized
+2026-09-04 12:47:44,193 INFO franka_sim.franka_sim_server: Client session ended, ready for next client
+2026-09-04 12:47:44,193 INFO franka_sim.robot_state: Robot state initialized
+2026-09-04 12:47:44,193 INFO franka_sim.franka_sim_server: Server ready for new client connection...

@@ -1,0 +1,59 @@
+{
+  "lang": "cpp",
+  "library": "libfranka 0.20.4",
+  "variant": "control",
+  "condition": "rt_load",
+  "rep": 1,
+  "host": "127.0.0.1",
+  "duration_s": 30.0,
+  "limit_rate": true,
+  "cycles": 30001,
+  "wall_s": 30.753978,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 30000,
+    "min": 869.237,
+    "p50": 1000.045,
+    "p99": 1298.542,
+    "p999": 4094.982,
+    "max": 6090.993,
+    "mean": 1025.033,
+    "max_at_cycle": 13154
+  },
+  "latency_us": null,
+  "lost": {
+    "cycles": 0,
+    "states": 0,
+    "max_consecutive": 0
+  },
+  "success_rate": {
+    "min": 1.0,
+    "avg": 1.0,
+    "max": 1.0,
+    "final": 1.0,
+    "n": 30000
+  },
+  "cpu": {
+    "user_s": 0.158694,
+    "sys_s": 0.719076,
+    "total_s": 0.87777,
+    "percent": 2.854167,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 30005,
+    "invol_ctx_switches": 0
+  }
+}

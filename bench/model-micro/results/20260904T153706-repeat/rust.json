@@ -1,0 +1,24 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0 (NativeBackend)",
+  "count": 10000,
+  "warmup": 1000,
+  "urdf": "crates/franka-rs/tests/data/fr3.urdf",
+  "checksum": 1764.959790202219,
+  "calls": {
+    "mass": {"n": 10000, "min": 0.6110, "p50": 0.6870, "p99": 1.0280, "p999": 3.5630, "max": 14.7570, "mean": 0.7058},
+    "coriolis": {"n": 10000, "min": 1.0250, "p50": 1.1370, "p99": 1.6540, "p999": 5.8090, "max": 6.5120, "mean": 1.1633},
+    "gravity": {"n": 10000, "min": 0.5130, "p50": 0.5760, "p99": 0.8540, "p999": 3.0700, "max": 9.1580, "mean": 0.5912},
+    "zero_jacobian": {"n": 10000, "min": 0.2810, "p50": 0.3260, "p99": 0.4580, "p999": 1.7380, "max": 2.4970, "mean": 0.3334},
+    "pose": {"n": 10000, "min": 0.2350, "p50": 0.2690, "p99": 0.3660, "p999": 1.4210, "max": 2.8070, "mean": 0.2748}
+  },
+  "total": {"n": 10000, "min": 2.7190, "p50": 2.9930, "p99": 4.5490, "p999": 15.5680, "max": 17.1820, "mean": 3.0685},
+  "agreement_vs_cpp": {
+    "mass": {"max_abs_diff": 3.553e-15, "worst_sample": 285},
+    "coriolis": {"max_abs_diff": 4.319e-14, "worst_sample": 4799},
+    "coriolis_rnea": {"max_abs_diff": 4.974e-14, "worst_sample": 6186},
+    "gravity": {"max_abs_diff": 4.263e-14, "worst_sample": 2582},
+    "zero_jacobian": {"max_abs_diff": 9.992e-16, "worst_sample": 3398},
+    "pose": {"max_abs_diff": 1.055e-15, "worst_sample": 761}
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "lang": "rust",
+  "library": "franka-rs 0.1.0",
+  "variant": "model",
+  "condition": "rt",
+  "rep": 3,
+  "order_in_cell": 2,
+  "cell_first_client": "cpp",
+  "host": "R",
+  "provenance": "harness",
+  "hardware": true,
+  "reflex_events_before_run": 0,
+  "control_exception": null,
+  "duration_s": 30.0,
+  "limit_rate": false,
+  "cycles": 29864,
+  "wall_s": 30.205306,
+  "sched": {
+    "policy": "FIFO",
+    "priority": 99
+  },
+  "sched_at_start": {
+    "policy": "FIFO",
+    "priority": 80
+  },
+  "mlockall": {
+    "requested": true,
+    "ok": true,
+    "error": null,
+    "rlimit_memlock": "unlimited"
+  },
+  "interval_us": {
+    "n": 29863,
+    "min": 11.726,
+    "p50": 999.296,
+    "p99": 1197.715,
+    "p999": 4097.187,
+    "max": 5616.353,
+    "mean": 1004.571,
+    "max_at_cycle": 9699
+  },
+  "latency_us": null,
+  "compute_us": {
+    "n": 29864,
+    "min": 4.926,
+    "p50": 15.929,
+    "p99": 35.183,
+    "p999": 44.79,
+    "max": 55.42,
+    "mean": 16.071,
+    "max_at_cycle": 19365
+  },
+  "model_us": {
+    "n": 29864,
+    "min": 4.023,
+    "p50": 14.705,
+    "p99": 33.83,
+    "p999": 43.425,
+    "max": 53.389,
+    "mean": 14.783,
+    "max_at_cycle": 19365
+  },
+  "guard": {
+    "enabled": true,
+    "tau_limit_nm": 20,
+    "ee_deviation_limit_m": 0.1,
+    "tripped": false,
+    "reason": null,
+    "cycle": 0,
+    "tau_at_trip": 0.0,
+    "ee_deviation_at_trip": 0.0
+  },
+  "controller": {
+    "tau_max_abs": 3.566075,
+    "ee_deviation_max_m": 0.047166,
+    "gravity_checksum": 0.0
+  },
+  "lost": {
+    "cycles": 92,
+    "states": 137,
+    "max_consecutive": 1,
+    "backwards_time_steps": 0
+  },
+  "success_rate": {
+    "min": 0.92,
+    "avg": 0.985047,
+    "max": 1.0,
+    "final": 0.97,
+    "n": 29863
+  },
+  "cpu": {
+    "user_s": 0.698019,
+    "sys_s": 0.319868,
+    "total_s": 1.017887,
+    "percent": 3.369895,
+    "minor_faults": 0,
+    "major_faults": 0,
+    "vol_ctx_switches": 29692,
+    "invol_ctx_switches": 1
+  }
+}

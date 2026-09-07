@@ -1,0 +1,34 @@
+{
+  "host": "<robot-ip>",
+  "mode_before": "Idle",
+  "errors_before": [],
+  "recover_requested": false,
+  "recovered": false,
+  "recovery_error": null,
+  "home_requested": false,
+  "home_speed": 0.2,
+  "homed": false,
+  "home_error": null,
+  "mode": "Idle",
+  "errors": [],
+  "has_errors": false,
+  "ready": true,
+  "q": [
+    0.00039,
+    -0.722807,
+    -0.000105,
+    -2.364362,
+    -0.002647,
+    1.573879,
+    0.784227
+  ],
+  "tau_J": [
+    -0.181558,
+    -7.445119,
+    -0.503489,
+    24.482569,
+    0.935824,
+    2.313236,
+    0.218319
+  ]
+}

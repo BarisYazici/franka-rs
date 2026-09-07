@@ -1,0 +1,6 @@
+{
+  "host": "<robot-ip>",
+  "speed": 0.2,
+  "homed": true,
+  "error": null
+}

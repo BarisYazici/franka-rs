@@ -1,0 +1,144 @@
+From b677092388662d6b4efa05e1782101f7ecdb0a5c Mon Sep 17 00:00:00 2001
+From: franka-rs contributors <noreply@example.invalid>
+Date: Fri, 4 Sep 2026 15:58:31 +0200
+Subject: [PATCH] Reuse the Pinocchio Data object for forward kinematics and
+ Jacobians
+
+RobotModel::computeForwardKinematics() and RobotModel::computeJacobian() each
+began with `pinocchio::Data data(pinocchio_model_);`, so every call to
+Model::pose(), Model::zeroJacobian() and Model::bodyJacobian() heap-allocated
+and initialised a complete pinocchio::Data for what is then a single forward
+pass. The dynamics entry points (mass, coriolis, gravity) already reuse the
+member data_/data_gravity_ and do not pay this.
+
+The two kinematics helpers now share a third member, data_kinematics_, built
+once in the constructor next to the other two. It is deliberately kept
+separate from data_ and data_gravity_ so that the dynamics results cannot be
+affected. Both algorithms that write into it - forwardKinematics() and
+computeJointJacobians() - recompute every buffer the callers read back, so
+nothing carries over between calls. Frame placements and the last-link
+inertia live in the Model, not in the Data, so updateFramePlacements() and
+updateInertiaIfNeeded() keep working against a long-lived Data exactly as
+they already do for data_. The public API, the results and the constness of
+the affected members are unchanged; only the allocation goes away.
+
+Measured over 10000 random FR3 joint configurations (Release, -O3,
+Pinocchio 3.7, a 2021 laptop-class x86-64 CPU), median per call:
+
+  Model::pose(kEndEffector)          6.55 us -> 0.36 us  (18x)
+  Model::zeroJacobian(kEndEffector)  7.17 us -> 0.81 us  (9x)
+  Model::bodyJacobian(kEndEffector)  7.26 us -> 0.80 us  (9x)
+
+In a 1 kHz torque loop that calls mass, coriolis, gravity, zeroJacobian and
+pose once per cycle, the model evaluation drops from 31.3 us to 11.1 us at
+p50 and from 64.4 us to 27.2 us at p99, and the client's CPU use from 5.6 %
+to 3.5 % of one core.
+
+Outputs are bit-identical to the unpatched build: over the same 10000 inputs
+the dumped pose, zeroJacobian and bodyJacobian results compare byte for byte.
+
+run_all_tests passes unchanged, 805/805, including RobotModelTest,
+RobotModelFKTest, RobotJacobianTest, Model, CorrectModel and GivenMobileModel.
+---
+ src/robot_model.cpp | 23 ++++++++++++++---------
+ src/robot_model.h   |  6 ++++--
+ 2 files changed, 18 insertions(+), 11 deletions(-)
+
+diff --git a/src/robot_model.cpp b/src/robot_model.cpp
+index c47df49f..618ca828 100644
+--- a/src/robot_model.cpp
++++ b/src/robot_model.cpp
+@@ -42,6 +42,7 @@ RobotModel::RobotModel(const std::string& urdf) {
+ 
+   data_ = pinocchio::Data(pinocchio_model_);
+   data_gravity_ = pinocchio::Data(pinocchio_model_);
++  data_kinematics_ = pinocchio::Data(pinocchio_model_);
+ }
+ 
+ pinocchio::FrameIndex RobotModel::addFrame(const std::string& name,
+@@ -200,19 +201,21 @@ void RobotModel::computeGravityVector(
+ }
+ 
+ // Helper method to perform forward kinematics calculation
+-pinocchio::Data RobotModel::computeForwardKinematics(
++pinocchio::Data& RobotModel::computeForwardKinematics(
+     const std::array<double, 7>& q) const {  // NOLINT(readability-identifier-length)
+-  // Create Pinocchio data object
+-  pinocchio::Data data(pinocchio_model_);
++  // Reuse the member data object instead of constructing one per call: allocating and
++  // initialising a whole pinocchio::Data costs far more than the forward pass itself, and
++  // forwardKinematics() overwrites everything the callers read. data_kinematics_ is kept
++  // separate from data_/data_gravity_ so the dynamics results cannot be affected.
+ 
+   // Convert joint positions array to Eigen vector
+   Eigen::VectorXd q_vec =
+       Eigen::Map<const Eigen::VectorXd>(q.data(), static_cast<Eigen::Index>(last_joint_index_));
+ 
+   // Perform forward kinematics
+-  pinocchio::forwardKinematics(pinocchio_model_, data, q_vec);
++  pinocchio::forwardKinematics(pinocchio_model_, data_kinematics_, q_vec);
+ 
+-  return data;
++  return data_kinematics_;
+ }
+ 
+ // Helper function to convert Eigen Matrix4d to std::array<double, 16>
+@@ -273,8 +276,10 @@ std::array<double, 42> RobotModel::computeJacobian(
+                              " (valid range: 1 to " + std::to_string(last_joint_index_) + ")");
+   }
+ 
+-  // Create Pinocchio data object
+-  pinocchio::Data data(pinocchio_model_);
++  // Reuse the member data object instead of constructing one per call, see
++  // computeForwardKinematics(). computeJointJacobians() rewrites every column of data.J that
++  // getJointJacobian()/getFrameJacobian() below read back.
++  pinocchio::Data& data = data_kinematics_;
+ 
+   // Convert joint positions array to Eigen vector
+   Eigen::VectorXd q_vec = Eigen::Map<const Eigen::VectorXd>(q.data(), 7);
+@@ -359,7 +364,7 @@ std::array<double, 16> RobotModel::pose(
+   }
+ 
+   // Compute forward kinematics
+-  pinocchio::Data data = computeForwardKinematics(q);
++  pinocchio::Data& data = computeForwardKinematics(q);
+ 
+   // Get the transformation matrix for the specified joint
+   Eigen::Matrix4d homogeneous_transform = data.oMi[joint_index].toHomogeneousMatrix();
+@@ -385,7 +390,7 @@ std::array<double, 16> RobotModel::poseEe(
+ std::array<double, 16> RobotModel::poseFlange(
+     const std::array<double, 7>& q) {  // NOLINT(readability-identifier-length)
+   // Compute forward kinematics
+-  pinocchio::Data data = computeForwardKinematics(q);
++  pinocchio::Data& data = computeForwardKinematics(q);
+ 
+   // Update the frame placement for the specific frame we need
+   pinocchio::updateFramePlacement(pinocchio_model_, data, last_link_frame_index_);
+diff --git a/src/robot_model.h b/src/robot_model.h
+index 6bd9e612..3460ff30 100644
+--- a/src/robot_model.h
++++ b/src/robot_model.h
+@@ -90,6 +90,8 @@ class RobotModel : public RobotModelBase {
+  private:
+   mutable pinocchio::Data data_;
+   mutable pinocchio::Data data_gravity_;
++  // Reused by the forward-kinematics and Jacobian entry points, see computeForwardKinematics().
++  mutable pinocchio::Data data_kinematics_;
+ 
+   mutable Eigen::Matrix<double, 7, 1> q_eigen_;
+   mutable Eigen::Matrix<double, 7, 1> dq_eigen_;
+@@ -107,9 +109,9 @@ class RobotModel : public RobotModelBase {
+   /**
+    * @brief Helper method to perform forward kinematics calculation
+    * @param q Joint positions
+-   * @return Pinocchio data object with forward kinematics results
++   * @return Reference to the reused Pinocchio data object with forward kinematics results
+    */
+-  pinocchio::Data computeForwardKinematics(
++  pinocchio::Data& computeForwardKinematics(
+       const std::array<double, 7>& q) const;  // NOLINT(readability-identifier-length)
+ 
+   /**
+-- 
+2.34.1
+
