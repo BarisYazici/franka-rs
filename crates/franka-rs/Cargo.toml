@@ -1,0 +1,44 @@
+[package]
+name = "franka-rs"
+version = "0.1.0"
+description = "Pure-Rust libfranka client for Franka FR3 (FCI v10) and the Franka Emika Robot (FER, FCI v5)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/franka-rs"
+readme = "../../README.md"
+keywords = ["robotics", "franka", "fci", "realtime", "fer"]
+categories = ["science::robotics", "network-programming", "api-bindings"]
+# The archive is source, the examples and the two model-conformance fixtures under
+# tests/data/ that `model_conformance.rs` and `fer_native_conformance.rs` cannot run
+# without: 119 files, 8.7 MiB, 1.1 MiB compressed -- well inside the registry's limit, so
+# the fixtures stay in. This only guards against build output or a stray capture/log ever
+# being swept into a release.
+exclude = ["/target", "**/*.pcap", "**/*.pcapng", "**/*.log"]
+
+[lib]
+name = "franka"
+path = "src/lib.rs"
+
+[features]
+default = ["model-library"]
+# The FCI v5 (Franka Emika Robot / FER) model: `LoadModelLibrary` plus `dlopen` of the shared object the
+# robot serves. Off, the crate keeps the URDF-based native backend only.
+model-library = ["dep:libloading"]
+
+[dependencies]
+nalgebra.workspace = true
+thiserror.workspace = true
+zerocopy.workspace = true
+libc.workspace = true
+urdf-rs.workspace = true
+socket2 = { version = "0.5", features = ["all"] }
+libloading = { version = "0.8", optional = true }
+roxmltree = "0.20"
+
+[dev-dependencies]
+franka-sim-test = { path = "../franka-sim-test" }
+serde.workspace = true
+serde_json.workspace = true

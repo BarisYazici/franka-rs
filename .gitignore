@@ -1,0 +1,26 @@
+/target
+# Local read-only clones of the C++/Rust references (libfranka, libfranka-rs) and their logs.
+/reference
+/tools/model-reference/build
+/worktrees
+/bench/cpp/build
+/bench/rust/target
+/bench/model-micro/cpp/build
+/bench/model-micro/rust/target
+/bench/so-micro/cpp/build
+/bench/so-micro/rust/target
+# Regenerable and large (~13 MB per run): the shared input set and the C++ reference outputs.
+/bench/model-micro/results/*/states.json
+/bench/model-micro/results/*/reference.bin
+/bench/results/run-full.log
+# Wire captures of the FCI traffic: 30-220 MB each, regenerable with
+# bench/fer-capture/capture.sh. The .txt analyses and logs beside them are kept.
+*.pcap
+*.pcapng
+# Build/run logs, except the capture logs kept beside the analyses above.
+**/*.log
+!/bench/results/20260905-fer-capture/*.log
+# The advisory lock bench/run.sh and the simulator tests take at the repository root.
+.sim.lock
+__pycache__/
+/.private/

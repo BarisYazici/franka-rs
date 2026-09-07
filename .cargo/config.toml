@@ -1,0 +1,9 @@
+# Scoped to `aarch64-unknown-linux-musl` only, so it has no effect on the native
+# (`x86_64-unknown-linux-gnu`) build or on `aarch64-unknown-linux-gnu` cross builds. Rust's
+# musl target ships a self-contained linker (`rust-lld`) with `rustup`, so an aarch64
+# static-binary build needs no external cross-compiler:
+#   rustup target add aarch64-unknown-linux-musl
+#   cargo build --release --target aarch64-unknown-linux-musl -p franka-rs \
+#     --no-default-features --examples
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
