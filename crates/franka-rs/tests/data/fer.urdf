@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Franka Emika Robot (FER, FCI v5), arm only, mesh-free. Generated file: see
+  `tools/fer-model-fit` and `docs/book/src/fer.md`; do not edit by hand.
+
+  Joint origins and axes: `franka_description`'s `fer_joint1..8`, which agree with
+  the robot's own `libfcimodels_x64.so` to 4e-16.
+
+  `<inertial>` elements: identified from that shared object by the `fit` command of
+  `tools/fer-model-fit`, as the minimum-norm correction to `franka_description`'s
+  published values that reproduces the library's mass matrix and gravity torques.
+  Regressor rank 45 of 70 (the classical base parameters), worst residual 3.553e-14 over
+  208 joint configurations.
+
+  These ten numbers per link are a base-parameter-equivalent set, NOT a physically
+  meaningful description of each casting: some moments of inertia are negative. That
+  is a property of the robot's own model, not of the fit — no exact fit is physically
+  consistent (the smallest reachable pseudo-inertia eigenvalue over the whole family
+  of exact fits is -1.496e-2). Use this file to reproduce libfranka's numbers, not to
+  seed a physics simulation.
+
+  Link names are libfranka's own `link0..link8`, because `franka::model::NativeBackend`
+  looks for the flange under `RobotModel::kLastLinkName`.
+-->
+<robot name="fer">
+  <link name="link0"/>
+  <link name="link1">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.008212145719781648 -0.012489433728811434 -0.04762000000000013"/>
+      <mass value="4.970684"/>
+      <inertia ixx="0.702616168960195" ixy="-0.0006889014261360759" ixz="0.005745380380637394" iyy="0.7063494182919353" iyz="0.02261787953853889" izz="0.00252224154567267"/>
+    </inertial>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.333"/>
+    <parent link="link0"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="87.0" lower="-2.8973" upper="2.8973" velocity="2.175"/>
+  </joint>
+  <link name="link2">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.008847188777277989 -0.027478515098922834 -0.10845755996646182"/>
+      <mass value="0.6469260000000004"/>
+      <inertia ixx="-0.010435853412563362" ixy="-0.005177260395266927" ixz="0.029034281597634885" iyy="0.01769709595829096" iyz="-0.0015692467290544213" izz="0.032692302428138635"/>
+    </inertial>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin rpy="-1.5707963267948966 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="87.0" lower="-1.7628" upper="1.7628" velocity="2.175"/>
+  </joint>
+  <link name="link3">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.02841819564298921 0.03858833128409879 -0.06679932425691104"/>
+      <mass value="3.226078812759408"/>
+      <inertia ixx="0.03931086918293672" ixy="-0.005053474288594204" ixz="-0.016811536796376148" iyy="0.037310455098084824" iyz="-0.013111663402157121" izz="0.004872267100857771"/>
+    </inertial>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.0 -0.316 0.0"/>
+    <parent link="link2"/>
+    <child link="link3"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="87.0" lower="-2.8973" upper="2.8973" velocity="2.175"/>
+  </joint>
+  <link name="link4">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.052923582753299815 0.1041655281882056 0.028072528740131844"/>
+      <mass value="3.588634337011673"/>
+      <inertia ixx="0.01879326936772531" ixy="0.019613334939035772" ixz="-0.0005851665677740316" iyy="0.017929420205220613" iyz="0.007812946524814866" izz="0.03591432048480523"/>
+    </inertial>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.0825 0.0 0.0"/>
+    <parent link="link3"/>
+    <child link="link4"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="87.0" lower="-3.0718" upper="-0.0698" velocity="2.175"/>
+  </joint>
+  <link name="link5">
+    <inertial>
+      <origin rpy="0 0 0" xyz="-0.00819919810222125 0.044849648534549445 -0.03912541618142476"/>
+      <mass value="1.224660602599113"/>
+      <inertia ixx="0.04250244229149407" ixy="-0.00418291650860753" ixz="-0.005749943950155883" iyy="0.027739448427164998" iyz="0.005555036692920862" izz="0.0005098413569274763"/>
+    </inertial>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin rpy="-1.5707963267948966 0.0 0.0" xyz="-0.0825 0.384 0.0"/>
+    <parent link="link4"/>
+    <child link="link5"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="12.0" lower="-2.8973" upper="2.8973" velocity="2.61"/>
+  </joint>
+  <link name="link6">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.06064264248542852 -0.013792474511436911 -0.013276699467264706"/>
+      <mass value="1.665269602599113"/>
+      <inertia ixx="-0.003069941349005529" ixy="4.066514884184039e-5" ixz="-0.001354770129082226" iyy="0.0029132442028317164" iyz="0.0011252745943301765" izz="0.0019853862104898127"/>
+    </inertial>
+  </link>
+  <joint name="joint6" type="revolute">
+    <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.0 0.0 0.0"/>
+    <parent link="link5"/>
+    <child link="link6"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="12.0" lower="-0.0175" upper="3.7525" velocity="2.61"/>
+  </joint>
+  <link name="link7">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.008499343414525214 -0.0006345336526240304 0.060901871831290526"/>
+      <mass value="0.7347474831348583"/>
+      <inertia ixx="0.0064418635784042975" ixy="0.001183620745107082" ixz="0.0021380029551365423" iyy="0.00815041377656671" iyz="-0.0006250487121552125" izz="0.0012188799841693894"/>
+    </inertial>
+  </link>
+  <joint name="joint7" type="revolute">
+    <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.088 0.0 0.0"/>
+    <parent link="link6"/>
+    <child link="link7"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="12.0" lower="-2.8973" upper="2.8973" velocity="2.61"/>
+  </joint>
+  <link name="link8"/>
+  <joint name="joint8" type="fixed">
+    <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.107"/>
+    <parent link="link7"/>
+    <child link="link8"/>
+  </joint>
+</robot>

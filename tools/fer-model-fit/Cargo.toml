@@ -1,0 +1,13 @@
+[package]
+name = "fer-model-fit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Identifies the Franka Emika Robot's link inertial parameters from libfcimodels and generates tests/data/fer.urdf"
+
+[dependencies]
+franka-rs = { path = "../../crates/franka-rs" }
+nalgebra.workspace = true
