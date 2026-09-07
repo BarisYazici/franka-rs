@@ -1,0 +1,206 @@
+name: CI
+
+# The FR3 simulator jobs below (`sim-nominal`, `sim-motion-limits`, `sim-gripper-object`) pull
+# the published `ghcr.io/barisyazici/franka-sim` image via the `BarisYazici/libfranka-sim@v1`
+# action (its `image`/`tag` inputs default to `ghcr.io/barisyazici/franka-sim:latest`).
+#
+# There is no published image for the FER / FCI v5 simulator (its build recipe is kept
+# privately, outside this repository), so `sim-fer-v5` cannot use that action's default and
+# is gated on the `FRANKA_SIM_FER_IMAGE` repository variable (Settings -> Secrets and
+# variables -> Actions -> Variables): unset, the job is skipped; set to a `docker pull`-able
+# reference, the job builds and runs the FCI v5 simulator suite against it, mirroring the
+# local commands documented alongside that private build recipe. Until that variable is set,
+# the FCI v5 protocol suite only runs offline in the `check` job (wire layout and model
+# conformance, no simulator) and is otherwise exercised locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Formatting, lints and every test that needs neither Docker nor the network: the crate's
+  # own unit tests, plus the two `franka-rs` integration
+  # test binaries per FCI version that only assert wire layout, plus the model conformance
+  # suites (`wire_sizes.rs` / `wire_sizes_v5.rs`, `model_conformance.rs` /
+  # `fer_native_conformance.rs` / `fer_model_conformance.rs`), plus
+  # `example_motion_generator.rs`, which pins the examples' shared `MotionGenerator` against a
+  # regression a simulator cannot reproduce.
+  #
+  # `fer_native_conformance.rs` checks the built-in FER model against a committed JSON
+  # fixture dumped from a real FER's `libfcimodels_x64.so`, so it runs for real in CI.
+  #
+  # `fer_model_conformance.rs` drives that shared object itself, which is not committed and
+  # not published, so in CI it has nothing to load. It does not fail: every test prints a
+  # `SKIP:` line straight to the process's stderr (past libtest's output capture) and
+  # returns, and `model_library_fixture_present_or_skipped_loudly` makes that visible in one
+  # place. Set `FRANKA_FER_MODEL_SO` to a captured library to run it for real. It is in this
+  # job so that it keeps compiling and so that the skip is on the record.
+  #
+  # Everything else under crates/franka-rs/tests/ is a `sim_*.rs` binary that connects to a
+  # running franka-sim server; those run in the three simulator jobs below instead. This job
+  # also does not run franka-sim-test's own `tests/harness.rs`, and no job in this workflow
+  # does: that file tests the container harness itself -- it starts and tears down a real,
+  # network-pulled franka-sim container and asserts on `docker ps` -- so it cannot run against
+  # the already-running server the simulator jobs attach to, and does not belong in a fast,
+  # offline check job. It is run locally instead:
+  # `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-sim-test --test harness`
+  # (docs/book/src/contributing.md, "The simulator lock").
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo clippy (--no-default-features)
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+      - name: unit tests
+        run: cargo test --workspace --lib
+
+      - name: wire_sizes + model_conformance (FCI v10 and v5)
+        run: |
+          cargo test -p franka-rs \
+            --test wire_sizes --test model_conformance \
+            --test wire_sizes_v5 --test fer_native_conformance \
+            --test fer_model_conformance \
+            --test example_motion_generator
+
+      - name: doctests
+        run: cargo test --workspace --doc
+
+      - name: cargo doc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps
+
+  # Build-only: confirms the crate and its examples cross-compile for aarch64
+  # (aarch64-unknown-linux-gnu). Uses the distro cross-gcc as the
+  # linker rather than cargo-zigbuild, since ubuntu-latest already has apt/root and this keeps
+  # the job to a single `apt install` with no extra toolchain to fetch.
+  aarch64-cross-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install aarch64 cross-gcc
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: cargo build --target aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target aarch64-unknown-linux-gnu -p franka-rs --examples
+
+  # A franka-sim server with the default configuration (no motion-limit or communication-
+  # constraint enforcement, gripper enabled, no object between the fingers). `FRANKA_SIM_ADDR`
+  # makes crates/franka-sim-test's harness attach to this job's already-running server on
+  # 127.0.0.1 instead of starting its own Docker container; in that mode the `SimConfig` each
+  # test builds is informational only; --skip drops the one sim_gripper test that needs an
+  # object between the fingers, which this server does not have (see the sim-gripper-object job).
+  sim-nominal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: BarisYazici/libfranka-sim@v1
+
+      - name: Simulator tests (nominal configuration)
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+        run: |
+          cargo test -p franka-rs \
+            --test sim_handshake --test sim_commands --test sim_motions --test sim_gripper \
+            -- --test-threads=1 --skip grasp_with_object_between_the_fingers
+
+      # The README's joint move must actually run in GitHub Actions against the simulator. It
+      # takes the hostname from argv and RealtimeConfig from FRANKA_REALTIME, so the same
+      # binary runs here and against real hardware. Last in this job, because it moves the arm
+      # and (unlike the tests above) does not restore the start pose afterwards.
+      - name: README example (readme_joint_move)
+        env:
+          FRANKA_REALTIME: ignore
+        run: cargo run -p franka-rs --example readme_joint_move -- 127.0.0.1
+
+  # A franka-sim server with --enforce-motion-limits, exercising the reflex/recovery and rate-
+  # limiting envelope tests in sim_stop_and_reflex.rs.
+  #
+  # Every test in that file homes the arm with `common::move_to_start` before it moves, so the
+  # whole binary runs as one invocation against this job's single long-lived server, in any
+  # order (libtest runs a file's tests in alphabetical order; the tests no longer depend on it).
+  sim-motion-limits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: BarisYazici/libfranka-sim@v1
+        with:
+          args: --enforce-motion-limits
+
+      - name: Simulator tests (motion limits enforced)
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+        run: cargo test -p franka-rs --test sim_stop_and_reflex -- --test-threads=1
+
+  # A franka-sim server with a graspable object placed between the gripper's fingers, for the
+  # one sim_gripper test that the nominal job above deliberately skips.
+  sim-gripper-object:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: BarisYazici/libfranka-sim@v1
+        with:
+          args: --gripper-object-width 0.04
+
+      - name: Simulator test (grasp with an object)
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+        run: |
+          cargo test -p franka-rs --test sim_gripper grasp_with_object_between_the_fingers \
+            -- --test-threads=1
+
+  # The FER / FCI v5 simulator suite. Unlike the FR3 jobs above, this does not use the
+  # BarisYazici/libfranka-sim action (there is no published image for it to pull, and the
+  # FER image also lacks the `franka-sim-check` binary that action's readiness probe needs;
+  # see docs/book/src/fer.md). Instead the franka-sim-test harness starts and stops the container
+  # itself -- the same path used locally -- driven entirely by FRANKA_SIM_FER_IMAGE.
+  #
+  # Skipped entirely when the FRANKA_SIM_FER_IMAGE repository variable is unset, so this
+  # workflow stays green with no FER image published (see the file header).
+  sim-fer-v5:
+    runs-on: ubuntu-latest
+    if: ${{ vars.FRANKA_SIM_FER_IMAGE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Simulator tests (FER / FCI v5)
+        env:
+          FRANKA_SIM_FER_IMAGE: ${{ vars.FRANKA_SIM_FER_IMAGE }}
+        run: |
+          cargo test -p franka-rs \
+            --test sim_v5_handshake --test sim_v5_commands --test sim_v5_motions \
+            --test sim_v5_stop_and_reflex -- --test-threads=1

@@ -1,0 +1,12 @@
+[package]
+name = "franka-sim-test"
+version = "0.1.0"
+description = "Starts a franka-sim (libfranka-sim) container for integration tests"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Internal Docker test harness; never published to crates.io.
+publish = false
+
+[dependencies]
