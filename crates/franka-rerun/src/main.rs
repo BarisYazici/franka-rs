@@ -1,8 +1,9 @@
 //! `franka-rerun`: replays franka-rs logs as Rerun recordings.
 //!
 //! * `franka-rerun csv <log.csv> --robot fr3|fer` turns a `nonrealtime_commander --log` CSV
-//!   into an `.rrd` with the positions, the derivatives of the commanded position against the
-//!   robot's limits, the commander's events and a 3D replay of the arm.
+//!   into an `.rrd` with the positions, the velocities, the derivatives of the commanded
+//!   position against the robot's limits, the commander's events and a 3D replay of the arm
+//!   (`--layout demo` for the screen-capture layout).
 //! * `franka-rerun log <records.json> --robot fr3|fer` turns a control log saved with
 //!   `franka_rerun::save_records` (the `Vec<franka::Record>` a `ControlException` carries)
 //!   into a flight recording: contact and collision flags, external wrench, commanded versus
@@ -14,7 +15,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use franka::Model;
-use franka_rerun::{commander, flight, CommanderLog, FlightOptions, Meshes, RobotKind};
+use franka_rerun::{
+    commander, demo, flight, CommanderLog, FlightOptions, Limits, Meshes, RobotKind,
+};
 
 /// The FR3 URDF the crate's tests use, found relative to this crate inside the repository.
 const FR3_URDF: &str = concat!(
@@ -23,7 +26,9 @@ const FR3_URDF: &str = concat!(
 );
 
 const USAGE: &str = "Usage: franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] \
-                     [--every N] [--meshes DIR]\n       franka-rerun log <records.json> --robot \
+                     [--every N] [--meshes DIR] [--layout default|demo] [--budget V,A,J]\n       \
+                     franka-rerun log \
+                     <records.json> --robot \
                      fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR] \
                      [--force-scale M] [--noise-floor NM]\n\n  csv           replay a \
                      nonrealtime_commander --log CSV\n  log           replay a control log \
@@ -33,7 +38,12 @@ const USAGE: &str = "Usage: franka-rerun csv <log.csv> --robot fr3|fer [--urdf P
                      output recording (default: the input with .rrd)\n  --every N     log every \
                      N-th row to the 3D scene (default 1)\n  --meshes DIR  draw the arm with \
                      the link meshes in DIR (link0..7, hand, finger as .glb; see \
-                     tools/franka-meshes)\n  --force-scale M  log only: metres of arrow per \
+                     tools/franka-meshes)\n  --layout demo  csv only: the screen-capture \
+                     layout (the arm at full height, the velocity per axis and the speed on \
+                     the right, no event log)\n  --budget V,A,J  csv only: the commander's \
+                     own velocity, acceleration and jerk budget (m/s, m/s^2, m/s^3), the \
+                     limit lines of sent/* (default: the robot's limits)\n  --force-scale M  \
+                     log only: metres of arrow per \
                      newton of external force (default 0.01)\n  --noise-floor NM  log only: \
                      external joint torques below NM count as zero for the contact estimate \
                      (default 1)";
@@ -47,6 +57,8 @@ struct Args {
     meshes: Option<PathBuf>,
     force_scale: f64,
     noise_floor: f64,
+    demo: bool,
+    budget: Option<Limits>,
 }
 
 /// A positive, finite number after `flag`.
@@ -62,6 +74,8 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
     let defaults = FlightOptions::default();
     let (mut every, mut force_scale) = (1, defaults.force_scale);
     let mut noise_floor = defaults.contact.noise_floor;
+    let mut demo = false;
+    let mut budget = None;
     let mut i = 0;
     let value = |i: &mut usize, flag: &str| {
         *i += 1;
@@ -95,6 +109,30 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
             "--noise-floor" => {
                 noise_floor = positive("--noise-floor", &value(&mut i, "--noise-floor")?)?;
             }
+            "--budget" => {
+                let text = value(&mut i, "--budget")?;
+                let parts = text
+                    .split(',')
+                    .map(|part| positive("--budget", part.trim()))
+                    .collect::<Result<Vec<f64>, String>>()?;
+                let [speed, acceleration, jerk] = parts
+                    .try_into()
+                    .map_err(|_| format!("--budget {text:?}: want three numbers V,A,J"))?;
+                budget = Some(Limits {
+                    speed,
+                    acceleration,
+                    jerk,
+                });
+            }
+            "--layout" => {
+                demo = match value(&mut i, "--layout")?.as_str() {
+                    "default" => false,
+                    "demo" => true,
+                    other => {
+                        return Err(format!("--layout {other:?}: want default or demo\n{USAGE}"))
+                    }
+                }
+            }
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if input.is_none() && !other.starts_with('-') => {
                 input = Some(PathBuf::from(other))
@@ -118,6 +156,8 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         meshes,
         force_scale,
         noise_floor,
+        demo,
+        budget,
     })
 }
 
@@ -139,10 +179,15 @@ fn replay_csv(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let log = CommanderLog::read(&args.input)?;
     let model = model(&args)?;
     let limits = args.robot.limits();
+    let budget = args.budget.unwrap_or(limits);
     let meshes = args.meshes.as_deref().map(Meshes::find).transpose()?;
     let rec = rerun::RecordingStreamBuilder::new("franka_rs").save(&args.out)?;
-    let summary = log.record(&rec, &model, &limits, args.every, meshes.as_ref())?;
-    commander::send_blueprint(&rec)?;
+    let summary = log.record(&rec, &model, &limits, &budget, args.every, meshes.as_ref())?;
+    if args.demo {
+        demo::send_blueprint(&rec, &budget)?;
+    } else {
+        commander::send_blueprint(&rec)?;
+    }
     rec.flush_blocking()?;
 
     let span = log.t[log.rows() - 1] - log.t[0];
@@ -158,6 +203,23 @@ fn replay_csv(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         "commanded position: peak speed {:.3} m/s (limit {:.3}), acceleration {:.2} m/s^2 \
          (limit {:.2}), jerk {:.0} m/s^3 (limit {:.0})",
         peaks.speed, limits.speed, peaks.acceleration, limits.acceleration, peaks.jerk, limits.jerk
+    );
+    println!(
+        "sent command: derivatives {}; limit lines at {} (speed {:.3} m/s, acceleration \
+         {:.2} m/s^2, jerk {:.0} m/s^3)",
+        if summary.exact_derivatives {
+            "from the generator's cmd_v*, cmd_a* columns"
+        } else {
+            "as finite differences of cmd_* (no cmd_v*, cmd_a* columns)"
+        },
+        if args.budget.is_some() {
+            "the --budget"
+        } else {
+            "the robot's limits"
+        },
+        budget.speed,
+        budget.acceleration,
+        budget.jerk
     );
     println!(
         "raw target: peak implied speed {:.1} m/s",

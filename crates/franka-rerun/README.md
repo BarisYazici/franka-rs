@@ -37,7 +37,7 @@ rerun bridged.rrd
 ```
 
 ```
-franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR]
+franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR] [--layout default|demo] [--budget V,A,J]
 ```
 
 - `--robot fr3` plots against the FR3 limits (`franka::MAX_TRANSLATIONAL_*`) and draws the
@@ -47,7 +47,10 @@ franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N
   FER model (`Model::native_fer()`); no URDF.
 - `-o` defaults to the input path with `.rrd`; `--every N` logs every N-th row to the 3D
   scene (the time series always carry every row); `--meshes DIR` draws the arm with Franka's
-  link meshes (below).
+  link meshes (below); `--layout demo` swaps the viewer layout for the screen-capture one
+  (below); `--budget V,A,J` is the commander's own velocity, acceleration and jerk budget
+  (m/s, m/s^2, m/s^3; the `--budget` of `nonrealtime_commander`), the limit lines of the
+  `processed/*` plots -- by default the robot's limits.
 
 The tool prints the peak speed, acceleration and jerk norms of the commanded position next
 to the limits, the raw target's implied speed (50 m/s at a 5 cm step) and, for the 3D scene,
@@ -59,14 +62,32 @@ started.
 | entity | content |
 |---|---|
 | `position/x`, `position/y`, `position/z` | three series each: the raw target (orange staircase), the commanded `O_T_EE_c` the robot echoed (blue), the measured `O_T_EE` (green) |
+| `raw/x`, `raw/y`, `raw/z` | the raw target per axis as the user's staircase (`raw`, thick orange, drawn unaggregated so its corners stay corners at any zoom) |
+| `raw/speed`, `raw/acceleration`, `raw/jerk` | norms of the finite differences of that staircase per cycle (`raw`, thin orange, unaggregated): 50 m/s, 50 000 m/s^2 and 5e7 m/s^3 at a 5 cm step, a line off the top of any plot of the processed ones |
+| `processed/x`, `processed/y`, `processed/z` | the commanded position per axis (`processed`, blue) |
+| `processed/speed`, `processed/acceleration`, `processed/jerk` | norms of the sent command's velocity, acceleration and jerk -- the generator's own `cmd_vx..cmd_az` columns when the CSV has them (the example logs them; jerk is the finite difference of that acceleration), else the finite differences of the commanded position -- each with the `--budget` (or the robot's limit) as a thin red line at `.../limit` |
 | `derivatives/speed`, `derivatives/acceleration`, `derivatives/jerk` | norms of the first, second and third finite differences of the commanded position, each with the robot's limit as a grey line at `.../limit` |
 | `derivatives/target_speed` | the implied speed of the raw target, for the contrast with the commanded one |
 | `events` | a text log: every target step, a `stall` when no target changes for more than 1.5 s, a `burst` when 5 or more changes fall within 100 ms, and `motion aborted by the robot` if the log ends before the command settled on the target |
-| `world/*` | the 3D scene, Z up: a base box, the arm as a polyline through the origins of `Frame::ALL` (from the logged joint angles), the end effector frame with axes, the target (large orange point), the commanded (blue) and measured (green) points, and the whole measured path as a faint static trail |
+| `world/*` | the 3D scene, Z up: a base box, the arm as a polyline through the origins of `Frame::ALL` (from the logged joint angles), the end effector frame with axes, the target (large orange point), the commanded (blue) and measured (green) points, the whole measured path as a faint static trail (`world/measured_path`), and the last two seconds of it as `world/trail`, five strips fading with age, re-logged every five rows so the old path falls off as time advances |
 
 The recording carries a blueprint, so the viewer opens with the 3D scene on the left, the
 positions and derivatives in a 3x2 grid on the right (the raw target speed is a tab behind
-the speed plot) and the event log along the bottom. Two things to know when reading it:
+the speed plot) and the event log along the bottom. `--layout demo` carries the layout made
+for a screen capture instead (`tools/demo-animation/splice.sh` cuts one into the demo
+animation): the arm at full height on the left (55 % of the width, the meshes, the target
+and sent points and the fading `world/trail`, no skeleton and no static path, a fixed
+three-quarter front camera on a solid dark background), and on the right six stacked
+plots: `x`, `y`, `z` with the raw staircase over the processed position (y range
+automatic), then the speed of both and the acceleration and jerk of the processed one
+under the red `--budget` lines, each with a fixed y range of 1.25 times its line so the
+processed command visibly sits under it (in the speed plot the raw one leaves the plot at
+every step); legends top right, no event log,
+the blueprint and selection panels hidden, the time panel collapsed to its controls and
+playing on a loop. The SDK's blueprint builders have
+no setter for a view's own properties (`ScalarAxis`, `EyeControls3D`, `PlotLegend`), so
+`franka_rerun::demo` assembles that blueprint from the archetypes directly. Two things to
+know when reading a replay:
 
 - **Tool offset.** The CSV carries no `F_T_EE`, so the arm's end effector is placed with a
   tool offset identified from the first row: the measured `O_T_EE` expressed in the model's

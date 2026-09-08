@@ -15,12 +15,17 @@
 //!   target and follows it for one cycle: a 5 cm step becomes an S-curve peaking at 0.15 m/s
 //!   that lands after 0.66 s. The budget is deliberately small, 0.3 m/s, 0.5 m/s^2 and
 //!   20 m/s^3 by default (`--budget V,A,J` overrides it), and `limit_rate_cartesian_pose` runs
-//!   after the generator under the same budget. The library's own limits (13 m/s^2 on an FER)
-//!   are what the robot accepts *in Cartesian space*; it also runs inverse kinematics on every
-//!   pose and checks the joint-space continuity, and a real FER refuses a 2.5 m/s^2 ramp near
-//!   the ready pose as `cartesian_motion_generator_joint_velocity_discontinuity`. The control
-//!   loop's limiter stays on as the backstop and never binds. The generator bridge has not
-//!   been run on a real robot yet; the earlier 1 Hz low-pass bridge was.
+//!   after the generator under the same budget as the backstop, which must never bind: the
+//!   generator gets per-axis limits of budget / sqrt 3 so that the norm the limiter bounds
+//!   stays inside it, steps one nominal millisecond per command like the limiter and the robot
+//!   do, and is re-anchored on the robot's echo of the commanded position (`O_T_EE_c`) every
+//!   cycle -- the first version of this bridge did none of that, the limiter clamped it on the
+//!   first two-axis move and then orbited at the velocity cap (see the `otg` module). The
+//!   library's own limits (13 m/s^2 on an FER) are what the robot accepts *in Cartesian
+//!   space*; it also runs inverse kinematics on every pose and checks the joint-space
+//!   continuity, and a real FER refuses a 2.5 m/s^2 ramp near the ready pose as
+//!   `cartesian_motion_generator_joint_velocity_discontinuity`. The control loop's limiter
+//!   stays on behind both and never binds.
 //! * In `--raw` mode both are off (`limit_rate = false`, `MAX_CUTOFF_FREQUENCY`), so the first
 //!   5 cm target reaches the robot as a 50 m/s jump and its motion generator refuses it with a
 //!   `cartesian_motion_generator_velocity_discontinuity` reflex. The example prints the
@@ -33,7 +38,8 @@
 //! relative to the start pose) to standard input. The motion ends when the commander is done
 //! and the commanded pose has settled, or earlier if the measured end effector strays more
 //! than 30 cm from where it started. `--log PATH` writes one CSV row per cycle (raw target,
-//! echoed `O_T_EE_c`, measured `O_T_EE`, joint angles, external wrench) into a `Vec` sized
+//! echoed `O_T_EE_c`, measured `O_T_EE`, joint angles, external wrench, and the generator's
+//! velocity and acceleration of the command, zero in `--raw` mode) into a `Vec` sized
 //! before the loop; `bench/commander/plot.py` and `tools/rerun-replay` draw it. Set
 //! `FRANKA_REALTIME=ignore` to run against franka-sim on an ordinary kernel.
 //!
@@ -51,7 +57,7 @@ use std::time::{Duration as StdDuration, Instant};
 
 use franka::{
     limit_rate_cartesian_pose, CartesianOtg, CartesianPose, ControllerMode, Duration, FrankaError,
-    FrankaResult, OtgLimits, Robot, RobotState, MAX_CUTOFF_FREQUENCY,
+    FrankaResult, OtgLimits, Robot, RobotState, DELTA_T, MAX_CUTOFF_FREQUENCY,
 };
 
 /// Size of one scripted step, m.
@@ -279,16 +285,26 @@ fn distance(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
-/// One log row: `t`, target, commanded and measured positions, joint angles, external wrench.
-type Row = [f64; 23];
+/// One log row: `t`, target, commanded and measured positions, joint angles, external
+/// wrench, and the generator's velocity and acceleration of the command.
+type Row = [f64; 29];
 
-fn row(t: f64, target: &[f64; 3], commanded: &[f64; 3], state: &RobotState) -> Row {
-    let mut out = [t; 23];
+fn row(
+    t: f64,
+    target: &[f64; 3],
+    commanded: &[f64; 3],
+    state: &RobotState,
+    velocity: &[f64; 3],
+    acceleration: &[f64; 3],
+) -> Row {
+    let mut out = [t; 29];
     out[1..4].copy_from_slice(target);
     out[4..7].copy_from_slice(commanded);
     out[7..10].copy_from_slice(&translation(&state.O_T_EE));
     out[10..17].copy_from_slice(&state.q);
     out[17..23].copy_from_slice(&state.O_F_ext_hat_K);
+    out[23..26].copy_from_slice(velocity);
+    out[26..29].copy_from_slice(acceleration);
     out
 }
 
@@ -324,13 +340,15 @@ fn run(
     let mut start_pose = robot.read_once()?.O_T_EE_c;
     let mut start = translation(&start_pose);
     println!("Start position: {start:.3?}; targets stay within +-{BOX} m of it.");
-    // Limits validated before the loop; synchronised axes, so a diagonal target moves straight.
+    // Per-axis limits whose norm stays inside the budget, validated before the loop;
+    // synchronised axes, so a diagonal target moves along a straight line.
     let [max_velocity, max_acceleration, max_jerk, ..] = limits;
-    let otg_limits = OtgLimits {
+    let per_axis = OtgLimits {
         max_velocity,
         max_acceleration,
         max_jerk,
     };
+    let otg_limits = per_axis.per_axis_for_norm(3);
     let mut otg = CartesianOtg::new(start, otg_limits, true)?;
 
     let slot = Arc::new(TargetSlot::default());
@@ -347,6 +365,7 @@ fn run(
     let mut last_commanded = start;
     let mut peak_speed = 0.0f64;
     let mut torn_reads = 0u64;
+    let mut backstop_bound = 0u64;
     let mut settled_cycles = 0u32;
     let mut deviated = false;
 
@@ -379,16 +398,38 @@ fn run(
             let mut pose = start_pose;
             pose[12..15].copy_from_slice(&goal);
             if mode == Mode::Bridged {
-                // Re-plan towards the target and advance one cycle (the goal is finite, so
-                // `set_target` cannot fail), then rate-limit against the robot's echo as the
+                // Re-anchor on the echo of the last commanded position, re-plan towards the
+                // target and advance one nominal cycle (the echo and the goal are finite, so
+                // neither setter fails), then rate-limit against the robot's echo as the
                 // backstop; it only fails on non-finite input, and holding is then safe.
+                let _ = otg.set_position(commanded);
                 let _ = otg.set_target(goal);
-                pose[12..15].copy_from_slice(&otg.step(dt));
-                pose = backstop(&limits, &pose, state).unwrap_or(state.O_T_EE_c);
+                pose[12..15].copy_from_slice(&otg.step(DELTA_T));
+                let limited = backstop(&limits, &pose, state).unwrap_or(state.O_T_EE_c);
+                let altered = distance(&translation(&limited), &translation(&pose)) > 1e-6;
+                backstop_bound += u64::from(altered);
+                pose = limited;
             }
 
             if rows.len() < rows.capacity() {
-                rows.push(row(time, &goal, &commanded, state));
+                // The generator's state after this cycle's step; at rest, zero, in raw mode.
+                let (velocity, acceleration) = if mode == Mode::Bridged {
+                    let axes = otg.axes();
+                    (
+                        std::array::from_fn(|k| axes[k].velocity()),
+                        std::array::from_fn(|k| axes[k].acceleration()),
+                    )
+                } else {
+                    ([0.0; 3], [0.0; 3])
+                };
+                rows.push(row(
+                    time,
+                    &goal,
+                    &commanded,
+                    state,
+                    &velocity,
+                    &acceleration,
+                ));
             }
 
             let commander_done = deviated || slot.finished.load(Ordering::SeqCst);
@@ -422,7 +463,10 @@ fn run(
         Err(other) => return Err(other),
     };
 
-    println!("peak commanded speed {peak_speed:.3} m/s, torn slot reads {torn_reads}");
+    println!(
+        "peak commanded speed {peak_speed:.3} m/s, torn slot reads {torn_reads}, backstop bound \
+         in {backstop_bound} cycles"
+    );
     if deviated {
         println!("Stopped early: the end effector strayed {MAX_DEVIATION} m from the start.");
     }
@@ -437,7 +481,8 @@ fn write_log(path: &str, rows: &[Row]) -> FrankaResult<()> {
     let io_error = |e: std::io::Error| FrankaError::InvalidArgument(format!("--log {path}: {e}"));
     let mut out = std::io::BufWriter::new(std::fs::File::create(path).map_err(io_error)?);
     let header = "t,target_x,target_y,target_z,cmd_x,cmd_y,cmd_z,meas_x,meas_y,meas_z";
-    writeln!(out, "{header},q0,q1,q2,q3,q4,q5,q6,fx,fy,fz,tx,ty,tz").map_err(io_error)?;
+    let tail = "q0,q1,q2,q3,q4,q5,q6,fx,fy,fz,tx,ty,tz,cmd_vx,cmd_vy,cmd_vz,cmd_ax,cmd_ay,cmd_az";
+    writeln!(out, "{header},{tail}").map_err(io_error)?;
     for row in rows {
         write!(out, "{:.4}", row[0]).map_err(io_error)?;
         for value in &row[1..] {

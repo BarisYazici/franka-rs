@@ -1,6 +1,7 @@
 //! The CSV that `examples/nonrealtime_commander.rs --log` writes -- one row per 1 kHz cycle,
-//! columns selected by name -- and its replay: positions, derivatives against the limits, the
-//! commander's events, the 3D arm, and a default viewer layout.
+//! columns selected by name -- and its replay: positions, derivatives against the limits,
+//! the user's target against the sent command and its derivatives against the commander's
+//! budget, the commander's events, the 3D arm, and a default viewer layout.
 
 use std::fmt;
 use std::path::Path;
@@ -14,7 +15,9 @@ use rerun::blueprint::{
 use rerun::{RecordingStream, TextLog, TextLogLevel};
 
 use crate::series::{Limits, Peaks, PositionSeries};
-use crate::{distance, scene, series, Meshes, Result, COMMANDED, MEASURED, TARGET, TIMELINE};
+use crate::{
+    distance, norm, scene, series, Meshes, Result, BUDGET, COMMANDED, MEASURED, TARGET, TIMELINE,
+};
 
 /// A gap between two target changes longer than this is a stall, s.
 pub const STALL_SECONDS: f64 = 1.5;
@@ -24,6 +27,13 @@ pub const BURST_WINDOW_SECONDS: f64 = 0.1;
 /// The example's own settling tolerance: a log whose last commanded position is farther than
 /// this from the target ended before the motion settled, i.e. the robot aborted it.
 pub const SETTLE_TOLERANCE: f64 = 1e-3;
+/// The fading trail `world/trail`: this many seconds of measured path, in this many strips
+/// of decreasing opacity (the newest opaque), a point every this many rows, re-logged as
+/// often.
+pub const TRAIL_SECONDS: f64 = 2.0;
+pub const TRAIL_SEGMENTS: usize = 5;
+pub const TRAIL_EVERY: usize = 5;
+pub const AXES: [&str; 3] = ["x", "y", "z"];
 
 /// One `--log` CSV, column-wise. Positions are in metres in the robot's base frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +49,11 @@ pub struct CommanderLog {
     /// The measured joint angles, rad; `None` for a CSV written before the `q0..q6` columns
     /// existed, in which case the 3D arm is not drawn.
     pub q: Option<Vec<[f64; 7]>>,
+    /// The trajectory generator's velocity and acceleration of the sent position, from the
+    /// `cmd_vx..cmd_az` columns; `None` for a CSV without them (the derivatives are then
+    /// finite differences of `commanded`).
+    pub velocity: Option<Vec<[f64; 3]>>,
+    pub acceleration: Option<Vec<[f64; 3]>>,
 }
 
 /// What a replay recorded, for the caller's summary.
@@ -56,6 +71,9 @@ pub struct Summary {
     /// Largest distance between the model's end effector (from `q` and that tool offset) and
     /// the measured `O_T_EE` over the log: the model's residual; `None` without joint angles.
     pub fk_gap: Option<f64>,
+    /// Whether the sent command's derivatives came from the generator's own columns rather
+    /// than finite differences.
+    pub exact_derivatives: bool,
 }
 
 /// Anything wrong with the CSV, with the path and line in the message.
@@ -79,7 +97,7 @@ impl CommanderLog {
     }
 
     /// Parses CSV text. The header names the columns; `t`, `target_*`, `cmd_*` and `meas_*`
-    /// are required, `q0..q6` optional, anything else is ignored.
+    /// are required, `q0..q6` and `cmd_v*`, `cmd_a*` optional, anything else is ignored.
     pub fn parse(text: &str) -> std::result::Result<CommanderLog, ParseError> {
         let mut lines = text.lines().enumerate();
         let (_, header) = lines
@@ -105,6 +123,10 @@ impl CommanderLog {
             .map(|joint| column(&format!("q{joint}")).ok())
             .collect::<Option<Vec<usize>>>()
             .and_then(|columns| columns.try_into().ok());
+        let (velocity, acceleration) = match (triple("cmd_v"), triple("cmd_a")) {
+            (Ok(v), Ok(a)) => (Some(v), Some(a)),
+            _ => (None, None),
+        };
 
         let mut log = CommanderLog {
             t: Vec::new(),
@@ -112,6 +134,8 @@ impl CommanderLog {
             commanded: Vec::new(),
             measured: Vec::new(),
             q: q.map(|_| Vec::new()),
+            velocity: velocity.map(|_| Vec::new()),
+            acceleration: acceleration.map(|_| Vec::new()),
         };
         let mut fields: Vec<f64> = Vec::with_capacity(names.len());
         for (index, line) in lines {
@@ -141,6 +165,12 @@ impl CommanderLog {
             if let (Some(columns), Some(rows)) = (q, log.q.as_mut()) {
                 rows.push(columns.map(|column| fields[column]));
             }
+            if let (Some(columns), Some(rows)) = (velocity, log.velocity.as_mut()) {
+                rows.push(columns.map(|column| fields[column]));
+            }
+            if let (Some(columns), Some(rows)) = (acceleration, log.acceleration.as_mut()) {
+                rows.push(columns.map(|column| fields[column]));
+            }
         }
         if log.t.is_empty() {
             return Err(ParseError("no data rows".into()));
@@ -160,14 +190,38 @@ impl CommanderLog {
             .collect()
     }
 
-    /// Records everything: `position/*`, `derivatives/*`, `events`, `world/*`. `every`
-    /// decimates the 3D scene (1 logs every row); `meshes` draws the arm with link meshes
-    /// besides the skeleton.
+    /// Whether the sent command's derivatives are the generator's own (`cmd_v*`, `cmd_a*`).
+    pub fn has_exact_derivatives(&self) -> bool {
+        self.velocity.is_some() && self.acceleration.is_some()
+    }
+
+    /// The speed, acceleration and jerk of the sent command, as norms: the generator's
+    /// velocity and acceleration columns when the CSV has them, the jerk as the finite
+    /// difference of that acceleration; else the first, second and third finite differences
+    /// of the sent position.
+    pub fn sent_derivatives(&self) -> [Vec<f64>; 3] {
+        match (&self.velocity, &self.acceleration) {
+            (Some(v), Some(a)) => [
+                v.iter().map(norm).collect(),
+                a.iter().map(norm).collect(),
+                series::differences(&self.t, a, 1),
+            ],
+            _ => [1, 2, 3].map(|order| series::differences(&self.t, &self.commanded, order)),
+        }
+    }
+
+    /// Records everything: `position/*` and `derivatives/*` against the robot's `limits`,
+    /// `raw/*` and `processed/*` (the user's target as a staircase and its derivatives per
+    /// cycle, the sent position and its speed, acceleration and jerk against the commander's
+    /// `budget`), `events`, `world/*`.
+    /// `every` decimates the 3D scene (1 logs every row); `meshes` draws the arm with link
+    /// meshes besides the skeleton.
     pub fn record(
         &self,
         rec: &RecordingStream,
         model: &Model,
         limits: &Limits,
+        budget: &Limits,
         every: usize,
         meshes: Option<&Meshes>,
     ) -> Result<Summary> {
@@ -183,6 +237,7 @@ impl CommanderLog {
             positions,
         });
         series::log_positions(rec, "position", &self.t, &traces)?;
+        self.log_sent(rec, budget)?;
         let commanded = series::log_derivatives(
             rec,
             "derivatives",
@@ -210,13 +265,101 @@ impl CommanderLog {
             None => IDENTITY_TRANSFORM,
         };
         let fk_gap = self.log_scene(rec, model, &f_t_ee, every, meshes)?;
+        self.log_trail(rec)?;
         Ok(Summary {
             commanded,
             target_speed: target_speed.iter().copied().fold(0.0, f64::max),
             changes,
             tool_offset: self.q.as_ref().map(|_| scene::translation(&f_t_ee)),
             fk_gap,
+            exact_derivatives: self.has_exact_derivatives(),
         })
+    }
+
+    /// `raw/{x,y,z}`: the user's target as a thick orange staircase; `processed/{x,y,z}`:
+    /// the sent position as a thinner blue line; `processed/{speed,acceleration,jerk}`: the
+    /// norms of the sent command's derivatives ([`CommanderLog::sent_derivatives`]), each
+    /// with the commander's `budget` as a thin red line at `.../limit`; `raw/{speed,
+    /// acceleration,jerk}`: the same derivatives of the raw staircase itself, per cycle (a
+    /// 5 cm step is 50 m/s, 50 000 m/s^2, 5e7 m/s^3), thin orange and unaggregated, so that
+    /// every step shows as a line off the top of a plot of the processed one.
+    fn log_sent(&self, rec: &RecordingStream, budget: &Limits) -> Result<()> {
+        for (axis, name) in AXES.into_iter().enumerate() {
+            let target: Vec<f64> = self.target.iter().map(|p| p[axis]).collect();
+            let entity = format!("raw/{name}");
+            series::log_line(rec, &entity, "raw", TARGET, 3.0, true, &self.t, &target)?;
+            let sent: Vec<f64> = self.commanded.iter().map(|p| p[axis]).collect();
+            let entity = format!("processed/{name}");
+            series::log_line(
+                rec,
+                &entity,
+                "processed",
+                COMMANDED,
+                1.5,
+                false,
+                &self.t,
+                &sent,
+            )?;
+        }
+        let derivatives = self.sent_derivatives();
+        let lines = [
+            ("speed", budget.speed, "m/s"),
+            ("acceleration", budget.acceleration, "m/s²"),
+            ("jerk", budget.jerk, "m/s³"),
+        ];
+        let ends = [self.t[0], self.t[self.rows() - 1]];
+        for (order, (values, (name, limit, unit))) in derivatives.iter().zip(lines).enumerate() {
+            let raw = series::differences(&self.t, &self.target, order + 1);
+            let entity = format!("raw/{name}");
+            series::log_line(rec, &entity, "raw", TARGET, 1.0, true, &self.t, &raw)?;
+            let entity = format!("processed/{name}");
+            series::log_line(
+                rec,
+                &entity,
+                "processed",
+                COMMANDED,
+                2.0,
+                false,
+                &self.t,
+                values,
+            )?;
+            let entity = format!("processed/{name}/limit");
+            let label = series::limit_label(limit, unit);
+            let line = [limit; 2];
+            series::log_line(rec, &entity, &label, BUDGET, 1.0, false, &ends, &line)?;
+        }
+        Ok(())
+    }
+
+    /// `world/trail`: the measured path of the last [`TRAIL_SECONDS`] as [`TRAIL_SEGMENTS`]
+    /// strips fading with age, re-logged every [`TRAIL_EVERY`] rows, so that the old path
+    /// falls off as the time cursor advances instead of piling up under the arm the way the
+    /// static `world/measured_path` does.
+    fn log_trail(&self, rec: &RecordingStream) -> Result<()> {
+        let segment = TRAIL_SECONDS / TRAIL_SEGMENTS as f64;
+        for i in (0..self.rows()).step_by(TRAIL_EVERY) {
+            let now = self.t[i];
+            let first = self.t[..=i].partition_point(|&t| t < now - TRAIL_SECONDS);
+            let sampled = || (first..=i).step_by(TRAIL_EVERY);
+            let strips: Vec<(Vec<[f64; 3]>, u32)> = (0..TRAIL_SEGMENTS)
+                .map(|k| {
+                    let from = now - TRAIL_SECONDS + k as f64 * segment;
+                    let to = from + segment;
+                    let mut points: Vec<[f64; 3]> = sampled()
+                        .filter(|&j| self.t[j] >= from && self.t[j] < to)
+                        .map(|j| self.measured[j])
+                        .collect();
+                    // Close the gap to the next segment (or to the arm) so the strips join.
+                    let next = sampled().find(|&j| self.t[j] >= to).unwrap_or(i);
+                    points.push(self.measured[next]);
+                    let alpha = (255.0 * (k + 1) as f64 / TRAIL_SEGMENTS as f64) as u32;
+                    (points, (MEASURED & 0xffff_ff00) | alpha)
+                })
+                .collect();
+            rec.set_duration_secs(TIMELINE, now);
+            scene::log_strips(rec, "trail", &strips)?;
+        }
+        Ok(())
     }
 
     /// Every `every`-th row into the 3D scene; returns the model-vs-measured end effector gap.
@@ -298,7 +441,8 @@ impl CommanderLog {
 
 /// The default layout for a commander replay: the 3D scene on the left, the positions and
 /// the derivatives in a grid on the right, the event log along the bottom, the time panel on
-/// `robot_time`.
+/// `robot_time`. [`crate::demo::send_blueprint`] is the alternative made for a screen
+/// capture.
 pub fn send_blueprint(rec: &RecordingStream) -> Result<()> {
     let plot = |name: &str, origin: &str| TimeSeriesView::new(name).with_origin(origin).into();
     let speed = Tabs::new([
@@ -343,6 +487,32 @@ mod tests {
         assert_eq!(log.target[1], [0.35, 0.0, 0.5]);
         assert_eq!(log.q.as_ref().unwrap()[0][3], -2.35);
         assert_eq!(log.target_changes(), vec![1]);
+    }
+
+    #[test]
+    fn generator_columns_give_exact_derivatives_and_are_optional() {
+        let fallback = CommanderLog::parse(CSV).unwrap();
+        assert!(!fallback.has_exact_derivatives());
+        let [speed, acceleration, jerk] = fallback.sent_derivatives();
+        assert_eq!((speed[1], acceleration[1], jerk[1]), (0.0, 0.0, 0.0));
+
+        let exact: String = CSV
+            .lines()
+            .enumerate()
+            .map(|(k, line)| match k {
+                0 => format!("{line},cmd_vx,cmd_vy,cmd_vz,cmd_ax,cmd_ay,cmd_az\n"),
+                1 => format!("{line},0.3,0,0,0,2,0\n"),
+                _ => format!("{line},0,0.4,0,0,0,0\n"),
+            })
+            .collect();
+        let log = CommanderLog::parse(&exact).unwrap();
+        assert!(log.has_exact_derivatives());
+        assert_eq!(log.velocity.as_ref().unwrap()[1], [0.0, 0.4, 0.0]);
+        let [speed, acceleration, jerk] = log.sent_derivatives();
+        assert!((speed[0] - 0.3).abs() < 1e-12 && (speed[1] - 0.4).abs() < 1e-12);
+        assert_eq!(acceleration, vec![2.0, 0.0]);
+        assert_eq!(jerk[0], 0.0);
+        assert!((jerk[1] - 2000.0).abs() < 1e-6, "{jerk:?}");
     }
 
     #[test]

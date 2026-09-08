@@ -1,7 +1,8 @@
 //! Time series on the `robot_time` timeline, from slices of times and values: positions per
 //! axis, finite-difference derivatives of a position against the robot's limits, and plain
-//! scalar series with an optional horizontal limit line.
+//! scalar series -- lines, staircases -- with an optional horizontal limit line.
 
+use rerun::components::AggregationPolicy;
 use rerun::{Color, RecordingStream, Scalars, SeriesLines, TimeColumn};
 
 use crate::{norm, Result, LIMIT, TIMELINE};
@@ -61,10 +62,10 @@ pub fn log_positions(
     Ok(())
 }
 
-/// Norms of the `order`-th finite difference of `positions` over `t` (1: speed, 2:
+/// The `order`-th finite difference of `positions` over `t`, per axis (1: velocity, 2:
 /// acceleration, 3: jerk). The first `order` samples are zero; a non-positive time step
 /// repeats the previous derivative instead of dividing by it.
-pub fn differences(t: &[f64], positions: &[[f64; 3]], order: usize) -> Vec<f64> {
+pub fn difference_vectors(t: &[f64], positions: &[[f64; 3]], order: usize) -> Vec<[f64; 3]> {
     let mut derivative = positions.to_vec();
     for _ in 0..order {
         let previous = derivative.clone();
@@ -80,7 +81,51 @@ pub fn differences(t: &[f64], positions: &[[f64; 3]], order: usize) -> Vec<f64> 
             *first = [0.0; 3];
         }
     }
-    derivative.iter().map(norm).collect()
+    derivative
+}
+
+/// Norms of [`difference_vectors`] (1: speed, 2: acceleration, 3: jerk).
+pub fn differences(t: &[f64], positions: &[[f64; 3]], order: usize) -> Vec<f64> {
+    difference_vectors(t, positions, order)
+        .iter()
+        .map(norm)
+        .collect()
+}
+
+/// One scalar series at `entity` named `name`, in `color`, `width` UI points wide. A
+/// `staircase` -- a target that jumps and holds, its corners a millisecond apart -- is
+/// logged with the viewer's per-pixel aggregation off, so that the corners stay corners at
+/// every zoom instead of averaging into a slope.
+#[allow(clippy::too_many_arguments)]
+pub fn log_line(
+    rec: &RecordingStream,
+    entity: &str,
+    name: &str,
+    color: u32,
+    width: f32,
+    staircase: bool,
+    t: &[f64],
+    values: &[f64],
+) -> Result<()> {
+    let mut style = SeriesLines::new()
+        .with_names([name])
+        .with_colors([Color::from_u32(color)])
+        .with_widths([width]);
+    if staircase {
+        style = style.with_aggregation_policy(AggregationPolicy::Off);
+    }
+    rec.log_static(entity, &style)?;
+    let scalars = Scalars::new(values.iter().copied()).columns_of_unit_batches()?;
+    rec.send_columns(entity, [times(t)], scalars)?;
+    Ok(())
+}
+
+/// `limit 0.3 m/s`, `limit 20 m/s³`: a limit line's legend name, the value without
+/// trailing zeros.
+pub fn limit_label(limit: f64, unit: &str) -> String {
+    let value = format!("{limit:.3}");
+    let value = value.trim_end_matches('0').trim_end_matches('.');
+    format!("limit {value} {unit}")
 }
 
 /// One scalar series at `entity`, with an optional grey limit line -- two samples, at the
@@ -94,13 +139,7 @@ pub fn log_scalar(
     values: &[f64],
     limit: Option<(f64, &str)>,
 ) -> Result<()> {
-    let style = SeriesLines::new()
-        .with_names([name])
-        .with_colors([Color::from_u32(color)])
-        .with_widths([2.0]);
-    rec.log_static(entity, &style)?;
-    let scalars = Scalars::new(values.iter().copied()).columns_of_unit_batches()?;
-    rec.send_columns(entity, [times(t)], scalars)?;
+    log_line(rec, entity, name, color, 2.0, false, t, values)?;
     if let (Some((limit, label)), Some(&first), Some(&last)) = (limit, t.first(), t.last()) {
         let entity = format!("{entity}/limit");
         let style = SeriesLines::new()
@@ -165,12 +204,22 @@ pub fn log_derivatives(
 
 #[cfg(test)]
 mod tests {
-    use super::differences;
+    use super::{difference_vectors, differences, limit_label};
+
+    #[test]
+    fn limit_labels_drop_trailing_zeros() {
+        assert_eq!(limit_label(0.3, "m/s"), "limit 0.3 m/s");
+        assert_eq!(limit_label(20.0, "m/s³"), "limit 20 m/s³");
+        assert_eq!(limit_label(1.961, "m/s"), "limit 1.961 m/s");
+    }
 
     #[test]
     fn finite_differences_of_a_step() {
         let t = [0.0, 0.001, 0.002, 0.003];
         let p = [[0.0; 3], [0.0; 3], [0.05, 0.0, 0.0], [0.05, 0.0, 0.0]];
+        let velocity = difference_vectors(&t, &p, 1);
+        assert!((velocity[2][0] - 50.0).abs() < 1e-9, "{velocity:?}");
+        assert_eq!(velocity[2][1..], [0.0, 0.0]);
         let speed = differences(&t, &p, 1);
         assert_eq!(speed[0], 0.0);
         assert!((speed[2] - 50.0).abs() < 1e-9, "{speed:?}");

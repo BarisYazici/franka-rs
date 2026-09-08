@@ -1,5 +1,6 @@
 //! The 3D scene under `world`: the arm as a polyline through the frame origins the model
-//! computes from joint angles, the end effector frame, marker points, and a static trail.
+//! computes from joint angles, the end effector frame, marker points, a static trail, and
+//! a fading one.
 
 use franka::robot_state::IDENTITY_TRANSFORM;
 use franka::{Frame, Model};
@@ -117,6 +118,24 @@ pub fn log_skeleton(
     ]));
     rec.log("world/ee", &frame)?;
     Ok(position)
+}
+
+/// At the stream's current time: `world/{name}` as several strips, each in its own colour
+/// -- a trail whose segments fade with age when the caller re-logs it as time goes on.
+pub fn log_strips(
+    rec: &RecordingStream,
+    name: &str,
+    strips: &[(Vec<[f64; 3]>, u32)],
+) -> Result<()> {
+    let lines = LineStrips3D::new(
+        strips
+            .iter()
+            .map(|(points, _)| LineStrip3D::from_iter(points.iter().map(f32s))),
+    )
+    .with_colors(strips.iter().map(|&(_, color)| Color::from_u32(color)))
+    .with_radii(std::iter::repeat_n(0.003, strips.len()));
+    rec.log(format!("world/{name}").as_str(), &lines)?;
+    Ok(())
 }
 
 /// At the stream's current time: one marker point at `world/{name}`.
