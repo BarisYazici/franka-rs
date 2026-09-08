@@ -132,6 +132,7 @@ cargo run --release --example <name> -- 172.16.0.2
 | `cartesian_impedance_active_control` | A Cartesian impedance controller (the initial pose is the equilibrium) driven through `ActiveControl`'s `read_once` / `write_once`, on both FR3 and FER. Takes `[--duration SEC] [--yes]`. |
 | `cartesian_impedance_figure_eight` | The same `ActiveControl` impedance loop with a moving equilibrium: a figure eight around the start pose, ramped in and out, with a nullspace joint spring and a one-sided virtual floor you can press against. Takes `[--duration SEC] [--period SEC] [--amplitude M] [--floor M] [--yes]`. |
 | `grasp_object` | The gripper: homes it, then grasps an object of the given width. Takes `<hostname> <object-width>`. Needs a Franka Hand. |
+| `nonrealtime_commander` | A non-realtime thread publishes jittery, bursty, stalling Cartesian targets through a lock-free slot; the 1 kHz loop bridges them with a 1 Hz low-pass filter and the rate limiter (`--bridged`, the default), or passes them through so the robot's reflex refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--yes]`. |
 | `readme_joint_move` | The README's "Quick example", byte for byte; CI runs it against the simulator. |
 
 The four `generate_*` examples and `echo_robot_state` are ports of libfranka's examples of

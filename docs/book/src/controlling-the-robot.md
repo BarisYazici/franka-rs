@@ -105,6 +105,41 @@ what `examples/fer_joint_impedance.rs` does, running `control_torques` with
 **Neither rate limiting nor filtering is applied on the `ActiveControl` path**, in this
 crate or in libfranka. There, smooth setpoints are the caller's job.
 
+### Bridging a non-realtime commander
+
+`examples/nonrealtime_commander.rs` is what the filter and the limiter are *for*. Most
+programs that want to move the arm are not 1 kHz programs — a planner, a vision loop, a script
+on a socket, a person at a keyboard — and what they produce is a stream of **targets**:
+irregular, sometimes bursty, sometimes silent for seconds, and every one of them a step. The
+example puts such a commander on its own non-realtime thread. It walks a scripted sequence of
+±5 cm steps in x, y and z inside a ±12 cm box around the start pose, with holds between 0.2 s
+and 1.5 s, one 2 s stall in which nothing is sent, and one burst of 20 targets inside 100 ms
+(about 20 s in all); with `--stdin` the commander is instead whoever writes `x y z` lines
+(metres, relative to the start pose) to standard input. Either way it publishes only the
+*latest* target, through a seqlock of four `AtomicU64` — three `f64`s as bits plus a sequence
+number — that the control callback reads every cycle without blocking or allocating; if it
+catches the writer mid-update it keeps the previous target for that one cycle rather than
+spin.
+
+The callback hands `start pose + target` to `control_cartesian_pose`, and the flag decides
+what the robot sees:
+
+| mode | `limit_rate` | `cutoff_frequency` | what happens to a 5 cm step |
+|---|---|---|---|
+| `--bridged` (default) | `true` | 1 Hz | The filter's gain per 1 ms cycle is `dt / (dt + 1 / (2π f_c))` = 0.0062, so the step becomes a demand of 0.31 m/s decaying with a 0.16 s time constant; the limiter turns that into a jerk-limited ramp to 9 m/s² and a peak of 0.29 m/s (0.37 m/s when a second step lands while the first is still under way). |
+| `--raw` | `false` | `MAX_CUTOFF_FREQUENCY` | The step goes to the robot as a 50 m/s jump. The motion generator refuses it with `cartesian_motion_generator_velocity_discontinuity`; the example prints the robot's error text, calls `automatic_error_recovery()` and exits 0. |
+
+Two details are worth carrying into your own code. The **first setpoint is always the start
+pose**, whatever the slot holds: on FCI v10 the first command of a motion is its own filter
+reference (libfranka's `initialized_filter_`), so a target that arrived before the first cycle
+would go out unfiltered and unlimited — exactly the jump the bridge exists to prevent. And the
+motion ends not when the commander is done but when the commanded `O_T_EE_c` has *settled* on
+the last target (within 1 mm for 250 cycles), so the final `motion_finished` is sent from rest;
+a measured deviation of more than 30 cm from the start freezes the target where the command is
+and ends the same way. `--log PATH` records one row per cycle — the raw target, the echoed
+`O_T_EE_c`, the measured `O_T_EE` — into a `Vec` sized before the loop, and
+`bench/commander/plot.py` draws it with the stall and the burst marked.
+
 ## `ControlException` and the control log
 
 A motion that ends abnormally returns `FrankaError::Control(ControlException)`. That is the
