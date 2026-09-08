@@ -185,8 +185,8 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let options = RecorderOptions::default();
     let run_path = args.out.join("run.rrd");
     let recorder = match &args.live {
-        Some(addr) => Recorder::to_viewer(addr, model, kind, options)?,
-        None => Recorder::to_file(&run_path, model, kind, options)?,
+        Some(addr) => Recorder::to_viewer(addr, model, kind, options.clone())?,
+        None => Recorder::to_file(&run_path, model, kind, options.clone())?,
     };
     // A second model for the replay: the recorder owns the first on its thread.
     let model = robot.load_model()?;

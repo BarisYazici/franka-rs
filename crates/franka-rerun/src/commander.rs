@@ -14,7 +14,7 @@ use rerun::blueprint::{
 use rerun::{RecordingStream, TextLog, TextLogLevel};
 
 use crate::series::{Limits, Peaks, PositionSeries};
-use crate::{distance, scene, series, Result, COMMANDED, MEASURED, TARGET, TIMELINE};
+use crate::{distance, scene, series, Meshes, Result, COMMANDED, MEASURED, TARGET, TIMELINE};
 
 /// A gap between two target changes longer than this is a stall, s.
 pub const STALL_SECONDS: f64 = 1.5;
@@ -161,13 +161,15 @@ impl CommanderLog {
     }
 
     /// Records everything: `position/*`, `derivatives/*`, `events`, `world/*`. `every`
-    /// decimates the 3D scene (1 logs every row).
+    /// decimates the 3D scene (1 logs every row); `meshes` draws the arm with link meshes
+    /// besides the skeleton.
     pub fn record(
         &self,
         rec: &RecordingStream,
         model: &Model,
         limits: &Limits,
         every: usize,
+        meshes: Option<&Meshes>,
     ) -> Result<Summary> {
         let traces = [
             ("target (raw)", TARGET, 1.0, &self.target),
@@ -200,11 +202,14 @@ impl CommanderLog {
             MEASURED & 0xffff_ff40,
         );
         scene::log_static(rec, Some(trail))?;
+        if let Some(meshes) = meshes {
+            meshes.log_static(rec)?;
+        }
         let f_t_ee = match self.q.as_ref() {
             Some(q) => scene::tool_offset(model, &q[0], &self.measured[0]),
             None => IDENTITY_TRANSFORM,
         };
-        let fk_gap = self.log_scene(rec, model, &f_t_ee, every)?;
+        let fk_gap = self.log_scene(rec, model, &f_t_ee, every, meshes)?;
         Ok(Summary {
             commanded,
             target_speed: target_speed.iter().copied().fold(0.0, f64::max),
@@ -221,12 +226,16 @@ impl CommanderLog {
         model: &Model,
         f_t_ee: &[f64; 16],
         every: usize,
+        meshes: Option<&Meshes>,
     ) -> Result<Option<f64>> {
         let mut fk_gap = None;
         for i in (0..self.rows()).step_by(every.max(1)) {
             rec.set_duration_secs(TIMELINE, self.t[i]);
             if let Some(q) = self.q.as_ref().map(|rows| &rows[i]) {
                 let ee = scene::log_arm(rec, model, q, f_t_ee)?;
+                if let Some(meshes) = meshes {
+                    meshes.log_poses(rec, model, q)?;
+                }
                 let gap = distance(&ee, &self.measured[i]);
                 fk_gap = Some(fk_gap.map_or(gap, |g: f64| g.max(gap)));
             }

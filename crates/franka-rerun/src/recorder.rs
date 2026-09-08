@@ -29,7 +29,7 @@ use crate::flight::{send_blueprint, FlightLogger, FlightOptions, Summary};
 use crate::{Result, RobotKind};
 
 /// The recorder's tuning.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RecorderOptions {
     /// Records the channel holds before [`Recorder::push`] starts dropping; 4096 is four
     /// seconds at 1 kHz.
@@ -67,6 +67,8 @@ pub struct Stats {
 
 /// See the module documentation.
 pub struct Recorder {
+    /// The recording, for [`Recorder::stream`].
+    rec: RecordingStream,
     sender: SyncSender<Record>,
     pushed: AtomicUsize,
     dropped: AtomicUsize,
@@ -108,6 +110,26 @@ impl Recorder {
         Recorder::with_stream(rec, model, kind, options)
     }
 
+    /// Both at once: streams to the viewer at `addr` and records into the `.rrd` at `path`
+    /// (one stream with two sinks).
+    pub fn to_viewer_and_file(
+        addr: &str,
+        path: &std::path::Path,
+        model: Model,
+        kind: RobotKind,
+        options: RecorderOptions,
+    ) -> Result<Recorder> {
+        use rerun::external::re_uri::RedapUri;
+        use rerun::sink::{FileSink, GrpcSink};
+        let url = proxy_url(addr);
+        let RedapUri::Proxy(uri) = url.parse::<RedapUri>()? else {
+            return Err(format!("{url}: not a viewer proxy URL").into());
+        };
+        let rec = RecordingStreamBuilder::new("franka_rs")
+            .set_sinks((GrpcSink::new(uri), FileSink::new(path)?))?;
+        Recorder::with_stream(rec, model, kind, options)
+    }
+
     /// Spawns a `rerun` viewer from `PATH` and streams to it.
     pub fn spawn(model: Model, kind: RobotKind, options: RecorderOptions) -> Result<Recorder> {
         let rec = RecordingStreamBuilder::new("franka_rs").spawn()?;
@@ -115,7 +137,9 @@ impl Recorder {
     }
 
     /// Records into any stream, e.g. one with several sinks. Sends the flight recorder's
-    /// blueprint first.
+    /// blueprint first; the static setup (series styles, the base and end effector axes, the
+    /// meshes) goes out with the background thread's first batch, so a live viewer shows the
+    /// arm as soon as the first records arrive, whatever the sink.
     pub fn with_stream(
         rec: RecordingStream,
         model: Model,
@@ -127,9 +151,12 @@ impl Recorder {
         }
         send_blueprint(&rec)?;
         let (sender, receiver) = mpsc::sync_channel::<Record>(options.capacity);
+        let thread_rec = rec.clone();
         let thread = std::thread::Builder::new()
             .name("franka-rerun-recorder".into())
             .spawn(move || -> std::result::Result<Summary, String> {
+                drop_realtime_priority();
+                let rec = thread_rec;
                 let mut logger = FlightLogger::new(&rec, &model, kind, options.flight)
                     .map_err(|e| e.to_string())?;
                 let mut batch: Vec<Record> = Vec::with_capacity(options.capacity);
@@ -155,6 +182,7 @@ impl Recorder {
                 logger.finish(None).map_err(|e| e.to_string())
             })?;
         Ok(Recorder {
+            rec,
             sender,
             pushed: AtomicUsize::new(0),
             dropped: AtomicUsize::new(0),
@@ -176,6 +204,15 @@ impl Recorder {
         {
             self.dropped.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    /// A handle on the recording, for logging extra entities into it from a thread that is
+    /// **not** the realtime one (the SDK allocates and may block): `stream.set_duration_secs(
+    /// TIMELINE, t)` then `stream.log(...)`, on the same `robot_time` timeline as everything
+    /// else. Handles are cheap `Arc` clones; what is logged through one before
+    /// [`Recorder::finish`] is flushed with the rest.
+    pub fn stream(&self) -> RecordingStream {
+        self.rec.clone()
     }
 
     /// Records dropped so far.
@@ -205,4 +242,40 @@ impl Recorder {
             summary,
         })
     }
+}
+
+/// Puts the calling thread back on the normal scheduler.
+///
+/// A control program is often started with a realtime policy for the whole process (for
+/// instance `chrt -f 80 ...`), which every thread it spawns inherits. The recorder thread and
+/// a commander thread then compete with the 1 kHz control loop at the same priority, and a
+/// burst of Rerun serialisation can cost the loop a cycle. Best effort: a failure (no
+/// permission, not Linux) is ignored.
+pub fn drop_realtime_priority() {
+    #[cfg(target_os = "linux")]
+    // SAFETY: `sched_setscheduler` on the calling thread with a zeroed `sched_param`; the
+    // struct is plain data and the pointer is valid for the call.
+    unsafe {
+        let param: libc::sched_param = std::mem::zeroed();
+        libc::sched_setscheduler(0, libc::SCHED_OTHER, &param);
+    }
+}
+
+/// Puts the calling thread on `SCHED_FIFO` at `priority`, best effort, returning whether it
+/// worked. Call it on the control thread right before the control loop, after the recorder
+/// and the Rerun SDK have spawned their threads, so that only the loop runs realtime.
+pub fn raise_realtime_priority(priority: i32) -> bool {
+    #[cfg(target_os = "linux")]
+    // SAFETY: as in `drop_realtime_priority`; `sched_param` is plain data.
+    let raised = unsafe {
+        let mut param: libc::sched_param = std::mem::zeroed();
+        param.sched_priority = priority;
+        libc::sched_setscheduler(0, libc::SCHED_FIFO, &param) == 0
+    };
+    #[cfg(not(target_os = "linux"))]
+    let raised = {
+        let _ = priority;
+        false
+    };
+    raised
 }

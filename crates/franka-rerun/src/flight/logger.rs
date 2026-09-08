@@ -4,19 +4,13 @@
 //! errors and mode, which flags have fired, the record index). [`super::log_records`] feeds it
 //! one batch; the [`crate::Recorder`] feeds it every ~100 ms from a background thread.
 
-use franka::robot_state::IDENTITY_TRANSFORM;
 use franka::{Errors, Model, Record, RobotMode, RobotState};
-use rerun::{
-    Arrows3D, Color, Points3D, RecordingStream, Scalars, TextLog, TextLogLevel, TimeColumn,
-};
+use rerun::{RecordingStream, Scalars, TextLog, TextLogLevel, TimeColumn};
 
-use super::style::{self, Flags, AXES, COLLISION, CONTACT, FORCE, JOINT_NAMES, QUIET};
+use super::cartesian::{self, Cartesian};
+use super::style::{self, Flags, AXES, JOINT_NAMES};
 use super::{FlightOptions, Summary};
-use crate::{scene, Result, RobotKind, TIMELINE};
-
-/// Sphere radius at a joint, m, plus this much per Nm of `|tau_ext_hat_filtered|`.
-const JOINT_RADIUS: f64 = 0.02;
-const JOINT_RADIUS_PER_NM: f64 = 0.0015;
+use crate::{scene, Meshes, Result, RobotKind, TIMELINE};
 
 /// Where the timeline comes from; decided on the first batch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,12 +22,17 @@ enum Timebase {
     Index,
 }
 
-/// Writes records to a stream batch by batch; see the module documentation.
+/// Writes records to a stream batch by batch; see the module documentation. The 3D scene and
+/// the contact estimate are in `view.rs`.
 pub struct FlightLogger<'m> {
-    rec: RecordingStream,
-    model: &'m Model,
-    kind: RobotKind,
-    options: FlightOptions,
+    pub(super) rec: RecordingStream,
+    pub(super) model: &'m Model,
+    pub(super) kind: RobotKind,
+    pub(super) options: FlightOptions,
+    /// The link meshes, when `options.meshes` named a directory.
+    pub(super) meshes: Option<Meshes>,
+    /// Whether the static parts have gone out (with the first batch).
+    static_sent: bool,
     timebase: Timebase,
     /// The previous record's errors and mode, once there is one.
     previous: Option<(Errors, RobotMode)>,
@@ -44,7 +43,16 @@ pub struct FlightLogger<'m> {
     /// The previous record's four flag arrays, for the rising edges.
     flags: Option<Flags>,
     last_time: f64,
-    summary: Summary,
+    pub(super) summary: Summary,
+    /// The baseline of `tau_ext_hat_filtered` the contact estimate is taken against.
+    pub(super) tare: super::Tare,
+    /// Whether the contact marker is currently in the scene (so it can be cleared).
+    pub(super) contact_shown: bool,
+    /// Whether the first-estimate and the at-collision event lines were written.
+    pub(super) contact_reported: bool,
+    pub(super) collision_contact_reported: bool,
+    /// The finite differences of the sent position, for records with a Cartesian command.
+    pub(super) cartesian: Cartesian,
 }
 
 /// The commanded joint positions: the command's `q_c` when the cycle sent a joint-position
@@ -63,16 +71,17 @@ fn force_norm(state: &RobotState) -> f64 {
 }
 
 impl<'m> FlightLogger<'m> {
-    /// Logs the static parts (series styles, the 3D base, the end effector axes) and returns a
-    /// logger ready for [`FlightLogger::log_batch`].
+    /// Finds the meshes and returns a logger ready for [`FlightLogger::log_batch`]. The static
+    /// parts (series styles, the 3D base and workspace, the end effector axes, the mesh
+    /// assets) go out with the first batch, so that a live viewer gets them together with
+    /// the first poses.
     pub fn new(
         rec: &RecordingStream,
         model: &'m Model,
         kind: RobotKind,
         options: FlightOptions,
     ) -> Result<FlightLogger<'m>> {
-        style::log_styles(rec)?;
-        scene::log_static(rec, None)?;
+        let meshes = options.meshes.as_deref().map(Meshes::find).transpose()?;
         Ok(FlightLogger {
             rec: rec.clone(),
             model,
@@ -81,6 +90,8 @@ impl<'m> FlightLogger<'m> {
                 every: options.every.max(1),
                 ..options
             },
+            meshes,
+            static_sent: false,
             timebase: Timebase::Undecided,
             previous: None,
             joint_contact_seen: [false; 7],
@@ -90,6 +101,11 @@ impl<'m> FlightLogger<'m> {
             flags: None,
             last_time: 0.0,
             summary: Summary::default(),
+            tare: super::Tare::default(),
+            contact_shown: false,
+            contact_reported: false,
+            collision_contact_reported: false,
+            cartesian: Cartesian::default(),
         })
     }
 
@@ -119,6 +135,15 @@ impl<'m> FlightLogger<'m> {
         if records.is_empty() {
             return Ok(());
         }
+        if !self.static_sent {
+            self.static_sent = true;
+            style::log_styles(&self.rec)?;
+            cartesian::log_cartesian_styles(&self.rec, self.kind)?;
+            scene::log_static(&self.rec, None)?;
+            if let Some(meshes) = &self.meshes {
+                meshes.log_static(&self.rec)?;
+            }
+        }
         let first = self.summary.records;
         let t = self.times(first, records);
         if first == 0 {
@@ -141,6 +166,7 @@ impl<'m> FlightLogger<'m> {
             let (m, c) = (&r.state.O_T_EE, &r.state.O_T_EE_c);
             [m[12], m[13], m[14], c[12], c[13], c[14]]
         })?;
+        self.log_cartesian(first, &t, records)?;
         self.send_series("flags/joint_contact", &t, records, |r| {
             r.state.joint_contact
         })?;
@@ -171,6 +197,7 @@ impl<'m> FlightLogger<'m> {
             if (first + i).is_multiple_of(self.options.every) {
                 self.log_scene(time, state)?;
             }
+            self.log_contact(first + i, time, state)?;
         }
         Ok(())
     }
@@ -189,57 +216,7 @@ impl<'m> FlightLogger<'m> {
         Ok(())
     }
 
-    /// The arm, the joint spheres and the external force arrow at `time`.
-    fn log_scene(&self, time: f64, state: &RobotState) -> Result<()> {
-        self.rec.set_duration_secs(TIMELINE, time);
-        let points = scene::skeleton(self.model, &state.q, &state.F_T_EE);
-        let ee_pose = self.model.pose_q(
-            franka::Frame::EndEffector,
-            &state.q,
-            &state.F_T_EE,
-            &IDENTITY_TRANSFORM,
-        );
-        let ee = scene::log_skeleton(&self.rec, &points, &ee_pose)?;
-        let flags = Flags::of(state);
-        let joints: [[f32; 3]; 7] = std::array::from_fn(|j| points[j + 1].map(|v| v as f32));
-        let colors: [Color; 7] = std::array::from_fn(|j| {
-            Color::from_u32(if flags.joint_collision[j] {
-                COLLISION
-            } else if flags.joint_contact[j] {
-                CONTACT
-            } else {
-                QUIET
-            })
-        });
-        let radii: [f32; 7] = std::array::from_fn(|j| {
-            (JOINT_RADIUS + JOINT_RADIUS_PER_NM * state.tau_ext_hat_filtered[j].abs()) as f32
-        });
-        let spheres = Points3D::new(joints)
-            .with_colors(colors)
-            .with_radii(radii)
-            .with_labels(JOINT_NAMES)
-            .with_show_labels(false);
-        self.rec.log("world/joints", &spheres)?;
-
-        let f = &state.O_F_ext_hat_K;
-        let scale = self.options.force_scale;
-        let vector = [f[0] * scale, f[1] * scale, f[2] * scale].map(|v| v as f32);
-        let color = if flags.cartesian_collision.iter().any(|&c| c) {
-            COLLISION
-        } else if flags.cartesian_contact.iter().any(|&c| c) {
-            CONTACT
-        } else {
-            FORCE
-        };
-        let arrow = Arrows3D::from_vectors([vector])
-            .with_origins([ee.map(|v| v as f32)])
-            .with_colors([Color::from_u32(color)])
-            .with_radii([0.006]);
-        self.rec.log("world/force", &arrow)?;
-        Ok(())
-    }
-
-    fn event(&mut self, time: f64, level: &str, text: String) -> Result<()> {
+    pub(super) fn event(&mut self, time: f64, level: &str, text: String) -> Result<()> {
         self.rec.set_duration_secs(TIMELINE, time);
         self.rec
             .log("events", &TextLog::new(text).with_level(level))?;

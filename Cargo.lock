@@ -1051,8 +1051,11 @@ name = "franka-rerun"
 version = "0.1.0"
 dependencies = [
  "franka-rs",
+ "libc",
+ "nalgebra",
  "rerun",
  "serde_json",
+ "urdf-rs",
 ]
 
 [[package]]

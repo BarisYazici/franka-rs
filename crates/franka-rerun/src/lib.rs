@@ -5,23 +5,27 @@
 //! angles, [`commander`] reads the CSV that `examples/nonrealtime_commander.rs --log` writes
 //! and records all of it, [`flight`] replays a control log (`Vec<franka::Record>`, what a
 //! [`franka::ControlException`] carries) as a flight recording -- contact and collision flags,
-//! external wrench, commanded versus measured, errors -- and [`recorder`] streams the same
-//! from inside a running control loop. The `franka-rerun` binary is the command line over the
-//! two replays.
+//! external wrench, commanded versus measured, errors, and where on the arm the external
+//! torques say it was touched ([`flight::contact`]) -- [`recorder`] streams the same from
+//! inside a running control loop, and [`meshes`] draws the arm with Franka's link meshes. The
+//! `franka-rerun` binary is the command line over the two replays.
 //!
 //! Everything is logged on the [`TIMELINE`] `robot_time`: seconds since the motion started
 //! for a commander CSV, the robot's own clock for a control log.
 
 pub mod commander;
 pub mod flight;
+pub mod meshes;
 pub mod recorder;
 pub mod scene;
 pub mod series;
 
 pub use commander::CommanderLog;
 pub use flight::{
-    load_records, log_records, replay_exception, save_records, FlightLogger, FlightOptions, Summary,
+    load_records, log_records, replay_exception, save_records, ContactEstimate, ContactOptions,
+    FlightLogger, FlightOptions, Summary,
 };
+pub use meshes::Meshes;
 pub use recorder::{Recorder, RecorderOptions, Stats};
 pub use series::{Limits, Peaks};
 

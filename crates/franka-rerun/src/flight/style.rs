@@ -68,6 +68,28 @@ impl Flags {
             cartesian_collision: state.cartesian_collision.map(|v| v > 0.5),
         }
     }
+
+    pub(super) fn any_cartesian_contact(&self) -> bool {
+        self.cartesian_contact.iter().any(|&c| c)
+    }
+
+    pub(super) fn any_cartesian_collision(&self) -> bool {
+        self.cartesian_collision.iter().any(|&c| c)
+    }
+
+    /// Any contact flag, joint or Cartesian.
+    pub(super) fn any_contact(&self) -> bool {
+        self.joint_contact.iter().any(|&c| c) || self.any_cartesian_contact()
+    }
+
+    /// Any collision flag, joint or Cartesian.
+    pub(super) fn any_collision(&self) -> bool {
+        self.joint_collision.iter().any(|&c| c) || self.any_cartesian_collision()
+    }
+
+    pub(super) fn any(&self) -> bool {
+        self.any_contact() || self.any_collision()
+    }
 }
 
 /// `n` shades of `base`, the first the base itself, the rest blended towards white.
@@ -91,7 +113,7 @@ fn palette(colors: &[u32]) -> Vec<Color> {
 /// The `SeriesLines` style -- legend names, colours, widths -- of every series entity.
 pub(super) fn log_styles(rec: &RecordingStream) -> Result<()> {
     let joints = palette(&JOINTS);
-    let styles: [(&str, &[&str], Vec<Color>); 12] = [
+    let styles: [(&str, &[&str], Vec<Color>); 13] = [
         ("joints/q", &JOINT_NAMES, joints.clone()),
         ("joints/q_d", &JOINT_NAMES, joints.clone()),
         ("joints/dq", &JOINT_NAMES, joints.clone()),
@@ -104,6 +126,7 @@ pub(super) fn log_styles(rec: &RecordingStream) -> Result<()> {
         ("flags/joint_collision", &JOINT_NAMES, shades(COLLISION, 7)),
         ("flags/cartesian_contact", &AXES, shades(CONTACT, 6)),
         ("flags/cartesian_collision", &AXES, shades(COLLISION, 6)),
+        ("contact/link", &["link"], palette(&[FORCE])),
     ];
     for (entity, names, colors) in styles {
         let style = SeriesLines::new()

@@ -117,7 +117,7 @@ thing to point at a new PC or NIC.
 
 Every example takes the robot's hostname as `argv[1]` and reads `RealtimeConfig` from
 `FRANKA_REALTIME`, so the same binary runs against a robot and against the simulator. All
-but the last live in `crates/franka-rs/examples/`:
+but the last two live in `crates/franka-rs/examples/`:
 
 ```sh
 cargo run --release --example <name> -- 172.16.0.2
@@ -140,6 +140,7 @@ cargo run --release --example <name> -- 172.16.0.2
 | `automatic_error_recovery` | A command-line `automatic_error_recovery()`: prints the robot mode and error flags before and after clearing a reflex. Read-only apart from the recovery; the arm does not move. |
 | `readme_joint_move` | The README's "Quick example", byte for byte; CI runs it against the simulator. |
 | `reflex_replay` (in `crates/franka-rerun/examples/`) | The [flight recorder](./flight-recorder.md): a slow joint swing with lowered collision thresholds, recorded live with `Recorder`, and the control log of the reflex a push provokes written as a Rerun recording. `cargo run --release -p franka-rerun --example reflex_replay -- <hostname>`. |
+| `commander_live` (in `crates/franka-rerun/examples/`) | `nonrealtime_commander` streamed live into a Rerun viewer: the raw staircase target, the sent and measured position per axis, the arm (with `--meshes DIR`, Franka's link meshes), the derivatives of the sent position against the limits, and the commander's events as they happen. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). Tested on the simulator. |
 
 The four `generate_*` examples and `echo_robot_state` are ports of libfranka's examples of
 the same name, so their trajectories can be compared directly.

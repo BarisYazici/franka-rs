@@ -5,7 +5,7 @@
 //!
 //! [`log_records`] writes one log to a stream, [`replay_exception`] wraps it for an exception,
 //! [`save_records`] / [`load_records`] move a log through JSON, and [`FlightLogger`] is the
-//! streaming core the [`crate::Recorder`] drives live. Everything is on the [`TIMELINE`]
+//! streaming core the [`crate::Recorder`] drives live. Everything is on the [`crate::TIMELINE`]
 //! `robot_time`: `state.time` in seconds (the robot's millisecond counter), or the record index
 //! in milliseconds when `time` never changes over the log.
 //!
@@ -17,36 +17,54 @@
 //! | `joints/dq`, `joints/tau_J`, `joints/tau_J_d`, `joints/tau_ext` | joint velocities, measured torques, desired torques, `tau_ext_hat_filtered` |
 //! | `ee/F_ext` | `O_F_ext_hat_K`: force (N) and torque (Nm) on the stiffness frame in the base frame |
 //! | `ee/position` | measured `O_T_EE` translation (`x`, `y`, `z`) against the commanded `O_T_EE_c` (`x_c`, ...) |
+//! | `ee/position/{x,y,z}`, `ee/derivatives/{speed,acceleration,jerk}` | for records whose command carries an `O_T_EE_c`: the sent position against the measured one per axis, and the norms of its finite differences against the limits (see [`cartesian`]) |
 //! | `flags/joint_contact`, `flags/joint_collision` | seven 0/1 series each, amber and red |
 //! | `flags/cartesian_contact`, `flags/cartesian_collision` | six 0/1 series each (`Fx`..`Tz`) |
-//! | `world/*` | the arm, a sphere per joint (grey, amber on contact, red on collision, growing with `\|tau_ext\|`), the external force as an arrow from the end effector, the end effector axes |
-//! | `events` | every change of `current_errors` and `robot_mode`, the first rising edge of every flag, and `motion aborted: ...` at the end |
+//! | `world/*` | the arm, a sphere per joint (grey, amber on contact, red on collision, growing with `\|tau_ext\|`), the external force as an arrow from the end effector, the end effector axes, a faint workspace box, the sent position of a Cartesian command |
+//! | `world/links/*` | with [`FlightOptions::meshes`]: Franka's link meshes on the link frames (see [`crate::meshes`]) |
+//! | `world/contact/estimate`, `world/contact/force` | where the external joint torques say the arm is being touched, and the force there (see [`contact`]); present while a flag is set or a torque exceeds the noise floor |
+//! | `contact/link` | the estimated link over time |
+//! | `events` | every change of `current_errors` and `robot_mode`, the first rising edge of every flag, the first contact estimate and the one at the collision, and `motion aborted: ...` at the end |
 
+mod blueprint;
+pub mod cartesian;
+pub mod contact;
 mod logger;
+mod skeleton;
 mod style;
+mod tare;
+mod view;
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use franka::{ControlException, Errors, Model, Record};
-use rerun::blueprint::{
-    Blueprint, BlueprintActivation, Grid, Horizontal, Spatial3DView, Tabs, TextLogView, TimePanel,
-    TimeSeriesView, Vertical,
-};
 use rerun::RecordingStream;
 
+pub use blueprint::{send_blueprint, send_commander_blueprint};
+pub use cartesian::log_target_styles;
+pub use contact::{ContactEstimate, ContactOptions};
 pub use logger::FlightLogger;
 pub use style::{COLLISION, CONTACT, QUIET};
+pub use tare::Tare;
 
-use crate::{Result, RobotKind, TIMELINE};
+use crate::series::Peaks;
+use crate::{Result, RobotKind};
 
 /// How a log is drawn.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FlightOptions {
     /// Length of the external force arrow, m per N. 0.01 draws 10 N as 10 cm.
     pub force_scale: f64,
     /// Log every `every`-th record to the 3D scene (the series always carry every record).
+    /// The contact estimate follows it too, except that a record with a contact or collision
+    /// flag set is always estimated.
     pub every: usize,
+    /// A directory of link meshes ([`crate::Meshes::find`]) to draw the arm with, besides the
+    /// skeleton.
+    pub meshes: Option<PathBuf>,
+    /// The contact estimator's noise floor and grid.
+    pub contact: ContactOptions,
 }
 
 impl Default for FlightOptions {
@@ -54,6 +72,8 @@ impl Default for FlightOptions {
         FlightOptions {
             force_scale: 0.01,
             every: 1,
+            meshes: None,
+            contact: ContactOptions::default(),
         }
     }
 }
@@ -84,6 +104,12 @@ pub struct Summary {
     pub events: usize,
     /// The names in the `motion aborted` line, empty when there was none.
     pub motion_errors: Vec<&'static str>,
+    /// Records that got a contact estimate, and the last estimate.
+    pub contact_estimates: usize,
+    pub last_contact: Option<ContactEstimate>,
+    /// The peak speed, acceleration and jerk norms of the sent position, when any record
+    /// carried a Cartesian command (see [`cartesian`]).
+    pub commanded_peaks: Option<Peaks>,
 }
 
 impl Summary {
@@ -123,6 +149,23 @@ impl fmt::Display for Summary {
         if !self.motion_errors.is_empty() {
             write!(f, "\nmotion aborted: {}", self.motion_errors.join(", "))?;
         }
+        if let Some(peaks) = &self.commanded_peaks {
+            write!(
+                f,
+                "\npeak sent position derivatives: {:.3} m/s, {:.2} m/s^2, {:.0} m/s^3",
+                peaks.speed, peaks.acceleration, peaks.jerk
+            )?;
+        }
+        if let Some(contact) = &self.last_contact {
+            let [x, y, z] = contact.point;
+            let [fx, fy, fz] = contact.force;
+            write!(
+                f,
+                "\nlast of {} contact estimates: {contact}; point [{x:.3}, {y:.3}, {z:.3}] m, \
+                 force [{fx:.1}, {fy:.1}, {fz:.1}] N",
+                self.contact_estimates
+            )?;
+        }
         Ok(())
     }
 }
@@ -138,7 +181,7 @@ pub fn log_records(
     options: &FlightOptions,
     last_motion_errors: Option<&Errors>,
 ) -> Result<Summary> {
-    let mut logger = FlightLogger::new(rec, model, kind, *options)?;
+    let mut logger = FlightLogger::new(rec, model, kind, options.clone())?;
     logger.log_batch(records)?;
     logger.finish(last_motion_errors)
 }
@@ -188,46 +231,4 @@ pub fn load_records(path: &Path) -> Result<Vec<Record>> {
         return Err(format!("{}: no records", path.display()).into());
     }
     Ok(records)
-}
-
-/// The default layout: the 3D scene on the left; the joint, end effector and flag plots on
-/// the right (commanded and measured `q` share one plot, the torques and the flags are tabs);
-/// the event log along the bottom; the time panel on `robot_time`.
-pub fn send_blueprint(rec: &RecordingStream) -> Result<()> {
-    let plot = |name: &str, origin: &str| TimeSeriesView::new(name).with_origin(origin);
-    let q = TimeSeriesView::new("q vs q_d")
-        .with_origin("joints")
-        .with_contents(["+ $origin/q", "+ $origin/q_d"]);
-    let velocity = plot("dq", "joints/dq");
-    let torques = Tabs::new([
-        plot("tau_ext", "joints/tau_ext").into(),
-        plot("tau_J", "joints/tau_J").into(),
-        plot("tau_J_d", "joints/tau_J_d").into(),
-    ]);
-    let flags = Tabs::new([
-        plot("joint contact", "flags/joint_contact").into(),
-        plot("joint collision", "flags/joint_collision").into(),
-        plot("cartesian contact", "flags/cartesian_contact").into(),
-        plot("cartesian collision", "flags/cartesian_collision").into(),
-    ]);
-    let plots = Grid::new([
-        q.into(),
-        torques.into(),
-        plot("F_ext", "ee/F_ext").into(),
-        plot("position", "ee/position").into(),
-        velocity.into(),
-        flags.into(),
-    ])
-    .with_grid_columns(2);
-    let top = Horizontal::new([
-        Spatial3DView::new("arm").with_origin("world").into(),
-        plots.into(),
-    ])
-    .with_column_shares([2.0, 3.0]);
-    let events = TextLogView::new("events").with_origin("events");
-    let root = Vertical::new([top.into(), events.into()]).with_row_shares([4.0, 1.0]);
-    Blueprint::new(root)
-        .with_time_panel(TimePanel::new().with_timeline(TIMELINE))
-        .send(rec, BlueprintActivation::default())?;
-    Ok(())
 }

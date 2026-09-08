@@ -37,7 +37,7 @@ rerun bridged.rrd
 ```
 
 ```
-franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N]
+franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR]
 ```
 
 - `--robot fr3` plots against the FR3 limits (`franka::MAX_TRANSLATIONAL_*`) and draws the
@@ -46,7 +46,8 @@ franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N
 - `--robot fer` uses the FER limits (`franka::rate_limiting::fer`) and the crate's built-in
   FER model (`Model::native_fer()`); no URDF.
 - `-o` defaults to the input path with `.rrd`; `--every N` logs every N-th row to the 3D
-  scene (the time series always carry every row).
+  scene (the time series always carry every row); `--meshes DIR` draws the arm with Franka's
+  link meshes (below).
 
 The tool prints the peak speed, acceleration and jerk norms of the commanded position next
 to the limits, the raw target's implied speed (50 m/s at a 5 cm step) and, for the 3D scene,
@@ -86,11 +87,13 @@ rerun reflex.rrd
 ```
 
 ```
-franka-rerun log <records.json> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--force-scale M]
+franka-rerun log <records.json> --robot fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR] [--force-scale M] [--noise-floor NM]
 ```
 
-`--robot`, `--urdf`, `-o` and `--every` as above; `--force-scale` is the length of the
-external force arrow in metres per newton (default 0.01). The JSON is what
+`--robot`, `--urdf`, `-o`, `--every` and `--meshes` as above; `--force-scale` is the length
+of the external force arrows in metres per newton (default 0.01), `--noise-floor` the
+external joint torque below which the contact estimate stays quiet (default 1 Nm). The JSON
+is what
 `franka_rerun::save_records` writes: a `Vec<franka::Record>` through `serde_json` with the
 `serde` feature of `franka-rs` (`Errors` as lists of names, `time` in milliseconds, floats
 round-tripped exactly). The last record's `last_motion_errors` is taken as the reflex
@@ -105,15 +108,78 @@ the record index in milliseconds when `time` never changes over the log.
 | `joints/dq`, `joints/tau_J`, `joints/tau_J_d`, `joints/tau_ext` | joint velocities, measured torques, desired torques, `tau_ext_hat_filtered` |
 | `ee/F_ext` | `O_F_ext_hat_K`: force (N) and torque (Nm) on the stiffness frame, in the base frame |
 | `ee/position` | measured `O_T_EE` translation (`x`, `y`, `z`) against the commanded `O_T_EE_c` (`x_c`, `y_c`, `z_c`) |
+| `ee/position/x`, `ee/position/y`, `ee/position/z` | for records whose command carries an `O_T_EE_c` (a Cartesian pose loop): the *sent* position against the measured one, per axis |
+| `ee/derivatives/speed`, `ee/derivatives/acceleration`, `ee/derivatives/jerk` | for the same records: norms of the first, second and third finite differences of the sent position across consecutive records (carried across batches when streaming), each with the robot's limit as a grey line at `.../limit` |
 | `flags/joint_contact`, `flags/joint_collision` | seven 0/1 series each, amber and red |
 | `flags/cartesian_contact`, `flags/cartesian_collision` | six 0/1 series each, `Fx` .. `Tz` |
-| `world/*` | the arm from the logged `q` and `F_T_EE`; a sphere per joint, grey, amber on contact, red on collision, its radius growing with `\|tau_ext\|`; the external force as an arrow from the end effector, coloured by the Cartesian flags; the end effector axes |
-| `events` | every change of `current_errors` (which names were set, which cleared) and of `robot_mode`, the first rising edge of every flag (`joint 4 contact`, `cartesian collision on Fz`), and `motion aborted: <names>` at the last record |
+| `world/*` | the arm from the logged `q` and `F_T_EE`; a sphere per joint, grey, amber on contact, red on collision, its radius growing with `\|tau_ext\|`; the external force as an arrow from the end effector, coloured by the Cartesian flags; the end effector axes; a faint wireframe box around the workspace (so that a live viewer frames the arm's reach from the first frame, before the poses arrive); with `--meshes`, the link meshes under `world/links`; `world/commanded`, the sent position, for Cartesian commands |
+| `world/contact/estimate`, `world/contact/force` | where the external joint torques say the arm is being touched, and the force there (below); present while a flag is set or a torque exceeds the noise floor, coloured like the flags, the marker growing with the force |
+| `contact/link` | the estimated link over time |
+| `events` | every change of `current_errors` (which names were set, which cleared) and of `robot_mode`, the first rising edge of every flag (`joint 4 contact`, `cartesian collision on Fz`), the first contact estimate and the one at the collision, and `motion aborted: <names>` at the last record |
 
 The layout: the 3D scene on the left; on the right `q` and `q_d` in one plot, the torques
-as tabs, `F_ext`, the position, `dq`, and the four flag plots as tabs; the events along the
-bottom. The tool prints a `Summary`: records and span, rising edges per flag family, error
-and mode changes, the peak `|F_ext|` and where, the peak `|tau_ext|` and on which joint.
+and the contact link as tabs, `F_ext`, the position (with the per-axis plots and the
+derivatives of a Cartesian command as tabs behind it), `dq`, and the four flag plots as
+tabs; the events along the bottom. The tool prints a `Summary`: records and span, rising edges per
+flag family, error and mode changes, the peak `|F_ext|` and where, the peak `|tau_ext|` and
+on which joint, and the last contact estimate.
+
+### Where the contact was: `flight::contact`
+
+`O_F_ext_hat_K` is the external wrench the robot transports to the stiffness frame, which
+says nothing about *where* on the arm it was applied. The seven `tau_ext_hat_filtered` do:
+a force `F` at a point `c` on link `i` loads joints `1..=i` with `tau_k = z_k . ((c - o_k) x
+F)` (`o_k`, `z_k` the origin and axis of joint `k` from `Model::pose_q`) and leaves the
+joints beyond alone. `contact::estimate` samples candidate points every centimetre along the
+arm -- for each link the skeleton segment to the next joint origin (link 7 on to the flange
+and the end effector), and for links 1, 3 and 5, whose castings run along their own joint
+axis, that axis over the casting's extent -- solves the damped 7x3 least squares for `F` at
+each, and reports the smallest residual: link, distance from the joint, point, force,
+residual, the best residual of every other link (`next_best`) and the `span` of distances
+along the winning line that fit within `tolerance` (0.3 Nm) of the best. The flight
+recorder subtracts a running baseline of the torques taken while nothing touches the arm
+(`flight::Tare`: an FER reads a phantom 4 N at the end effector at rest, from the model's
+own error) before estimating.
+
+What the torques can and cannot say: three force components and a position along a line
+are four unknowns, so a contact on links 1 to 3 is found but not located along the link (the
+span covers it); telling two lines apart needs a fifth loaded joint, so a push on the
+forearm reads as link 4 (the chord from the elbow) and link 5 (the forearm axis) fitting
+alike a few centimetres apart; a force is a line vector, so a push whose line of action
+passes through a joint axis ties the links on either side of it; and a force along a link's
+own direction cannot be located along that link. `tests/contact.rs` checks all of this on
+torques synthesised from the crate's own frames with 0.3 Nm of noise: links 4, 6 and the
+hand come back within 2 cm and 10 %, link 3 with a span covering the link, a force through
+joint 4's axis with links 3 and 4 tied. On the real FER push described under Provenance,
+the estimate put the contact on the forearm, 14 cm from the elbow, with a force in the
+direction of the robot's own `O_F_ext_hat_K` and 2.3 times its magnitude -- the robot's
+wrench is the end-effector equivalent of a force that acted 30 cm closer to the base.
+
+### Meshes
+
+`--meshes DIR` (or `FlightOptions::meshes`, `RecorderOptions::flight.meshes`, and the
+`meshes` argument of `CommanderLog::record`) draws the arm with Franka's link meshes on top
+of the skeleton: `DIR/link0 .. link7`, `hand` and `finger`, as `.glb` (or `.gltf`, `.obj`,
+`.stl`, `.dae` -- Rerun 0.37 reads Collada too). `tools/franka-meshes/convert.py` makes
+the `.glb`s from franka_description (Apache-2.0, Franka Robotics' work; see that
+directory's README -- the converted files are not committed). Each mesh is logged once as an
+`Asset3D` at `world/links/<name>/mesh`, and every record puts a `Transform3D` on
+`world/links/<name>`.
+
+The frames: franka_description's `link_k` is the child frame of `joint_k` -- the frame after
+the joint's rotation -- with the joint origins of `robots/<robot>/kinematics.yaml`, which are
+exactly the ones in `crates/franka-rs/tests/data/{fer,fr3}.urdf` (`tests/meshes.rs` checks
+all eight against the description's values); `NativeBackend` composes `origin * Rot(axis,
+q_k)` per joint like Pinocchio, so `Model::pose_q(Frame::JointK)` *is* the `link_k` frame
+and `link0` is the base. Every arm visual has an identity `<origin>` and no `<scale>`, so the
+meshes hang directly on those frames -- `link7`'s ends at `z = 0.1068` in its frame, the
+flange being at 0.107, and `link1` reaches down to where `link0` ends, which the same test
+checks on the converted files when `FRANKA_MESHES=DIR` is set. The hand is mounted as the
+description mounts it: on the flange, yawed by -45 degrees (`rpy_ee`), the fingers 0.0584 m
+along its `z` (closed; a control log carries no gripper width) and the right one turned by
+180 degrees, so that with the Franka Hand's `F_T_EE` the end effector sits 0.1034 m along
+the hand's `z`. A tool that is not the Franka Hand still gets the hand mesh if `hand.glb`
+is in the directory; leave it out in that case.
 
 ## Live: `Recorder`
 
@@ -128,14 +194,20 @@ let stats = recorder.finish()?;   // Stats { pushed, dropped, summary }
 ```
 
 `Recorder::to_file`, `Recorder::to_viewer("host:9876")` (a `rerun` viewer must already be
-listening; `rerun` alone opens one on 9876) and `Recorder::spawn()` (starts one from
-`PATH`), or `Recorder::with_stream` for any `RecordingStream`. `push` is meant for the
+listening; `rerun` alone opens one on 9876), `Recorder::to_viewer_and_file` (both at once)
+and `Recorder::spawn()` (starts one from `PATH`), or `Recorder::with_stream` for any
+`RecordingStream`. `push` is meant for the
 realtime thread: it copies the record into a bounded `sync_channel` with `try_send`, which
 does not block and does not allocate (the ring is allocated once, with the recorder), and
 counts the record as dropped when the ring is full. A background thread drains the channel
 every 100 ms and does the Rerun work with the same `FlightLogger` the `log` replay uses,
 the 3D scene decimated to every 10th record. `tests/flight.rs` runs a 1 kHz producer for
-two seconds under a counting allocator: no drops, no allocations in `push`.
+two seconds under a counting allocator: no drops, no allocations in `push`. The blueprint
+and the static setup (styles, base, end effector axes, meshes) go out the same way for
+every sink, so a live viewer shows the arm as soon as the first batch arrives.
+`recorder.stream()` hands out a clone of the `RecordingStream` for a *non-realtime* thread
+to log its own entities into the same recording (`set_duration_secs(TIMELINE, t)`, then
+`log`).
 
 ## The example: `reflex_replay`
 
@@ -156,16 +228,66 @@ reflex: the example prints the exception and its reflex names, writes `<out>/ref
 `automatic_error_recovery()`, and finishes the recorder. On a real FER it has recorded
 24 s at 1 kHz without a push, 23 941 records pushed and none dropped.
 
+## The example: `commander_live`
+
+The non-realtime commander of `crates/franka-rs/examples/nonrealtime_commander.rs` (see the
+book, "Bridging a non-realtime commander"), streamed live into a viewer: the raw staircase
+target arriving, the robot refusing it (`--raw`) or the filtered and rate-limited command
+following it (`--bridged`, the default), the arm moving, the derivatives of the sent
+position against the limits, the events as they happen.
+
+```sh
+rerun --port 9876                         # the viewer, first
+FRANKA_REALTIME=enforce cargo run --release -p franka-rerun --example commander_live -- \
+    <robot-hostname> --live 127.0.0.1:9876 --meshes /path/to/fr3-meshes [--bridged | --raw] \
+    [--stdin] [--budget V,A,J] [--out run.rrd] [--yes]
+```
+
+`--live ADDR` streams to a viewer already listening there, `--out FILE` writes an `.rrd`,
+either or both. The control side is the original's, with the same scripted sequence, slot,
+budget, start-pose anchoring, collision thresholds, deviation guard, settle logic and
+`automatic_error_recovery()`; the CSV `--log` is gone, the recording carries all of it. The
+realtime callback does one thing for the recording: `recorder.push(state, Some(RobotCommandLog
+{ O_T_EE_c: <the pose it sent>, .. }))`. Everything else is logged off the realtime thread:
+the recorder's background thread draws the flight recording above (`ee/position/{x,y,z}`,
+`ee/derivatives/*`, the arm), and the commander thread logs its own side the moment it
+publishes, stamped with the robot time the callback keeps in an `AtomicU64`:
+`commander/target/{x,y,z}` (the staircase, absolute), `commander/target_speed` (the step over
+one 1 ms cycle -- 50 m/s -- and over the time since the previous target), `world/target`, and
+an `events` line per step, stall and burst. Those series are styled with the viewer's
+per-pixel aggregation off (`flight::log_target_styles`), or the corner points of the
+staircase and the spikes, a millisecond apart, would be merged and joined with diagonals.
+The layout (`flight::send_commander_blueprint`): the arm over the events on the left; `x`,
+`y`, `z` (raw target, sent, measured) and the raw target speed down one column, speed,
+acceleration and jerk against the limits and `F_ext` down the other.
+
+On franka-sim (`--enforce-motion-limits`, FR3 image, `FRANKA_REALTIME=ignore`): bridged ran
+the sequence to the end, 19 107 records pushed and none dropped, peak sent speed 0.25 m/s
+against the 0.3 m/s budget; raw was refused at the first step with
+`cartesian_motion_generator_velocity_discontinuity` (the sent position's first difference
+is 50 m/s) and recovered. Two things to know: the sent position's acceleration and jerk
+peek above the budget (0.54 m/s^2 against 0.5, 70 m/s^3 against 20) for the same reason as
+in the `csv` replay -- the limiter references the robot's float32 echo of the previous
+command, whose 6e-8 m granularity the second and third differences at 1 kHz amplify -- and
+they stay far under the robot's own limits, the grey lines. And a viewer that is not being
+presented (occluded, or on a busy display) may render nothing while the data streams in
+and catch up afterwards; the `--out` file has everything regardless. Not yet run on a real
+robot.
+
 ## Library
 
 `franka_rerun::series` logs time series from slices (`log_positions`, `log_derivatives`,
 `log_scalar`, `differences`); `franka_rerun::scene` the 3D arm from a `franka::Model` and
 joint angles (`skeleton`, `tool_offset`, `log_arm`, `log_skeleton`, `log_point`,
-`log_static`); `franka_rerun::commander::CommanderLog` reads the CSV and records it
+`log_static`); `franka_rerun::meshes::Meshes` finds and logs the link meshes;
+`franka_rerun::commander::CommanderLog` reads the CSV and records it
 (`CommanderLog::record`, `commander::send_blueprint`); `franka_rerun::flight` has
-`log_records`, `replay_exception`, `save_records`, `load_records`, `send_blueprint`, the
-streaming `FlightLogger`, `FlightOptions` and `Summary`; `franka_rerun::recorder` has
-`Recorder`, `RecorderOptions` and `Stats`. `RobotKind::limits()` selects the FR3 or FER
+`log_records`, `replay_exception`, `save_records`, `load_records`, `send_blueprint`,
+`send_commander_blueprint`, `log_target_styles`, the streaming `FlightLogger`,
+`FlightOptions`, `Summary` (with the peak derivatives of a sent position), the Cartesian
+entity paths (`flight::cartesian`), the contact estimator (`flight::contact::estimate`,
+`ContactOptions`, `ContactEstimate`, `Tare`);
+`franka_rerun::recorder` has `Recorder`, `RecorderOptions` and `Stats`. `RobotKind::limits()` selects the FR3 or FER
 limits, and `RobotKind::from(robot.fci_version())` picks the kind from a connection.
 
 ## Provenance
@@ -175,4 +297,7 @@ The commander recordings this was developed against came from
 and the flight recorder against synthetic logs. Both have since been run on a real FER:
 `csv` converted the commander's hardware logs, where the model's end effector matched the
 measured `O_T_EE` to under 0.01 mm on every row, and the live `Recorder` ran through
-`reflex_replay` without dropping a record.
+`reflex_replay` without dropping a record. The `reflex.json` that run left behind -- a hand
+pushing the moving arm sideways until a Cartesian contact on `Fy`, a joint 3 contact and a
+Cartesian collision at 10.6 N tripped the reflex -- is what the contact estimator and the
+meshes were developed against.

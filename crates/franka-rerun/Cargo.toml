@@ -11,9 +11,16 @@ publish = false
 description = "Replays franka-rs logs (nonrealtime_commander CSVs, control logs) as Rerun recordings and records a robot live"
 
 [dependencies]
+libc.workspace = true
 # `serde` so that a control log (`Vec<franka::Record>`) can be saved to and loaded from JSON.
 franka = { package = "franka-rs", path = "../franka-rs", default-features = false, features = ["serde"] }
 rerun = { version = "=0.37.1", default-features = false, features = ["sdk", "rrd"] }
+# The contact estimator's 7x3 least squares.
+nalgebra.workspace = true
 # `float_roundtrip`: a saved log must read back bit for bit; serde_json's default parser
 # rounds the last digit of a shortest-representation float.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[dev-dependencies]
+# `tests/meshes.rs` checks the URDF the model is built from against franka_description's frames.
+urdf-rs.workspace = true

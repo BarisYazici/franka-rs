@@ -189,6 +189,19 @@ and a 3D replay of the arm computed from the logged joint angles with the model.
 developed against franka-sim and has since converted the hardware logs above with
 `--robot fer`; see the crate's `README.md` for the layout and the caveats.
 
+To watch it happen rather than replay it, the same crate has `examples/commander_live.rs`:
+the commander example ported onto the live `Recorder`, streaming into a viewer that is
+already open (`rerun --port 9876`, then `cargo run --release -p franka-rerun --example
+commander_live -- <hostname> --live 127.0.0.1:9876 --meshes DIR`, with `--bridged` or
+`--raw`, `--out FILE` for an `.rrd` as well). The control loop is the one above; the only
+thing it does for the recording is push the state and the pose it sent, and the commander
+thread logs the raw target, its implied speed and its own events at the robot time the
+callback keeps in an atomic. The viewer shows the staircase arriving over the sent and
+measured position per axis, the arm moving (Franka's link meshes with `--meshes`), the
+speed, acceleration and jerk of what was sent against the robot's limits, and the reflex
+line when raw mode is refused. It has run against franka-sim in both modes; the crate's
+`README.md` has the details.
+
 ## `ControlException` and the control log
 
 A motion that ends abnormally returns `FrankaError::Control(ControlException)`. That is the

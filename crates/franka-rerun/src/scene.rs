@@ -10,9 +10,15 @@ use rerun::{
 
 use crate::Result;
 
-/// Grey of the base box and the arm.
+/// Grey of the base box and the arm, and the faint grey of the workspace box.
 const BASE: u32 = 0x7070_70ff;
 const ARM: u32 = 0x4a4a_4aff;
+const WORKSPACE: u32 = 0x8a8a_8a30;
+/// The workspace box, m: centre and half sizes. Static, so that a live viewer frames its
+/// camera on the arm's reach from the first frame -- before the first batch of poses, the
+/// link meshes all sit at the origin -- and not on that pile.
+const WORKSPACE_CENTER: [f32; 3] = [0.0, 0.0, 0.5];
+const WORKSPACE_HALF_SIZE: [f32; 3] = [0.7, 0.7, 0.5];
 
 /// The frame origins the skeleton runs through: the base, then [`Frame::ALL`] in order.
 pub const SKELETON_POINTS: usize = Frame::ALL.len() + 1;
@@ -55,14 +61,19 @@ pub fn skeleton(model: &Model, q: &[f64; 7], f_t_ee: &[f64; 16]) -> [[f64; 3]; S
     points
 }
 
-/// The parts that do not change: Z-up coordinates, a box for the base, the end effector's
-/// axes, and `trail` (if any) as a faint polyline at `world/{trail_name}`.
+/// The parts that do not change: Z-up coordinates, a box for the base, a faint wireframe
+/// box around the workspace, the end effector's axes, and `trail` (if any) as a faint
+/// polyline at `world/{trail_name}`.
 pub fn log_static(rec: &RecordingStream, trail: Option<(&str, &[[f64; 3]], u32)>) -> Result<()> {
     rec.log_static("world", &ViewCoordinates::RIGHT_HAND_Z_UP())?;
     let base = Boxes3D::from_centers_and_half_sizes([[0.0, 0.0, 0.03]], [[0.1, 0.1, 0.03]])
         .with_colors([Color::from_u32(BASE)])
         .with_fill_mode(FillMode::Solid);
     rec.log_static("world/base", &base)?;
+    let workspace = Boxes3D::from_centers_and_half_sizes([WORKSPACE_CENTER], [WORKSPACE_HALF_SIZE])
+        .with_colors([Color::from_u32(WORKSPACE)])
+        .with_fill_mode(FillMode::MajorWireframe);
+    rec.log_static("world/workspace", &workspace)?;
     rec.log_static("world/ee", &TransformAxes3D::new(0.1))?;
     if let Some((name, points, color)) = trail {
         let strip = LineStrips3D::new([LineStrip3D::from_iter(points.iter().map(f32s))])

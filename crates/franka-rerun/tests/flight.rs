@@ -174,9 +174,12 @@ fn log_records_counts_the_flags_errors_and_abort() {
     assert_synthetic_summary(&summary);
     assert_eq!(summary.motion_errors, vec!["cartesian_reflex"]);
     assert!((summary.first_time - 1000.0).abs() < 1e-9, "{summary:?}");
-    // start, joint 4 contact, Fz contact, errors set, mode change, joint 4 collision,
-    // Fz collision, motion aborted.
-    assert_eq!(summary.events, 8);
+    // start, the first contact estimate (joint 4's torque ramps past the noise floor),
+    // joint 4 contact, Fz contact, errors set, mode change, joint 4 collision, Fz collision,
+    // the estimate at the collision, motion aborted.
+    assert_eq!(summary.events, 10);
+    assert!(summary.contact_estimates > 0);
+    assert!(summary.last_contact.is_some(), "{summary:?}");
     assert!(storage.num_msgs() > 0);
     let text = summary.to_string();
     assert!(text.contains("motion aborted: cartesian_reflex"), "{text}");
@@ -198,7 +201,7 @@ fn a_constant_time_falls_back_to_the_record_index() {
     assert_eq!(summary.first_time, 0.0);
     assert!((summary.last_time - 1.999).abs() < 1e-9);
     assert!(summary.motion_errors.is_empty());
-    assert_eq!(summary.events, 7);
+    assert_eq!(summary.events, 9);
 }
 
 #[test]
@@ -224,8 +227,10 @@ fn replay_exception_writes_an_rrd_with_the_events() {
     .unwrap();
     assert_synthetic_summary(&summary);
     assert!(std::fs::metadata(&path).unwrap().len() > 0);
-    assert_eq!(rows_at(&path, "events"), 8);
+    assert_eq!(rows_at(&path, "events"), 10);
     assert_eq!(rows_at(&path, "joints/q"), RECORDS);
+    assert!(rows_at(&path, "world/contact/estimate") > 0);
+    assert!(rows_at(&path, "contact/link") > 0);
     assert_eq!(rows_at(&path, "flags/joint_collision"), RECORDS);
     assert_eq!(rows_at(&path, "world/joints"), RECORDS / 10);
 
@@ -287,6 +292,12 @@ fn recorder_keeps_up_with_a_1khz_producer_without_allocating_in_push() {
     assert_eq!(pushes_allocated, 0, "Recorder::push allocated");
     assert_eq!(recorder.pushed(), RECORDS);
     assert_eq!(recorder.dropped(), 0);
+    // A non-realtime thread can add its own entities to the same recording.
+    let stream = recorder.stream();
+    stream.set_duration_secs(franka_rerun::TIMELINE, 1000.5);
+    stream
+        .log("extra", &rerun::TextLog::new("from another thread"))
+        .unwrap();
     let stats = recorder.finish().unwrap();
     assert_eq!(stats.pushed, RECORDS);
     assert_eq!(stats.dropped, 0);
@@ -294,7 +305,8 @@ fn recorder_keeps_up_with_a_1khz_producer_without_allocating_in_push() {
     assert!(stats.summary.motion_errors.is_empty());
     assert!(std::fs::metadata(&path).unwrap().len() > 0);
     assert_eq!(rows_at(&path, "joints/tau_ext"), RECORDS);
-    assert_eq!(rows_at(&path, "events"), 7);
+    assert_eq!(rows_at(&path, "events"), 9);
+    assert_eq!(rows_at(&path, "extra"), 1);
 }
 
 #[test]
