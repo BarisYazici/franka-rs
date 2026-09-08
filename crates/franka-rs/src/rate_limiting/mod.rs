@@ -25,6 +25,7 @@ pub mod fer;
 mod joint;
 mod torque;
 
+pub(crate) use cartesian::scaled_axis;
 pub use cartesian::{limit_rate_cartesian_pose, limit_rate_cartesian_velocity};
 pub use joint::{
     compute_lower_limits_joint_velocity, compute_upper_limits_joint_velocity,

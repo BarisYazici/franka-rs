@@ -78,7 +78,8 @@ The FR3 simulator suite:
 ```sh
 FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
   --test sim_handshake --test sim_commands --test sim_motions \
-  --test sim_gripper --test sim_stop_and_reflex -- --test-threads=1
+  --test sim_gripper --test sim_stop_and_reflex --test sim_target_control \
+  -- --test-threads=1
 ```
 
 The FER suite:
@@ -115,7 +116,7 @@ out to Docker:
 | job | server configuration | runs |
 |---|---|---|
 | `sim-nominal` | default | `sim_handshake`, `sim_commands`, `sim_motions`, `sim_gripper` (skipping the one test that needs an object), then the README example `readme_joint_move` against the simulator with `FRANKA_REALTIME=ignore` |
-| `sim-motion-limits` | `--enforce-motion-limits` | `sim_stop_and_reflex` — reflex, recovery and the rate-limiting envelope |
+| `sim-motion-limits` | `--enforce-motion-limits` | `sim_stop_and_reflex` — reflex, recovery and the rate-limiting envelope; `sim_target_control` — the Cartesian and joint target control loops under a stepped, bursting, stalling commander |
 | `sim-gripper-object` | `--gripper-object-width 0.04` | the one `sim_gripper` test that needs something between the fingers |
 
 A fourth job, **`sim-fer-v5`**, runs the four `sim_v5_*` binaries — but it cannot use that

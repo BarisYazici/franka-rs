@@ -82,11 +82,15 @@ impl OtgLimits {
     /// Per-axis limits whose vector norm over `axes` axes never exceeds `self`: every limit
     /// divided by `sqrt(axes)`. What to build a [`MultiOtg`] with when the budget is a norm.
     pub fn per_axis_for_norm(self, axes: usize) -> Self {
-        let scale = 1.0 / (axes.max(1) as f64).sqrt();
+        self.scaled(1.0 / (axes.max(1) as f64).sqrt())
+    }
+
+    /// Every limit multiplied by `factor`.
+    pub fn scaled(self, factor: f64) -> Self {
         Self {
-            max_velocity: self.max_velocity * scale,
-            max_acceleration: self.max_acceleration * scale,
-            max_jerk: self.max_jerk * scale,
+            max_velocity: self.max_velocity * factor,
+            max_acceleration: self.max_acceleration * factor,
+            max_jerk: self.max_jerk * factor,
         }
     }
 }
@@ -410,9 +414,23 @@ impl<const N: usize> MultiOtg<N> {
     /// [`FrankaError::InvalidArgument`] if a coordinate is not finite or a limit is not finite
     /// and positive.
     pub fn new(position: [f64; N], limits: OtgLimits, synchronize: bool) -> FrankaResult<Self> {
-        let mut axes = [Otg::new(0.0, limits)?; N];
-        for (axis, p) in axes.iter_mut().zip(position) {
-            *axis = Otg::new(p, limits)?;
+        Self::with_limits(position, [limits; N], synchronize)
+    }
+
+    /// [`MultiOtg::new`] with limits of its own for every axis, which is what seven joints
+    /// with seven different envelopes need.
+    ///
+    /// # Errors
+    /// [`FrankaError::InvalidArgument`] if a coordinate is not finite or a limit is not finite
+    /// and positive.
+    pub fn with_limits(
+        position: [f64; N],
+        limits: [OtgLimits; N],
+        synchronize: bool,
+    ) -> FrankaResult<Self> {
+        let mut axes = [Otg::new(0.0, limits[0])?; N];
+        for (axis, (p, l)) in axes.iter_mut().zip(position.into_iter().zip(limits)) {
+            *axis = Otg::new(p, l)?;
         }
         Ok(Self { axes, synchronize })
     }
@@ -500,4 +518,4 @@ impl<const N: usize> MultiOtg<N> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

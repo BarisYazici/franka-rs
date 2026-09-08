@@ -43,7 +43,17 @@ pub fn set_current_thread_to_highest_scheduler_priority() -> Result<(), String> 
             strerror(errno())
         ));
     }
+    set_current_thread_scheduler_priority(thread_priority)
+}
 
+/// Puts the calling thread on `SCHED_FIFO` at `priority` (1 to 99 on Linux).
+///
+/// The generalisation of [`set_current_thread_to_highest_scheduler_priority`], which is
+/// this at `sched_get_priority_max(SCHED_FIFO)`. A lower priority is what a program that
+/// runs other realtime threads (a robot-side driver, a second arm) gives a
+/// [`crate::robot::target_control`] loop; the `Err` text is libfranka's.
+pub fn set_current_thread_scheduler_priority(priority: i32) -> Result<(), String> {
+    let thread_priority = priority;
     // `libc::sched_param` carries extra `SCHED_SPORADIC` fields on musl that glibc's
     // `sched_param` doesn't have; zero-initializing the rest keeps this portable across libc
     // flavors (e.g. cross-building for aarch64-unknown-linux-musl). On glibc, where

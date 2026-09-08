@@ -43,6 +43,7 @@ pub mod commands;
 pub mod control_loop;
 pub mod logger;
 pub mod robot_impl;
+pub mod target_control;
 
 mod active;
 mod control;
@@ -68,6 +69,10 @@ pub use active_control::{ActiveMotionGenerator, ActiveMotionInput, ActiveTorqueC
 use control_loop::{ControlLoop, ControlLoopMotion};
 pub use options::{RobotOptions, VersionPolicy, VirtualWallCuboid};
 use robot_impl::{RobotImpl, DEFAULT_DEVIATION, NUM_JOINTS};
+pub use target_control::{
+    CartesianSent, CartesianTargetControl, JointSent, JointTargetControl,
+    JointTargetControlOptions, Settle, TargetControlOptions,
+};
 
 /// Default size of the control log attached to a [`crate::error::ControlException`]
 /// (`franka::Robot`'s `log_size` default).

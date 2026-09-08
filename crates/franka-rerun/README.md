@@ -265,14 +265,17 @@ FRANKA_REALTIME=enforce cargo run --release -p franka-rerun --example commander_
 ```
 
 `--live ADDR` streams to a viewer already listening there, `--out FILE` writes an `.rrd`,
-either or both. The control side is the original's, with the same scripted sequence, slot,
-budget, start-pose anchoring, collision thresholds, deviation guard, settle logic and
-`automatic_error_recovery()`; the CSV `--log` is gone, the recording carries all of it. The
-realtime callback does one thing for the recording: `recorder.push(state, Some(RobotCommandLog
-{ O_T_EE_c: <the pose it sent>, .. }))`. Everything else is logged off the realtime thread:
-the recorder's background thread draws the flight recording above (`ee/position/{x,y,z}`,
-`ee/derivatives/*`, the arm), and the commander thread logs its own side the moment it
-publishes, stamped with the robot time the callback keeps in an `AtomicU64`:
+either or both. The control side is franka-rs's target control
+(`Robot::start_cartesian_target_control`, the book's "Target control: low-rate commanders"):
+the same scripted sequence, budget, collision thresholds and `automatic_error_recovery()`,
+with the anchoring, the deviation guard and the settle logic now inside the crate's loop
+thread; the CSV `--log` is gone, the recording carries all of it. The loop's observer does
+one thing for the recording: `recorder.push(state, Some(RobotCommandLog { O_T_EE_c:
+sent.pose, .. }))`. Everything else is logged off the realtime thread: the recorder's
+background thread draws the flight recording above (`ee/position/{x,y,z}`,
+`ee/derivatives/*`, the arm), and the commander, on the main thread, logs its own side the
+moment it calls `set_position`, stamped with the robot time the observer keeps in an
+`AtomicU64`:
 `commander/target/{x,y,z}` (the staircase, absolute), `commander/target_speed` (the step over
 one 1 ms cycle -- 50 m/s -- and over the time since the previous target), `world/target`, and
 an `events` line per step, stall and burst. Those series are styled with the viewer's
@@ -282,9 +285,9 @@ The layout (`flight::send_commander_blueprint`): the arm over the events on the 
 `y`, `z` (raw target, sent, measured) and the raw target speed down one column, speed,
 acceleration and jerk against the limits and `F_ext` down the other.
 
-On franka-sim (`--enforce-motion-limits`, FR3 image, `FRANKA_REALTIME=ignore`): bridged ran
-the sequence to the end, 19 107 records pushed and none dropped, peak sent speed 0.25 m/s
-against the 0.3 m/s budget; raw was refused at the first step with
+On franka-sim (`--enforce-motion-limits`, FR3 image, `FRANKA_REALTIME=ignore`), before the
+port onto the target control API: bridged ran the sequence to the end, 19 107 records pushed
+and none dropped, peak sent speed 0.25 m/s against the 0.3 m/s budget; raw was refused at the first step with
 `cartesian_motion_generator_velocity_discontinuity` (the sent position's first difference
 is 50 m/s) and recovered. Two things to know: the sent position's acceleration and jerk
 peek above the budget (0.54 m/s^2 against 0.5, 70 m/s^3 against 20) for the same reason as

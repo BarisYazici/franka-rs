@@ -58,9 +58,13 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
 - **Rate limiting and low-pass filtering** ported from `rate_limiting.cpp`,
   `joint_velocity_limits.cpp` and `lowpass_filter.cpp`, with the right constants picked
   from the negotiated version.
-- **Online trajectory generation** (`otg`): a dependency-free, allocation-free
-  jerk-limited generator that turns stepped, bursty, stalled targets into a C2, limit-respecting
-  1 kHz command; the bridge in the `nonrealtime_commander` example.
+- **Target control** for low-rate commanders: `start_cartesian_target_control` /
+  `start_joint_target_control` run the loop on a thread of their own and hand back a handle
+  whose `set_position` / `set_joints` a planner, a socket or a keyboard can call at any
+  rate; the loop turns the steps into a smooth, limit-respecting command and `stop()`
+  settles and returns the loop's result.
+- **Online trajectory generation** (`otg`): the dependency-free, allocation-free
+  jerk-limited generator underneath it, also usable on its own in a callback loop.
 - **`Model`** -- pose, body and zero Jacobian for all ten frames, mass, Coriolis, gravity.
   Agrees with libfranka to ~1e-14.
 - **`Gripper`** -- the Franka Hand on port 1338, byte-identical on both FCI versions.
@@ -112,6 +116,13 @@ assert that, and CI runs the example against the simulator, so neither can drift
 [dependencies]
 franka-rs = "0.1"
 ```
+
+For a commander that is not a 1 kHz program -- a planner, a vision loop, a script on a
+socket -- the same move is `let control = robot.start_cartesian_target_control(
+TargetControlOptions::default())?;`, then `control.set_position([x, y, z])?` whenever a
+target comes and `control.stop()?` at the end; the loop runs on its own thread and turns
+the steps into a smooth command. See
+[Target control](https://barisyazici.github.io/franka-rs/controlling-the-robot.html#target-control-low-rate-commanders).
 
 The library is named `franka`, so `use franka::Robot;`. See
 [Getting started](https://barisyazici.github.io/franka-rs/getting-started.html) for the

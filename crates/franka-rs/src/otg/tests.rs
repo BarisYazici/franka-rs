@@ -557,17 +557,17 @@ fn flight_replay_behind_the_backstop_never_binds_with_norm_limits_and_survives_b
 }
 
 /// xorshift64*: deterministic, no dependencies.
-struct Rng(u64);
+pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
         self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
 
-    fn uniform(&mut self, lo: f64, hi: f64) -> f64 {
+    pub(crate) fn uniform(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 }

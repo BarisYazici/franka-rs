@@ -159,10 +159,12 @@ jobs:
         run: cargo run -p franka-rs --example readme_joint_move -- 127.0.0.1
 
   # A franka-sim server with --enforce-motion-limits, exercising the reflex/recovery and rate-
-  # limiting envelope tests in sim_stop_and_reflex.rs.
+  # limiting envelope tests in sim_stop_and_reflex.rs, and the target control loops of
+  # sim_target_control.rs (a low-rate commander bridged by the crate's own thread), which are
+  # only meaningful with the limits enforced.
   #
-  # Every test in that file homes the arm with `common::move_to_start` before it moves, so the
-  # whole binary runs as one invocation against this job's single long-lived server, in any
+  # Every test in those files homes the arm with `common::move_to_start` before it moves, so
+  # each binary runs as one invocation against this job's single long-lived server, in any
   # order (libtest runs a file's tests in alphabetical order; the tests no longer depend on it).
   sim-motion-limits:
     runs-on: ubuntu-latest
@@ -177,7 +179,9 @@ jobs:
       - name: Simulator tests (motion limits enforced)
         env:
           FRANKA_SIM_ADDR: 127.0.0.1
-        run: cargo test -p franka-rs --test sim_stop_and_reflex -- --test-threads=1
+        run: |
+          cargo test -p franka-rs --test sim_stop_and_reflex --test sim_target_control \
+            -- --test-threads=1
 
   # A franka-sim server with a graspable object placed between the gripper's fingers, for the
   # one sim_gripper test that the nominal job above deliberately skips.

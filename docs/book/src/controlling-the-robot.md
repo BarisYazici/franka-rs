@@ -1,7 +1,10 @@
 # Controlling the robot
 
 There are two ways to run a 1 kHz loop, and they are the same two libfranka offers on an
-FR3: hand the crate a **callback**, or drive the loop yourself with **`ActiveControl`**.
+FR3: hand the crate a **callback**, or drive the loop yourself with **`ActiveControl`**. For
+a program that is not a 1 kHz program there is a third, built on the first:
+[target control](#target-control-low-rate-commanders), where the crate runs the loop on a
+thread of its own and you set targets whenever you like.
 
 ## The callback API
 
@@ -111,23 +114,23 @@ crate or in libfranka. There, smooth setpoints are the caller's job.
 programs that want to move the arm are not 1 kHz programs — a planner, a vision loop, a script
 on a socket, a person at a keyboard — and what they produce is a stream of **targets**:
 irregular, sometimes bursty, sometimes silent for seconds, and every one of them a step. The
-example puts such a commander on its own non-realtime thread. It walks a scripted sequence of
-±5 cm steps in x, y and z inside a ±12 cm box around the start pose, with holds between 0.2 s
-and 1.5 s, one 2 s stall in which nothing is sent, and one burst of 20 targets inside 100 ms
-(about 20 s in all); with `--stdin` the commander is instead whoever writes `x y z` lines
-(metres, relative to the start pose) to standard input. Either way it publishes only the
-*latest* target, through a seqlock of four `AtomicU64` — three `f64`s as bits plus a sequence
-number — that the control callback reads every cycle without blocking or allocating; if it
-catches the writer mid-update it keeps the previous target for that one cycle rather than
-spin.
+example's scripted commander walks ±5 cm steps in x, y and z inside a ±12 cm box around the
+start pose, with holds between 0.2 s and 1.5 s, one 2 s stall in which nothing is sent, and one
+burst of 20 targets inside 100 ms (about 20 s in all); with `--stdin` the commander is instead
+whoever writes `x y z` lines (metres, relative to the start pose) to standard input.
 
-The callback hands `start pose + target` to `control_cartesian_pose`, and the flag decides
-what the robot sees:
-
-| mode | `limit_rate` | `cutoff_frequency` | what happens to a 5 cm step |
-|---|---|---|---|
-| `--bridged` (default) | `true` | `MAX_CUTOFF_FREQUENCY` | The example runs the crate's online trajectory generator, `CartesianOtg`, under a budget of **0.3 m/s, 0.5 m/s², 20 m/s³** (`--budget V,A,J` overrides it): every cycle it re-plans a time-optimal jerk-limited profile from the commanded state to rest at the latest target and follows it for one cycle, so the step becomes an S-curve that peaks at 0.15 m/s and lands, exactly, after 0.66 s. `limit_rate_cartesian_pose` runs after it under the same budget as the backstop, and the loop's own limiter stays on behind that; neither binds. See [Online trajectory generation](#online-trajectory-generation) below. |
-| `--raw` | `false` | `MAX_CUTOFF_FREQUENCY` | The step goes to the robot as a 50 m/s jump. The motion generator refuses it with `cartesian_motion_generator_velocity_limits_violation`, `cartesian_motion_generator_velocity_discontinuity` and `cartesian_motion_generator_acceleration_discontinuity`; the example prints the robot's error text, calls `automatic_error_recovery()` and exits 0. |
+In its default `--bridged` mode the example is three calls on the crate's
+[target control](#target-control-low-rate-commanders) — `start_cartesian_target_control`,
+`set_position` for every target, `stop()` — and the crate's own thread does the bridging with
+the online trajectory generator below under a budget of **0.3 m/s, 0.5 m/s², 20 m/s³**
+(`--budget V,A,J`), so that a 5 cm step becomes an S-curve that peaks at 0.15 m/s and lands,
+exactly, after 0.66 s. `--log PATH` records one row per cycle from the loop's observer (the
+raw target, the echoed `O_T_EE_c`, the measured `O_T_EE`, `q0..q6`, the external wrench and
+the generator's velocity and acceleration), which `bench/commander/plot.py` draws. In `--raw`
+mode the same targets go to a bare `control_cartesian_pose` with `limit_rate = false` and
+`MAX_CUTOFF_FREQUENCY`: the step reaches the robot as a 50 m/s jump, the motion generator
+refuses it with `cartesian_motion_generator_velocity_discontinuity` and its siblings, and the
+example prints the robot's error text, calls `automatic_error_recovery()` and exits 0.
 
 On a real FER (2026-09-08) an earlier version of the bridge — the public
 `cartesian_low_pass_filter` at 1 Hz followed by the same rate limiter, which turned a 5 cm step
@@ -138,8 +141,9 @@ the first 5 cm step, and `automatic_error_recovery()` cleared it. The first vers
 generator bridge, run on the same arm the same day, did **not** go cleanly, and the reason is
 worth the paragraph below the next one: the generator stayed on its targets, but the rate
 limiter behind it clamped it on the first two-axis move and from then on the command orbited
-at the velocity cap, until the robot refused it. The bridge as it is now has not been back on
-the arm.
+at the velocity cap, until the robot refused it. The rules that came out of that are now
+implemented by the target control loop, which has run against the simulator only and has not
+been back on the arm.
 
 #### Online trajectory generation
 
@@ -227,21 +231,10 @@ limits, were the binding constraint. The examples' shared `set_default_behavior`
 nominal) was crossed at 0.25 m/s, which is why this example sets libfranka's current example
 thresholds explicitly. Both figures are an observation on one arm, not a specification.
 
-Three details are worth carrying into your own code. The **first setpoint is always the
-start pose**, whatever the slot holds: on FCI v10 the first command of a motion is its own
-filter reference (libfranka's `initialized_filter_`), so a target that arrived before the
-first cycle would go out unfiltered and unlimited — exactly the jump the bridge exists to
-prevent. The start pose is **anchored in the first control cycle**, from that cycle's
-`O_T_EE_c`, not from the `read_once` before the motion: on a real robot the commanded pose
-drifts by micrometres between the two, and raw mode would send that difference as a jump. And
-the motion ends not when the commander is done but when the commanded `O_T_EE_c` has
-*settled* on the last target (within 1 mm for 250 cycles), so the final `motion_finished` is
-sent from rest; a measured deviation of more than 30 cm from the start freezes the target
-where the command is and ends the same way. `--log PATH` records one row per cycle — the raw
-target, the echoed `O_T_EE_c`, the measured `O_T_EE`, the joint angles `q0..q6` and the
-external wrench `O_F_ext_hat_K` as `fx,fy,fz,tx,ty,tz` — into a `Vec` sized before the loop,
-and `bench/commander/plot.py` draws it with the stall and the burst marked and, when the
-wrench columns are present, `|F_ext|` in a fourth panel.
+Three details an earlier version of the example asked you to carry into your own code — the
+first setpoint is the echo, the start is anchored in the first cycle, the motion ends only
+once the command has settled — are the target control loop's job now; see
+[Target control](#target-control-low-rate-commanders) for the full list.
 
 For a closer look, `crates/franka-rerun` replays such a log in [Rerun](https://rerun.io):
 `cargo run --release -p franka-rerun -- csv bridged.csv --robot fr3 -o bridged.rrd`, then
@@ -249,22 +242,13 @@ For a closer look, `crates/franka-rerun` replays such a log in [Rerun](https://r
 target, commanded and measured positions per axis, the speed, acceleration and jerk of the
 commanded position against the FR3's limits (or the FER's with `--robot fer`), the raw
 target's implied speed for contrast, the commander's steps, stall and burst as a text log,
-and a 3D replay of the arm computed from the logged joint angles with the model. It was
-developed against franka-sim and has since converted the hardware logs above with
-`--robot fer`; see the crate's `README.md` for the layout and the caveats.
-
-To watch it happen rather than replay it, the same crate has `examples/commander_live.rs`:
-the commander example ported onto the live `Recorder`, streaming into a viewer that is
-already open (`rerun --port 9876`, then `cargo run --release -p franka-rerun --example
-commander_live -- <hostname> --live 127.0.0.1:9876 --meshes DIR`, with `--bridged` or
-`--raw`, `--out FILE` for an `.rrd` as well). The control loop is the one above; the only
-thing it does for the recording is push the state and the pose it sent, and the commander
-thread logs the raw target, its implied speed and its own events at the robot time the
-callback keeps in an atomic. The viewer shows the staircase arriving over the sent and
-measured position per axis, the arm moving (Franka's link meshes with `--meshes`), the
-speed, acceleration and jerk of what was sent against the robot's limits, and the reflex
-line when raw mode is refused. It has run against franka-sim in both modes; the crate's
-`README.md` has the details.
+and a 3D replay of the arm computed from the logged joint angles with the model. To watch
+it happen rather than replay it, the same crate has `examples/commander_live.rs`: the same
+commander on the same target control, with the `Recorder` pushing from the loop's observer,
+streaming into a viewer that is already open (`rerun --port 9876`, then `cargo run --release
+-p franka-rerun --example commander_live -- <hostname> --live 127.0.0.1:9876 --meshes DIR`,
+with `--bridged` or `--raw`, `--out FILE` for an `.rrd` as well); the crate's `README.md` has
+the details.
 
 ## `ControlException` and the control log
 
@@ -482,3 +466,153 @@ controller, because v5 has no torque-only motion generator mode; see
 Measured on a real FER, `ActiveControl` is equivalent to the callback API within noise —
 interval p50 999.2 vs 999.1 µs over 10 s runs, comparable p99, max and CPU. See
 [Benchmarks](./benchmarks.md#activecontrol-on-the-fer).
+
+## Target control: low-rate commanders
+
+The fourth way, for the programs that are not 1 kHz programs: `Robot::start_*_target_control`
+spawns a named thread that runs the crate's own control loop and hands back a handle whose
+`set_*` any thread can call at any rate. The loop does what the
+[commander section](#bridging-a-non-realtime-commander) learnt the hard way, and `stop()`
+brings the command to rest on the last target, finishes the motion, joins the thread and
+returns the loop's result. Everything below has been exercised against franka-sim only.
+
+```rust,no_run
+# extern crate franka;
+use std::sync::Arc;
+use franka::{RealtimeConfig, Robot, TargetControlOptions};
+
+# fn main() -> franka::FrankaResult<()> {
+let robot = Arc::new(Robot::new("172.16.0.2", RealtimeConfig::Enforce)?);
+let control = robot.start_cartesian_target_control(TargetControlOptions::default())?;
+let start = control.target();            // the start position, base frame, metres
+control.set_position([start[0] + 0.05, start[1], start[2]])?;   // any thread, any rate
+std::thread::sleep(std::time::Duration::from_secs(1));
+let state = control.state();             // the latest RobotState, copied out
+assert!(control.is_running());
+control.stop()?;                         // settle, finish the motion, join: the loop's result
+# let _ = state; Ok(()) }
+```
+
+The API, in full:
+
+```rust,ignore
+impl Robot {
+    pub fn start_cartesian_target_control(self: &Arc<Self>, options: TargetControlOptions)
+        -> FrankaResult<CartesianTargetControl>;
+    pub fn start_joint_target_control(self: &Arc<Self>, options: JointTargetControlOptions)
+        -> FrankaResult<JointTargetControl>;
+}
+impl CartesianTargetControl {
+    pub fn set_position(&self, position_in_base: [f64; 3]) -> FrankaResult<()>;
+    pub fn set_orientation(&self, orientation_xyzw: [f64; 4]) -> FrankaResult<()>;
+    pub fn set_target(&self, position_in_base: [f64; 3], orientation_xyzw: [f64; 4])
+        -> FrankaResult<()>;
+    pub fn set_pose(&self, pose: &[f64; 16]) -> FrankaResult<()>;   // column-major, as O_T_EE
+    pub fn target(&self) -> [f64; 3];
+    pub fn target_orientation(&self) -> [f64; 4];
+    pub fn target_pose(&self) -> [f64; 16];
+    pub fn state(&self) -> RobotState;
+    pub fn is_running(&self) -> bool;
+    pub fn stop(self) -> FrankaResult<()>;
+}
+// JointTargetControl is the same with set_joints([f64; 7]) and target() -> [f64; 7].
+```
+
+The Cartesian target is a pose, absolute in the base frame. `set_position` moves its position
+and keeps its orientation (the start orientation until something sets it), `set_orientation`
+the other way round, `set_target` and `set_pose` set both. Orientations are unit quaternions
+in **`[x, y, z, w]` order** — the scalar part *last*, as in nalgebra's `coords` and Eigen's
+`coeffs()` — or the rotation block of a column-major pose in the convention of `O_T_EE`. A
+quaternion or rotation block within 1e-3 of unit / orthonormal is normalised on the way in;
+one further off is refused. `set_joints` takes the seven joint positions. All return
+`FrankaError::InvalidArgument` for a non-finite or malformed value and
+`FrankaError::InvalidOperation` once the loop has ended for any reason — `is_running()` is
+`false` then, and `stop()` has the reason.
+
+### What the loop does
+
+Every cycle, on its own thread:
+
+1. **Anchor.** The first cycle takes the robot's echo of its commanded position (`O_T_EE_c`,
+   `q_d`) as the start, the initial target and the first setpoint, so the first command of
+   the motion is the echo itself — on FCI v10 the first command is its own filter reference
+   and would otherwise go out as a jump. `start_*` returns only once that cycle has run, so
+   `target()` and `state()` are valid from the first call.
+2. **Read the slot.** The latest target comes through a single-writer seqlock
+   (`robot::target_control::TargetSlot`) the loop polls without blocking; a torn read keeps
+   the previous target for that one cycle. `set_*` serialises its callers with a mutex on the
+   user side only.
+3. **Generate under the three rules** of the [`otg` module](#online-trajectory-generation):
+   per-axis limits — the Cartesian budgets are norms and get `OtgLimits::per_axis_for_norm(3)`,
+   the joint limits are per joint already — one nominal `DELTA_T` per command whatever the
+   measured period, and `set_position` on the echo before every re-plan. The axes are
+   synchronised, so a diagonal target moves along a straight line. The orientation runs on
+   three more axes of the same generator, on the rotation vector of the orientation error in
+   the base frame (`log(R_target R_echo^T)`), re-anchored at zero every cycle and composed
+   back as `exp(step) R_echo`: a constant-axis turn under `rotation_limits`, arriving
+   together with the translation.
+4. **Backstop.** `limit_rate_cartesian_pose` / `limit_rate_joint_positions` under the same
+   budget (the joint one tightened to the robot's own velocity envelope at `q`), against the
+   echo, and the loop's own libfranka limiter behind that. Neither is meant to bind; the
+   observer is told when the backstop does. The Cartesian one references the twist and
+   acceleration it sent, not the echoed ones: those are float32 on FCI v10, and the rounding
+   of a rotation matrix is worth 200 rad/s³ of jerk against a 20 rad/s³ budget.
+5. **Guard.** If the *measured* position strays more than `max_deviation` from the start
+   (0.30 m, 1.0 rad by default), or the measured orientation turns more than
+   `max_angular_deviation` (0.5 rad), the target freezes where the command is, the generator
+   brings it to rest, and the loop ends with `FrankaError::Control` carrying
+   `target_control::DEVIATION_MESSAGE`.
+6. **Land, hold, finish.** After `stop()` the generator runs on until every axis has landed —
+   within `Settle::tolerance` of the target (1 mm, 1 mrad), slower than 0.1 mm/s or mrad/s
+   and accelerating less than 0.05 (`target_control::REST_VELOCITY`, `REST_ACCELERATION`;
+   the float32 echo of an FR3 keeps a landed generator in micro-profiles well below that,
+   and what the hold freezes is at most that velocity step, which the joint side of a
+   Cartesian command amplifies) — then the loop stops stepping it and sends the robot's echo
+   of the last command (continuous with what the robot has, whatever the backstop took off
+   that command), bit for bit and past the backstop, for `Settle::cycles` cycles (250), and
+   sets `motion_finished` on one more of it. A motion never finishes on a moving command: a real
+   FER refused exactly that with `cartesian_motion_generator_velocity_discontinuity`. If the
+   generator has not landed within five seconds the same hold starts from wherever the
+   command is.
+
+Dropping a handle without `stop()` requests the stop and detaches: the loop settles and
+finishes on its own, holding its `Arc<Robot>` until it has. While the loop runs it holds the
+robot's control lock, so `robot.read()` and the other loops fail with
+`FrankaError::InvalidOperation` as with any callback loop on another thread; `robot.stop()`
+preempts it, and the handle's `stop()` then returns the preemption as `FrankaError::Control`.
+
+### Options
+
+| `TargetControlOptions` (Cartesian) | default | `JointTargetControlOptions` | default |
+|---|---|---|---|
+| `limits: OtgLimits`, a norm budget | 0.3 m/s, 0.5 m/s², 20 m/s³ | `limits: Option<[OtgLimits; 7]>` | `None`: 20 % of the negotiated version's joint limits (`scaled_limits(version, fraction)`) |
+| `rotation_limits: OtgLimits`, a norm budget | 0.5 rad/s, 1.0 rad/s², 20 rad/s³ | | |
+| `controller_mode` | `CartesianImpedance` | `controller_mode` | `JointImpedance` |
+| `max_deviation` | 0.30 m | `max_deviation` | 1.0 rad |
+| `max_angular_deviation` | 0.5 rad | | |
+| `settle: Settle` (landing tolerance, hold cycles) | 1 mm, 250 cycles | `settle` | 1 mrad, 250 cycles |
+| `limit_rate` | `true` | `limit_rate` | `true` |
+| `realtime_priority: Option<i32>` | `None` (highest) | same | same |
+| `observer` | none | `observer` | none |
+
+Every field is public and has a `with_*` builder; `validate()` checks them without starting
+anything. The Cartesian default budget is the one measured on a real FER for the commander
+example — the robot's joint-space continuity check refuses 2.5 m/s² near the ready pose and
+its collision threshold trips above about 1 m/s², so the default sits well below both. The
+joint default is deliberately slow; raise it with `JointTargetControlOptions::scaled_limits`
+or explicit limits. The rotational default is a fifth of the FR3's rotational velocity limit
+and a twenty-fifth of its acceleration limit; on the simulator with the joint side of every
+commanded pose checked (`--joint-discontinuity-scale 1.0`) a 20° turn of the tool passes with
+a wide margin, but it has not been run on hardware.
+
+The **observer** is `FnMut(&RobotState, &CartesianSent)` (`&JointSent` for joints), called
+every cycle *on the realtime thread* with the state and what was sent — the pose or `q` after
+the backstop (and its quaternion), the target, the generator's velocity and acceleration
+(angular too), and by how much the backstop bound. It must not allocate or block; copying into a preallocated ring is what it is for, and
+it is how `franka_rerun::Recorder::push` and the commander example's CSV log hook in. Nothing
+else allocates on the realtime thread after the start.
+
+The loop thread is raised to `SCHED_FIFO` the way `Robot::new` raises its caller — to the
+highest priority, or to `realtime_priority` when set, which is what a program with other
+realtime threads wants; a failure is fatal under `RealtimeConfig::Enforce` and ignored under
+`Ignore`, so the simulator runs it on an ordinary kernel.

@@ -218,7 +218,7 @@ pub fn limit_rate_cartesian_pose(
 ///
 /// Port of `Eigen::AngleAxisd(rotation).axis() * Eigen::AngleAxisd(rotation).angle()`, including
 /// Eigen's quaternion-based extraction (which yields the zero vector for the identity rotation).
-fn scaled_axis(rotation: &Matrix3<f64>) -> Vector3<f64> {
+pub(crate) fn scaled_axis(rotation: &Matrix3<f64>) -> Vector3<f64> {
     let q = UnitQuaternion::from_rotation_matrix(&Rotation3::from_matrix_unchecked(*rotation));
     let vec = Vector3::new(q.i, q.j, q.k);
     let mut n = vec.norm();

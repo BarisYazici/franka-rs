@@ -9,6 +9,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Target control** (`robot::target_control`): `Robot::start_cartesian_target_control` and
+  `Robot::start_joint_target_control` run the crate's control loop on a named thread of
+  their own and return a `CartesianTargetControl` / `JointTargetControl` handle whose
+  `set_position([f64; 3])` / `set_joints([f64; 7])` any low-rate commander can call from any
+  thread at any rate; the loop bridges the steps with the online trajectory generator under
+  the three rules of the `otg` module (per-axis limits from the norm budget, one nominal
+  `DELTA_T` per command, re-anchoring on the robot's echo), the rate limiter under the same
+  budget as the backstop, a measured-deviation guard and a settle-then-finish `stop()` that
+  returns the loop's result. `TargetControlOptions` / `JointTargetControlOptions` carry the
+  budget (joint default: 20 % of the negotiated version's limits), the controller mode, the
+  guard, the settle criterion, an optional `SCHED_FIFO` priority for the loop thread and an
+  observer called every cycle on the realtime thread with what was sent (the flight
+  recorder's hook). `TargetSlot<N>` is the seqlock underneath, public. `MultiOtg::with_limits`
+  builds a generator with per-axis limits and `realtime::set_current_thread_scheduler_priority`
+  raises a thread to a chosen priority. Exercised against franka-sim only
+  (`tests/sim_target_control.rs`); not yet run on hardware.
+- **Cartesian target control carries an orientation.** `CartesianTargetControl::set_pose`
+  (column-major, as `O_T_EE`; a rotation block within 1e-3 of orthonormal is repaired, one
+  further off refused), `set_target(position, quaternion)` and `set_orientation(quaternion)`
+  with unit quaternions in `[x, y, z, w]` order, `target_orientation()` and `target_pose()`;
+  `set_position` keeps the target orientation. The orientation runs on three more axes of
+  the same synchronised generator, on the base-frame rotation vector of the orientation
+  error re-anchored on the echo every cycle, under `TargetControlOptions::rotation_limits`
+  (0.5 rad/s, 1.0 rad/s², 20 rad/s³ by default) with `with_rotation_limits`, and an angular
+  deviation guard `max_angular_deviation` (0.5 rad). `CartesianSent` gains the sent
+  orientation, the angular velocity and acceleration and the rotational backstop alteration.
+  The Cartesian backstop now references the twist and acceleration it sent rather than the
+  echoed ones, whose float32 rounding had its jerk clamp firing at noise level (on the
+  rotation that was an orbit of 5 mrad around the target), and `REST_VELOCITY` /
+  `REST_ACCELERATION` drop to 1e-4 and 0.05 so the hold's freeze stays under the joint-side
+  jerk limits. `OtgLimits::scaled` is new. The
+  commander example's `--rotate` adds a slow yaw sweep of ±15° (bridged mode only).
 - **`otg` module**: an online trajectory generator (`Otg`, `MultiOtg<N>`, `CartesianOtg`,
   `OtgLimits`) that re-plans a time-optimal, jerk-limited seven-segment profile every cycle
   from the commanded state to rest at the latest target, so a stream of stepped, bursty or
@@ -18,14 +50,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a budget that is a norm. Dependency-free and allocation-free. Its first outing on a real FER
   ended in the rate limiter behind it orbiting at the velocity cap, which the module
   documentation explains and two replay tests pin down.
-- **`nonrealtime_commander` example**: a non-realtime thread publishes Cartesian targets
-  through a lock-free slot and the 1 kHz loop bridges them with `CartesianOtg` and
-  `limit_rate_cartesian_pose` under its own budget
-  (`--bridged`, `--budget V,A,J`), or passes them through to provoke a reflex (`--raw`);
-  `--log` writes one CSV row per cycle with the joint angles and the external wrench. The
-  budget exists because the robot also checks the joint-space continuity of a Cartesian
-  pose stream, which the rate limiter does not bound; see
-  [Bridging a non-realtime commander](docs/book/src/controlling-the-robot.md).
+- **`nonrealtime_commander` example**: a scripted (or stdin) commander sets Cartesian
+  targets through `start_cartesian_target_control` (`--bridged`, `--budget V,A,J`), or
+  hands them to a bare `control_cartesian_pose` to provoke a reflex (`--raw`); `--log`
+  writes one CSV row per cycle, from the loop's observer, with the joint angles, the
+  external wrench and the generator's velocity and acceleration. The budget exists because
+  the robot also checks the joint-space continuity of a Cartesian pose stream, which the
+  rate limiter does not bound; see
+  [Target control](docs/book/src/controlling-the-robot.md#target-control-low-rate-commanders).
+  `franka-rerun`'s `commander_live` example is on the same API, with the `Recorder` in the
+  observer.
 - **`automatic_error_recovery` example**: command-line recovery that prints the robot mode
   before and after.
 - **`serde` feature** (off by default): `Serialize` / `Deserialize` for `RobotState`,

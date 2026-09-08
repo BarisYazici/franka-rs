@@ -1,10 +1,11 @@
 //! The commander side of `commander_live.rs`, taken from franka-rs's
-//! `examples/nonrealtime_commander.rs`: the seqlock slot the two threads share, the scripted
-//! sequence of steps, stalls and a burst, and the stdin commander. What the original printed
-//! to stderr goes through a [`Sink`] here, so the live example can log it into the recording.
+//! `examples/nonrealtime_commander.rs`: the scripted sequence of steps, stalls and a burst,
+//! and the stdin commander. Each hands its (clamped, relative) targets to a `publish`
+//! closure -- `set_position` on a target control in bridged mode, a slot in raw mode -- and
+//! what the original printed to stderr goes through a [`Sink`], so the live example can log
+//! it into the recording.
 
 use std::io::BufRead;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Size of one scripted step, m.
@@ -40,53 +41,13 @@ pub const SCRIPT: &[Event] = &[
     Step(0.0, -STEP, 0.0, 0.45), Step(0.0, 0.0, -STEP, 1.0),
 ];
 
-/// The latest target position, relative to the start pose, as a single-writer seqlock: the
-/// sequence number is odd while a write is in progress and changes with every write, so a
-/// reader seeing the same even number before and after loading the coordinates has a
-/// consistent triple. The zero bit pattern is `0.0`, so `Default` is the start pose.
-#[derive(Default)]
-pub struct TargetSlot {
-    sequence: AtomicU64,
-    coordinates: [AtomicU64; 3],
-    /// Set once the commander has nothing more to send.
-    pub finished: AtomicBool,
-}
-
-impl TargetSlot {
-    /// Clamps `target` into the box and publishes it. The single writer.
-    pub fn publish(&self, target: [f64; 3]) -> [f64; 3] {
-        let clamped = [
-            target[0].clamp(-BOX, BOX),
-            target[1].clamp(-BOX, BOX),
-            target[2].clamp(-MAX_DROP, BOX),
-        ];
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-        for (slot, value) in self.coordinates.iter().zip(clamped) {
-            slot.store(value.to_bits(), Ordering::SeqCst);
-        }
-        self.sequence.fetch_add(1, Ordering::SeqCst);
-        clamped
-    }
-
-    /// Copies the latest consistent target into `into`; `false`, with `into` untouched, if the
-    /// writer was mid-update on every try. Never blocks, never spins unboundedly.
-    pub fn load(&self, into: &mut [f64; 3]) -> bool {
-        for _ in 0..3 {
-            let before = self.sequence.load(Ordering::SeqCst);
-            if before & 1 == 1 {
-                continue;
-            }
-            let candidate = self
-                .coordinates
-                .each_ref()
-                .map(|slot| f64::from_bits(slot.load(Ordering::SeqCst)));
-            if self.sequence.load(Ordering::SeqCst) == before {
-                *into = candidate;
-                return true;
-            }
-        }
-        false
-    }
+/// Clamps a relative target into the box.
+pub fn clamp(t: [f64; 3]) -> [f64; 3] {
+    [
+        t[0].clamp(-BOX, BOX),
+        t[1].clamp(-BOX, BOX),
+        t[2].clamp(-MAX_DROP, BOX),
+    ]
 }
 
 /// Where the commander reports: every target it published (clamped, relative to the start)
@@ -96,16 +57,21 @@ pub trait Sink {
     fn event(&mut self, warning: bool, text: String);
 }
 
-/// The scripted commander: runs [`SCRIPT`] against the clock, then marks the slot finished.
-/// Never joined: if the motion ends early it dies with the process, targets unsent.
-pub fn run_script(slot: &TargetSlot, sink: &mut impl Sink) {
+/// Where the targets go; `false` ends the commander early.
+pub type Publish<'a> = &'a mut dyn FnMut([f64; 3]) -> bool;
+
+/// The scripted commander: runs [`SCRIPT`] against the clock.
+pub fn run_script(publish: Publish<'_>, sink: &mut impl Sink) {
     let started = Instant::now();
     let mut target = [0.0f64; 3];
     for event in SCRIPT {
         let elapsed = started.elapsed().as_secs_f64();
         match *event {
             Step(dx, dy, dz, hold) => {
-                target = slot.publish([target[0] + dx, target[1] + dy, target[2] + dz]);
+                target = clamp([target[0] + dx, target[1] + dy, target[2] + dz]);
+                if !publish(target) {
+                    return;
+                }
                 sink.published(target);
                 let text = format!("{elapsed:.2} s: step to {target:.3?}, hold {hold} s");
                 sink.event(false, text);
@@ -124,14 +90,17 @@ pub fn run_script(slot: &TargetSlot, sink: &mut impl Sink) {
                 for i in 0..count {
                     let mut toggled = target;
                     toggled[0] += STEP * f64::from(i % 2 == 0);
-                    sink.published(slot.publish(toggled));
+                    let toggled = clamp(toggled);
+                    if !publish(toggled) {
+                        return;
+                    }
+                    sink.published(toggled);
                     pause(spacing);
                 }
                 pause(hold);
             }
         }
     }
-    slot.finished.store(true, Ordering::SeqCst);
 }
 
 fn pause(seconds: f64) {
@@ -139,12 +108,15 @@ fn pause(seconds: f64) {
 }
 
 /// The interactive commander: one `x y z` line per target until stdin closes.
-pub fn run_stdin(slot: &TargetSlot, sink: &mut impl Sink) {
+pub fn run_stdin(publish: Publish<'_>, sink: &mut impl Sink) {
     for line in std::io::stdin().lock().lines().map_while(Result::ok) {
         let mut fields = line.split_whitespace().map(str::parse::<f64>);
         match (fields.next(), fields.next(), fields.next()) {
             (Some(Ok(x)), Some(Ok(y)), Some(Ok(z))) => {
-                let target = slot.publish([x, y, z]);
+                let target = clamp([x, y, z]);
+                if !publish(target) {
+                    return;
+                }
                 sink.published(target);
                 sink.event(false, format!("stdin: step to {target:.3?}"));
             }
@@ -154,5 +126,4 @@ pub fn run_stdin(slot: &TargetSlot, sink: &mut impl Sink) {
             ),
         }
     }
-    slot.finished.store(true, Ordering::SeqCst);
 }

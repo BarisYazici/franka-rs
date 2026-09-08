@@ -10,14 +10,19 @@
 //! so the same binary drives either arm. Every byte-level difference is funnelled through
 //! [`wire::robot::codec`]; nothing above it names a protocol version.
 //!
-//! # Three ways to control the robot
+//! # Four ways to control the robot
 //! 1. **Callbacks** — [`Robot::control_joint_positions`] and its siblings run libfranka's
 //!    `ControlLoop`: your closure is called once per millisecond and returns the next setpoint
 //!    (see the [`robot`] module).
 //! 2. **`ActiveControl`** — [`Robot::start_torque_control`] and its siblings hand back a
 //!    [`ActiveTorqueControl`] / [`ActiveMotionGenerator`] handle you drive yourself with
 //!    `read_once` / `write_once` (see [`robot::active_control`]).
-//! 3. **Read-only** — [`Robot::read_once`] and [`Robot::read`] stream [`RobotState`] without
+//! 3. **Target control** — [`Robot::start_cartesian_target_control`] and
+//!    [`Robot::start_joint_target_control`] run the loop on a thread of their own and hand
+//!    back a [`CartesianTargetControl`] / [`JointTargetControl`] whose `set_position` /
+//!    `set_joints` any low-rate commander can call at any time; the loop turns the steps into
+//!    a smooth, limit-respecting command (see [`robot::target_control`]).
+//! 4. **Read-only** — [`Robot::read_once`] and [`Robot::read`] stream [`RobotState`] without
 //!    commanding anything.
 //!
 //! # Model and gripper
@@ -130,8 +135,9 @@ pub use rate_limiting::{
 };
 pub use realtime::RealtimeConfig;
 pub use robot::{
-    ActiveMotionGenerator, ActiveMotionInput, ActiveTorqueControl, Robot, RobotOptions,
-    VersionPolicy, VirtualWallCuboid,
+    ActiveMotionGenerator, ActiveMotionInput, ActiveTorqueControl, CartesianSent,
+    CartesianTargetControl, JointSent, JointTargetControl, JointTargetControlOptions, Robot,
+    RobotOptions, Settle, TargetControlOptions, VersionPolicy, VirtualWallCuboid,
 };
 pub use robot_state::{RobotMode, RobotState};
 /// The FCI protocol version a connection speaks: v5 (FER) or v10 (FR3).

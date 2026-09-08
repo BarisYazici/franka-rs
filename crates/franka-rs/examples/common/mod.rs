@@ -23,6 +23,8 @@
 
 /// Cartesian-impedance helpers, shared by the two `cartesian_impedance_*` examples.
 pub mod cartesian;
+/// The scripted commander of `nonrealtime_commander.rs`.
+pub mod commander;
 
 use franka::{
     Duration, FciVersion, FrankaResult, JointPositions, RealtimeConfig, Robot, RobotState,
