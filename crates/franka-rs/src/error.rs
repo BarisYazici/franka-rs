@@ -8,6 +8,7 @@ pub type FrankaResult<T> = Result<T, FrankaError>;
 
 /// Terminal status of a `Move` command (`research_interface::robot::Move::Status`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MoveStatus {
     /// The motion ended regularly; this is the only reply that makes a control loop return
     /// `Ok(())` (`kSuccess`).
@@ -71,6 +72,7 @@ impl MoveStatus {
 
 /// The robot command that was sent in one cycle, as recorded in the control log.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RobotCommandLog {
     /// Commanded joint positions, in rad.
     pub q_c: [f64; 7],
@@ -88,7 +90,10 @@ pub struct RobotCommandLog {
 }
 
 /// One entry of the control log attached to a [`ControlException`] (mirrors `franka::Record`).
+///
+/// With the `serde` feature a `Vec<Record>` is what a control log looks like on disk.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Record {
     /// The robot state received in this cycle.
     pub state: RobotState,
@@ -97,7 +102,11 @@ pub struct Record {
 }
 
 /// A motion ended abnormally (mirrors `franka::ControlException`).
+///
+/// With the `serde` feature the whole exception serialises, log included; nothing in it is
+/// unserialisable.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ControlException {
     /// Full libfranka-style message, including the error names and success-rate lines when
     /// the motion was aborted by a reflex.
@@ -196,5 +205,54 @@ mod tests {
             assert_eq!(s.to_u8(), v);
         }
         assert!(MoveStatus::from_u8(12).is_none());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn record_and_exception_round_trip_through_json() {
+        use crate::duration::Duration;
+        use crate::robot_state::RobotMode;
+
+        let mut state = RobotState {
+            time: Duration::from_millis(123_456),
+            robot_mode: RobotMode::Reflex,
+            ..RobotState::default()
+        };
+        state.q = [0.1, -0.2, 0.3, -2.0, 0.5, 1.6, 0.7];
+        state.joint_contact[3] = 1.0;
+        state.O_F_ext_hat_K = [1.0, 2.0, 3.0, 0.1, 0.2, 0.3];
+        state.current_errors.0[Errors::index_of("cartesian_reflex").unwrap()] = true;
+        let record = Record {
+            state,
+            command: Some(RobotCommandLog {
+                q_c: [0.1, -0.2, 0.3, -2.0, 0.5, 1.6, 0.7],
+                ..RobotCommandLog::default()
+            }),
+        };
+        let json = serde_json::to_string(&record).unwrap();
+        assert!(
+            json.contains("\"current_errors\":[\"cartesian_reflex\"]"),
+            "{json}"
+        );
+        assert!(json.contains("\"time\":123456"), "{json}");
+        let back: Record = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, record);
+        assert_eq!(back.state.q[3], -2.0);
+        assert_eq!(back.state.joint_contact[3], 1.0);
+        assert_eq!(back.state.current_errors, state.current_errors);
+        assert_eq!(back.command.unwrap().q_c[5], 1.6);
+
+        let exception = ControlException {
+            message: "libfranka: Move command aborted: motion aborted by reflex!".into(),
+            move_status: Some(MoveStatus::ReflexAborted),
+            last_motion_errors: state.current_errors,
+            log: vec![record.clone(), record],
+        };
+        let json = serde_json::to_string(&exception).unwrap();
+        let back: ControlException = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.message, exception.message);
+        assert_eq!(back.move_status, Some(MoveStatus::ReflexAborted));
+        assert_eq!(back.last_motion_errors, exception.last_motion_errors);
+        assert_eq!(back.log, exception.log);
     }
 }

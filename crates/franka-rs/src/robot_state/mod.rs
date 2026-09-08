@@ -8,6 +8,7 @@ use crate::errors::Errors;
 
 /// Robot mode (`franka::RobotMode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RobotMode {
     /// A mode this client does not model (`kOther`).
     Other,
@@ -67,7 +68,11 @@ pub const IDENTITY_TRANSFORM: [f64; 16] = [
 
 /// Describes the robot state (field names and semantics identical to `franka::RobotState`;
 /// see libfranka's `robot_state.h` for the documentation of every field).
+///
+/// With the `serde` feature the state serialises field by field under these names, the
+/// arrays as arrays, `time` as milliseconds and the two [`Errors`] as lists of names.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RobotState {
     /// Measured end-effector pose in base frame, column-major 4x4 homogeneous transform (translation in m).
     pub O_T_EE: [f64; 16],

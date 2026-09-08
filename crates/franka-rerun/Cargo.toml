@@ -1,0 +1,19 @@
+[package]
+name = "franka-rerun"
+version = "0.1.0"
+edition.workspace = true
+# `rerun` 0.37 needs a newer compiler than the workspace's MSRV; CI builds on stable.
+rust-version = "1.96"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+description = "Replays franka-rs logs (nonrealtime_commander CSVs, control logs) as Rerun recordings and records a robot live"
+
+[dependencies]
+# `serde` so that a control log (`Vec<franka::Record>`) can be saved to and loaded from JSON.
+franka = { package = "franka-rs", path = "../franka-rs", default-features = false, features = ["serde"] }
+rerun = { version = "=0.37.1", default-features = false, features = ["sdk", "rrd"] }
+# `float_roundtrip`: a saved log must read back bit for bit; serde_json's default parser
+# rounds the last digit of a shortest-representation float.
+serde_json = { workspace = true, features = ["float_roundtrip"] }

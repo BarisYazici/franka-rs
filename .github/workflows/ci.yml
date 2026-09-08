@@ -70,8 +70,19 @@ jobs:
       - name: cargo clippy (--no-default-features)
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
+      # `-p franka-rs` alone: with `--workspace` the other crates' default features unify
+      # `model-library` back on.
+      - name: cargo clippy (franka-rs, --no-default-features)
+        run: cargo clippy -p franka-rs --all-targets --no-default-features -- -D warnings
+
+      - name: cargo clippy (franka-rs, --features serde)
+        run: cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
+
       - name: unit tests
         run: cargo test --workspace --lib
+
+      - name: unit tests (franka-rs, --features serde)
+        run: cargo test -p franka-rs --lib --features serde
 
       - name: wire_sizes + model_conformance (FCI v10 and v5)
         run: |
@@ -83,6 +94,12 @@ jobs:
 
       - name: doctests
         run: cargo test --workspace --doc
+
+      # The flight recorder on synthetic logs, plus the recorder's 1 kHz producer test.
+      - name: franka-rerun tests and example build
+        run: |
+          cargo test -p franka-rerun
+          cargo build -p franka-rerun --examples
 
       - name: cargo doc
         env:

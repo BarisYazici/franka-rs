@@ -28,9 +28,9 @@
 //! of `x y z` (metres, relative to the start pose) to standard input, same box clamp. The
 //! motion ends when the commander is done and the commanded pose has settled, or earlier if
 //! the measured end effector strays more than 30 cm from where it started. `--log PATH`
-//! writes one CSV row per cycle (`t,target_*,cmd_*,meas_*`: the latest raw target, the
-//! robot's echoed `O_T_EE_c`, the measured `O_T_EE`) into a `Vec` sized before the loop, so
-//! the loop never allocates; `bench/commander/plot.py` draws it.
+//! writes one CSV row per cycle (`t,target_*,cmd_*,meas_*,q0..q6`: the raw target, the echoed
+//! `O_T_EE_c`, the measured `O_T_EE` and joint angles) into a `Vec` sized before the loop, so
+//! the loop never allocates; `bench/commander/plot.py` and `tools/rerun-replay` draw it.
 //!
 //! Usage: `nonrealtime_commander <robot-hostname> [--bridged | --raw] [--stdin] [--log PATH]
 //! [--yes]`. Set `FRANKA_REALTIME=ignore` to run against franka-sim on an ordinary kernel;
@@ -252,11 +252,15 @@ fn distance(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
-fn row(t: f64, target: &[f64; 3], commanded: &[f64; 3], measured: &[f64; 3]) -> [f64; 10] {
-    let mut out = [t; 10];
+/// One log row: `t`, the target, the commanded and measured positions, the joint angles.
+type Row = [f64; 17];
+
+fn row(t: f64, target: &[f64; 3], commanded: &[f64; 3], measured: &[f64; 3], q: &[f64; 7]) -> Row {
+    let mut out = [t; 17];
     out[1..4].copy_from_slice(target);
     out[4..7].copy_from_slice(commanded);
     out[7..10].copy_from_slice(measured);
+    out[10..17].copy_from_slice(q);
     out
 }
 
@@ -297,7 +301,7 @@ fn run(
     });
 
     // Preallocated: `push` below never reallocates while `len < capacity`.
-    let mut rows: Vec<[f64; 10]> = Vec::with_capacity(LOG_CAPACITY * usize::from(log.is_some()));
+    let mut rows: Vec<Row> = Vec::with_capacity(LOG_CAPACITY * usize::from(log.is_some()));
     let mut time = 0.0;
     let mut target = [0.0f64; 3];
     let mut last_commanded = start;
@@ -332,7 +336,7 @@ fn run(
             pose[12..15].copy_from_slice(&goal);
 
             if rows.len() < rows.capacity() {
-                rows.push(row(time, &goal, &commanded, &measured));
+                rows.push(row(time, &goal, &commanded, &measured, &state.q));
             }
 
             // Under the filter the command approaches the target exponentially; raw, at once.
@@ -378,11 +382,11 @@ fn run(
     Ok(reflex)
 }
 
-fn write_log(path: &str, rows: &[[f64; 10]]) -> FrankaResult<()> {
+fn write_log(path: &str, rows: &[Row]) -> FrankaResult<()> {
     let io_error = |e: std::io::Error| FrankaError::InvalidArgument(format!("--log {path}: {e}"));
     let mut out = std::io::BufWriter::new(std::fs::File::create(path).map_err(io_error)?);
     let header = "t,target_x,target_y,target_z,cmd_x,cmd_y,cmd_z,meas_x,meas_y,meas_z";
-    writeln!(out, "{header}").map_err(io_error)?;
+    writeln!(out, "{header},q0,q1,q2,q3,q4,q5,q6").map_err(io_error)?;
     for row in rows {
         write!(out, "{:.4}", row[0]).map_err(io_error)?;
         for value in &row[1..] {

@@ -27,6 +27,12 @@ default = ["model-library"]
 # The FCI v5 (Franka Emika Robot / FER) model: `LoadModelLibrary` plus `dlopen` of the shared object the
 # robot serves. Off, the crate keeps the URDF-based native backend only.
 model-library = ["dep:libloading"]
+# `serde::Serialize` / `serde::Deserialize` on `RobotState`, `RobotMode`, `Errors`, `Duration`,
+# `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a control log can be
+# dumped to and read back from JSON (`crates/franka-rerun` does that). `Errors` serialises as the
+# list of the set flags' names, not as 41 booleans. Off, none of the crate's types implement the
+# traits (the `serde` crate itself is in the tree either way, through `urdf-rs`).
+serde = ["dep:serde"]
 
 [dependencies]
 nalgebra.workspace = true
@@ -36,6 +42,7 @@ libc.workspace = true
 urdf-rs.workspace = true
 socket2 = { version = "0.5", features = ["all"] }
 libloading = { version = "0.8", optional = true }
+serde = { workspace = true, optional = true }
 roxmltree = "0.20"
 
 [dev-dependencies]

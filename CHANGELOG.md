@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`serde` feature** (off by default): `Serialize` / `Deserialize` for `RobotState`,
+  `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and
+  `ControlException`. `Errors` serialises as the list of the set flags' names.
+- **Flight recorder** in `crates/franka-rerun`: `flight::{log_records, replay_exception,
+  save_records, load_records}` replay a `ControlException`'s control log as a Rerun
+  recording (contact and collision flags, external wrench, commanded versus measured,
+  errors, the arm); `Recorder` streams the same live from inside a control loop with a
+  non-blocking, non-allocating `push`; `franka-rerun log <records.json>` on the command
+  line; `examples/reflex_replay.rs`. Hardware validation pending; see
+  [the flight recorder page](docs/book/src/flight-recorder.md).
+
 ## [0.1.0] - 2026-09-07
 
 Initial release. `franka-rs` is a pure-Rust libfranka client speaking both

@@ -137,8 +137,17 @@ motion ends not when the commander is done but when the commanded `O_T_EE_c` has
 the last target (within 1 mm for 250 cycles), so the final `motion_finished` is sent from rest;
 a measured deviation of more than 30 cm from the start freezes the target where the command is
 and ends the same way. `--log PATH` records one row per cycle — the raw target, the echoed
-`O_T_EE_c`, the measured `O_T_EE` — into a `Vec` sized before the loop, and
+`O_T_EE_c`, the measured `O_T_EE`, the joint angles — into a `Vec` sized before the loop, and
 `bench/commander/plot.py` draws it with the stall and the burst marked.
+
+For a closer look, `crates/franka-rerun` replays such a log in [Rerun](https://rerun.io):
+`cargo run --release -p franka-rerun -- csv bridged.csv --robot fr3 -o bridged.rrd`, then
+`rerun bridged.rrd` (viewer 0.37.1, matching the SDK the crate pins). The recording has the
+target, commanded and measured positions per axis, the speed, acceleration and jerk of the
+commanded position against the FR3's limits (or the FER's with `--robot fer`), the raw
+target's implied speed for contrast, the commander's steps, stall and burst as a text log,
+and a 3D replay of the arm computed from the logged joint angles with the model. It was
+developed against franka-sim; see the crate's `README.md` for the layout and the caveats.
 
 ## `ControlException` and the control log
 
@@ -171,7 +180,9 @@ match result {
   The default size is **50** cycles (`franka::DEFAULT_LOG_SIZE`, libfranka's default);
   change it with `Robot::new_with_log_size` or
   `RobotOptions::new(..).with_log_size(n)`. This is the thing to dump when a reflex fires:
-  it shows what was commanded in the 50 ms before the robot stopped.
+  it shows what was commanded in the 50 ms before the robot stopped. The
+  [flight recorder](./flight-recorder.md) replays it in Rerun, and with the `serde` feature
+  it can be saved as JSON.
 
 After a reflex, `robot.automatic_error_recovery()` clears the errors so a new motion can
 start. It fails with `FrankaError::Command` when manual recovery is required.

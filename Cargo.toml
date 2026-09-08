@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/franka-rs", "crates/franka-sim-test", "tools/fer-model-fit"]
+members = ["crates/franka-rs", "crates/franka-rerun", "crates/franka-sim-test", "tools/fer-model-fit"]
 
 [workspace.package]
 edition = "2021"

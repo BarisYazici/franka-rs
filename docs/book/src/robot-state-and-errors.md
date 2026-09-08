@@ -117,6 +117,9 @@ for byte, including the `"libfranka: "` prefix — a unit test pins the
 
 `Control` is the only variant that carries structured data — see
 [`ControlException` and the control log](./controlling-the-robot.md#controlexception-and-the-control-log).
+That log is what the [flight recorder](./flight-recorder.md) replays: the contact and
+collision flags, the external wrench and the errors of the cycles before a reflex, as a
+Rerun recording.
 
 Two divergences from libfranka are deliberate and documented:
 

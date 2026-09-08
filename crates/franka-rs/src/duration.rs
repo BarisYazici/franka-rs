@@ -1,7 +1,10 @@
 //! Millisecond duration used for robot time stamps (mirrors `franka::Duration`).
 
 /// A duration in whole milliseconds, as reported by the robot (`RobotState::time`).
+///
+/// With the `serde` feature it serialises as the bare millisecond count.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Duration(u64);
 
 impl Duration {

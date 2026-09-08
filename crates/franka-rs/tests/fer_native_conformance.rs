@@ -398,6 +398,7 @@ fn native_fer_dynamics_with_a_payload_differ_by_a_bounded_amount() {
 // Live against the shared object, when it is available
 // --------------------------------------------------------------------------
 
+#[cfg(feature = "model-library")]
 /// The captured `libfcimodels_x64.so`, if this machine has one.
 fn model_library_path() -> Option<PathBuf> {
     for name in ["FRANKA_FER_MODEL_SO", "FRANKA_FER_MODEL_LIBRARY"] {
@@ -411,6 +412,7 @@ fn model_library_path() -> Option<PathBuf> {
     None
 }
 
+#[cfg(feature = "model-library")]
 /// Writes one line to the process's *real* stderr, bypassing libtest's capture,
 /// so a skipped test cannot be mistaken for coverage.
 fn skip(message: &str) {
@@ -429,6 +431,7 @@ fn skip(message: &str) {
     eprintln!("{message}");
 }
 
+#[cfg(feature = "model-library")]
 const SKIP_MESSAGE: &str = "SKIP: $FRANKA_FER_MODEL_SO is unset or missing, so this test \
      compared nothing against a live libfcimodels. The committed fixture covers the rest of \
      this suite; see docs/book/src/fer.md.";

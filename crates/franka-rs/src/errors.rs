@@ -52,6 +52,10 @@ pub const ERROR_NAMES: [&str; ERROR_COUNT] = [
 ];
 
 /// Set of robot error flags (mirrors `franka::Errors`).
+///
+/// With the `serde` feature it serialises as the list of the set flags' names in wire order
+/// (`["joint_reflex", "cartesian_reflex"]`, `[]` when empty) rather than as 41 booleans, and
+/// deserialising a name that is not in [`ERROR_NAMES`] is an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Errors(pub [bool; ERROR_COUNT]);
 
@@ -89,6 +93,28 @@ impl Errors {
 
 fn index_of(name: &str) -> Option<usize> {
     ERROR_NAMES.iter().position(|&n| n == name)
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Errors {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.names())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Errors {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Errors, D::Error> {
+        let names: Vec<std::borrow::Cow<'de, str>> = serde::Deserialize::deserialize(deserializer)?;
+        let mut flags = [false; ERROR_COUNT];
+        for name in &names {
+            let index = index_of(name).ok_or_else(|| {
+                serde::de::Error::custom(format!("{name:?} is not a libfranka error name"))
+            })?;
+            flags[index] = true;
+        }
+        Ok(Errors(flags))
+    }
 }
 
 impl From<[bool; ERROR_COUNT]> for Errors {
@@ -168,5 +194,26 @@ mod tests {
         assert!(errors.get("joint_velocity_violation"));
         assert!(!errors.get("joint_reflex"));
         assert!(!errors.get("no_such_error"));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serialises_as_the_set_names() {
+        let mut flags = [false; ERROR_COUNT];
+        flags[6] = true;
+        flags[40] = true;
+        let errors = Errors(flags);
+        let json = serde_json::to_string(&errors).unwrap();
+        assert_eq!(
+            json,
+            "[\"joint_reflex\",\"base_acceleration_invalid_reading\"]"
+        );
+        assert_eq!(serde_json::from_str::<Errors>(&json).unwrap(), errors);
+        assert_eq!(
+            serde_json::from_str::<Errors>("[]").unwrap(),
+            Errors::default()
+        );
+        let error = serde_json::from_str::<Errors>("[\"no_such_error\"]").unwrap_err();
+        assert!(error.to_string().contains("no_such_error"), "{error}");
     }
 }

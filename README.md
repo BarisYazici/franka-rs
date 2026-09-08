@@ -65,7 +65,8 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
   `EE`/`NE`/`K` transforms, load, plus the v5-only `set_filters` and `virtual_wall`.
 - **`Robot` is `Send + Sync`** -- share it as an `Arc` and `stop()` from another thread.
 - **libfranka's exact error text**, with a `FrankaError` variant per C++ exception type and
-  a control log attached to every `ControlException`.
+  a control log attached to every `ControlException` -- replayable as a Rerun
+  [flight recording](https://barisyazici.github.io/franka-rs/flight-recorder.html).
 - **Cross-compiles to aarch64**, glibc or static musl.
 
 ## Quick example
@@ -120,6 +121,7 @@ for the ten runnable
 | Feature | Default | What it adds |
 |---|---|---|
 | `model-library` | yes | `Robot::load_model_from_robot()` on an FER: `LoadModelLibrary` plus `dlopen` of the shared object the robot serves. Off, the crate is pure Rust with no `dlopen`, which is what a static musl build needs -- the built-in FER model works either way. |
+| `serde` | no | `Serialize` / `Deserialize` on `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a control log can be saved as JSON and replayed later (`crates/franka-rerun`). `Errors` serialises as the list of the set flags' names. |
 
 ## Running the tests locally
 

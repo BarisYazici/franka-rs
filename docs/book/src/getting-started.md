@@ -17,6 +17,7 @@ One thing is worth knowing about features:
 | feature | default | what it does |
 |---|---|---|
 | `model-library` | **on** | Compiles the FCI v5 `LoadModelLibrary` + `dlopen` path (`Robot::load_model_from_robot`), pulling in `libloading`. Turn it off for a static musl build, or if you do not want `dlopen` in your process. Nothing else changes: `Robot::load_model()` works either way, on both robots. |
+| `serde` | off | Derives `Serialize` / `Deserialize` for `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a `ControlException`'s control log can be written to JSON and replayed; see [Flight recorder](./flight-recorder.md). `Errors` serialises as the list of the set flags' names. |
 
 Build with `--release`. A debug build of a stiff torque controller will miss cycles.
 

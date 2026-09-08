@@ -10,6 +10,7 @@
 //! cancel-on-drop paths), [`fer`] (FCI v5) and [`model_library`].
 
 mod fer;
+#[cfg(feature = "model-library")]
 mod model_library;
 mod motion;
 mod server;
