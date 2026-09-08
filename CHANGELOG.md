@@ -9,15 +9,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **`nonrealtime_commander` example**: a non-realtime thread publishes Cartesian targets
+  through a lock-free slot and the 1 kHz loop bridges them with the public
+  `cartesian_low_pass_filter` and `limit_rate_cartesian_pose` under its own budget
+  (`--bridged`, `--budget V,A,J`), or passes them through to provoke a reflex (`--raw`);
+  `--log` writes one CSV row per cycle with the joint angles and the external wrench. The
+  budget exists because the robot also checks the joint-space continuity of a Cartesian
+  pose stream, which the rate limiter does not bound; see
+  [Bridging a non-realtime commander](docs/book/src/controlling-the-robot.md).
+- **`automatic_error_recovery` example**: command-line recovery that prints the robot mode
+  before and after.
 - **`serde` feature** (off by default): `Serialize` / `Deserialize` for `RobotState`,
   `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and
   `ControlException`. `Errors` serialises as the list of the set flags' names.
-- **Flight recorder** in `crates/franka-rerun`: `flight::{log_records, replay_exception,
-  save_records, load_records}` replay a `ControlException`'s control log as a Rerun
-  recording (contact and collision flags, external wrench, commanded versus measured,
-  errors, the arm); `Recorder` streams the same live from inside a control loop with a
-  non-blocking, non-allocating `push`; `franka-rerun log <records.json>` on the command
-  line; `examples/reflex_replay.rs`. Hardware validation pending; see
+- **`franka-rerun`**, a workspace crate (`publish = false`, Rust 1.96) that replays logs in
+  Rerun: `csv` turns the commander example's log into target, commanded and measured
+  positions, the command's derivatives against the rate limits and a 3D replay of the arm;
+  `log` replays a saved `ControlException` control log as a flight recording (contact and
+  collision flags, external wrench, commanded versus measured, errors, the arm), through
+  `flight::{log_records, replay_exception, save_records, load_records}`; and `Recorder`
+  streams the same live from inside a control loop with a non-blocking, non-allocating
+  `push`. `examples/reflex_replay.rs` puts the last two together. See
   [the flight recorder page](docs/book/src/flight-recorder.md).
 
 ## [0.1.0] - 2026-09-07

@@ -79,6 +79,13 @@ motion that just ended, and is also what a `ControlException` carries. Reading
 `last_motion_errors` on a freshly connected robot gives you the *history* — the reason the
 previous session ended — which is useful in a pre-flight probe.
 
+Two names in the list are easy to misread. `cartesian_motion_generator_joint_velocity_discontinuity`
+and `cartesian_motion_generator_joint_acceleration_discontinuity` are raised by a *Cartesian
+pose* motion: the robot runs inverse kinematics on every commanded pose and checks the
+result's continuity in joint space, which the client-side rate limiter does not bound. A
+pose stream that passes the Cartesian limits can still fail there; see
+[Joint-space continuity of Cartesian pose commands](./fer.md#joint-space-continuity-of-cartesian-pose-commands).
+
 ## `control_command_success_rate`
 
 The fraction of the last 100 commands the robot accepted, published in every state. It is

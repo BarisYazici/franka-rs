@@ -102,6 +102,37 @@ This is why the README's joint-move example reads `robot.read_once()?.q_d` rathe
 The same defect, in the examples' shared `MotionGenerator`, was found and fixed during the
 2026-09-05 hardware campaign.
 
+## Joint-space continuity of Cartesian pose commands
+
+The robot runs inverse kinematics on every pose a Cartesian pose motion generator sends
+and checks the continuity of the result in joint space, on top of the Cartesian velocity,
+acceleration and jerk checks. The client-side rate limiter — the crate's with
+`limit_rate = true`, or libfranka's — only bounds the Cartesian side: its constants
+(`rate_limiting::fer::MAX_TRANSLATIONAL_ACCELERATION` = 13 m/s², jerk 6500 m/s³) are what the
+robot accepts there, not what the joint-side check accepts.
+
+Measured on a real FER near the ready pose (2026-09-08): a translational ramp at 2.5 m/s²
+with 500 m/s³ of jerk was refused within six cycles as
+`cartesian_motion_generator_joint_velocity_discontinuity`; a ramp at libfranka's own Cartesian
+limits tripped both that and `cartesian_motion_generator_joint_acceleration_discontinuity`;
+1.5 m/s² with 200 m/s³ passed. The criterion is nothing exotic: it is the per-joint
+acceleration limit (`rate_limiting::fer::MAX_JOINT_ACCELERATION`, 7.5 rad/s² on joint 2)
+applied to the joint motion the poses imply. At the ready pose a metre of end-effector travel
+in x costs about 3.2 rad on joint 2, so 2.5 m/s² is 8 rad/s² there, over its limit, while
+1.5 m/s² is 4.8 rad/s². The same budget at a more extended pose, where that lever is larger,
+can still trip. libfranka behaves identically, and its Cartesian examples pass because their
+trajectories start with near-zero acceleration. Both error names are in
+libfranka's error list for the FR3 too, so the check is not v5-specific; it has only been
+measured on an FER. The simulator currently accepts what the robot refuses here.
+
+A stream of stepped targets therefore needs its own, smaller budget through the public
+`cartesian_low_pass_filter` and `limit_rate_cartesian_pose`, with the loop's limiter left on
+as the backstop. `examples/nonrealtime_commander.rs` does that with 0.3 m/s, 0.5 m/s² and
+20 m/s³ by default; see
+[Bridging a non-realtime commander](./controlling-the-robot.md#bridging-a-non-realtime-commander),
+which also records where the collision thresholds, rather than the kinematic checks, became
+the binding constraint.
+
 ## v5-only commands
 
 ```rust,no_run
@@ -127,7 +158,7 @@ because you need it.
 
 `Robot::load_model()` on an FER needs no download: the crate ships parameters identified
 from a real FER's own `libfcimodels.so`. See [The model](./model.md#fer-fci-v5-shipped-identified-parameters),
-including the payload caveat. `Robot::robot_model()` fails with `InvalidOperation` — an
+including the payload caveat and the check against a real FER's measured `O_T_EE`. `Robot::robot_model()` fails with `InvalidOperation` — an
 FER has no URDF to serve.
 
 ## The joint-impedance example

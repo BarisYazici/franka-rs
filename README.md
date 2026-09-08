@@ -107,13 +107,13 @@ assert that, and CI runs the example against the simulator, so neither can drift
 
 ```toml
 [dependencies]
-franka-rs = { git = "https://github.com/BarisYazici/franka-rs" }
+franka-rs = "0.1"
 ```
 
 The library is named `franka`, so `use franka::Robot;`. See
 [Getting started](https://barisyazici.github.io/franka-rs/getting-started.html) for the
 realtime prerequisites (`PREEMPT_RT`, `ulimit -r`, `RealtimeConfig`, `FRANKA_REALTIME`) and
-for the ten runnable
+for the fifteen runnable
 [examples](https://barisyazici.github.io/franka-rs/getting-started.html#the-examples).
 
 ### Feature flags
@@ -166,6 +166,15 @@ including those. Full detail in
 - **Cartesian impedance examples on hardware.** `cartesian_impedance_active_control` and
   `cartesian_impedance_figure_eight` ran on a real FER through `ActiveControl` (2026-09-07),
   holding and tracking the pose while being pushed, with no reflex.
+- **Cartesian pose bridging and the flight recorder on hardware (2026-09-08).**
+  `nonrealtime_commander` ran its full 19 s bridged sequence on a real FER with no reflex
+  (peak commanded speed 0.25 m/s, measured pose within a few millimetres of the command),
+  and its raw mode was refused at the first step and cleared with
+  `automatic_error_recovery()`; the runs also showed that the robot checks the joint-space
+  continuity of a Cartesian pose stream, which the client-side rate limiter does not bound
+  (documented in the book). `reflex_replay`'s live `Recorder` pushed 23 941 records at 1 kHz
+  with none dropped, and on every logged cycle the native FER model's end effector matched
+  the measured `O_T_EE` to under 0.01 mm.
 - **Simulator.** 36-run A/B matrix against `franka-sim` with alternating client order and a
   fresh container per cell: median cycle time 1000 us for both clients, no detectable p99
   difference, and franka-rs cheaper on CPU in 18 of 18 paired cells.

@@ -8,8 +8,15 @@ the raw material for that answer in the control log of every `ControlException`;
 through, and can record the same picture live while a loop runs.
 
 > **Status.** Everything on this page is exercised against synthetic logs and the simulator's
-> data layout in `crates/franka-rerun/tests/flight.rs`. Validation on a real robot -- a
-> deliberate contact tripping a reflex, replayed from the exception's log -- is pending.
+> data layout in `crates/franka-rerun/tests/flight.rs`, and the live `Recorder` has run on a
+> real FER (2026-09-08): `reflex_replay` recorded 24 s at 1 kHz without a push, 23 941 records
+> pushed and 0 dropped, peak |F_ext| 4.5 N, no flags raised.
+> The pushed run on the same arm, same day: a hand push on the hand during the swing raised
+> `cartesian_reflex` 3.9 s in. The replay written from the `ControlException` holds the last
+> 3000 records; in it the Cartesian contact flag on `Fy` rises at 5 N, the joint 3 contact
+> flag 13 ms later, and the Cartesian collision flag at 10.6 N in the cycle before the robot
+> stopped -- the joint, the axis and the direction of the push are all readable from the
+> recording. 3928 records were pushed by the live `Recorder` with 0 dropped.
 
 ## The control log
 
@@ -137,6 +144,7 @@ checks the no-allocation claim with a counting allocator around a 1 kHz producer
 collision thresholds from `--force` / `--torque` (default 10 N / 10 Nm, applied to all
 eight thresholds), a live recorder to `run.rrd` or `--live ADDR`, and a slow swing of
 joints 4 and 6 that you are meant to push against. On the reflex it writes `reflex.rrd`
-and `reflex.json`, recovers, and finishes the recorder. It has not been run on hardware
-yet; the [franka-rerun README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-rerun)
+and `reflex.json`, recovers, and finishes the recorder. On a real FER it ran for 24 s
+without a push with no records dropped (see the status note at the top of this page); the
+[franka-rerun README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-rerun)
 has the flags.

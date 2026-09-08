@@ -2,12 +2,15 @@
 
 ## Adding the dependency
 
-The crate is not on crates.io yet, so depend on the git repository:
+The crate is on [crates.io](https://crates.io/crates/franka-rs):
 
 ```toml
 [dependencies]
-franka-rs = { git = "https://github.com/BarisYazici/franka-rs" }
+franka-rs = "0.1"
 ```
+
+To follow `main` instead, depend on the git repository:
+`franka-rs = { git = "https://github.com/BarisYazici/franka-rs" }`.
 
 The library is named `franka`, so `use franka::Robot;` is what you write. Rust 1.85 or
 newer (edition 2021) is required.
@@ -112,9 +115,9 @@ thing to point at a new PC or NIC.
 
 ## The examples
 
-Every example lives in `crates/franka-rs/examples/`, takes the robot's hostname as
-`argv[1]`, and reads `RealtimeConfig` from `FRANKA_REALTIME`, so the same binary runs
-against a robot and against the simulator:
+Every example takes the robot's hostname as `argv[1]` and reads `RealtimeConfig` from
+`FRANKA_REALTIME`, so the same binary runs against a robot and against the simulator. All
+but the last live in `crates/franka-rs/examples/`:
 
 ```sh
 cargo run --release --example <name> -- 172.16.0.2
@@ -133,8 +136,10 @@ cargo run --release --example <name> -- 172.16.0.2
 | `cartesian_impedance_active_control` | A Cartesian impedance controller (the initial pose is the equilibrium) driven through `ActiveControl`'s `read_once` / `write_once`, on both FR3 and FER. Takes `[--duration SEC] [--yes]`. |
 | `cartesian_impedance_figure_eight` | The same `ActiveControl` impedance loop with a moving equilibrium: a figure eight around the start pose, ramped in and out, with a nullspace joint spring and a one-sided virtual floor you can press against. Takes `[--duration SEC] [--period SEC] [--amplitude M] [--floor M] [--yes]`. |
 | `grasp_object` | The gripper: homes it, then grasps an object of the given width. Takes `<hostname> <object-width>`. Needs a Franka Hand. |
-| `nonrealtime_commander` | A non-realtime thread publishes jittery, bursty, stalling Cartesian targets through a lock-free slot; the 1 kHz loop bridges them with a 1 Hz low-pass filter and the rate limiter (`--bridged`, the default), or passes them through so the robot's reflex refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--yes]`. |
+| `nonrealtime_commander` | A non-realtime thread publishes jittery, bursty, stalling Cartesian targets through a lock-free slot; the 1 kHz loop bridges them with a 1 Hz low-pass filter and the rate limiter under its own budget (`--bridged`, the default; `--budget V,A,J`), or passes them through so the robot's reflex refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--budget V,A,J] [--yes]`. Both modes have run on a real FER. |
+| `automatic_error_recovery` | A command-line `automatic_error_recovery()`: prints the robot mode and error flags before and after clearing a reflex. Read-only apart from the recovery; the arm does not move. |
 | `readme_joint_move` | The README's "Quick example", byte for byte; CI runs it against the simulator. |
+| `reflex_replay` (in `crates/franka-rerun/examples/`) | The [flight recorder](./flight-recorder.md): a slow joint swing with lowered collision thresholds, recorded live with `Recorder`, and the control log of the reflex a push provokes written as a Rerun recording. `cargo run --release -p franka-rerun --example reflex_replay -- <hostname>`. |
 
 The four `generate_*` examples and `echo_robot_state` are ports of libfranka's examples of
 the same name, so their trajectories can be compared directly.

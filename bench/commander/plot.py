@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plots a `nonrealtime_commander --log` CSV: target vs commanded vs measured position, one
-panel per axis, with the commander's stall and burst marked.
+panel per axis, with the commander's stall and burst marked, and |F_ext| from the
+`fx,fy,fz` columns (`O_F_ext_hat_K`) in a fourth panel when the log has them.
 
 Usage: plot.py run.csv out.png [--title TEXT]
 """
@@ -16,7 +17,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 AXES = ("x", "y", "z")
 # target / commanded / measured: three categorical hues, one per series, fixed order.
-COLORS = {"target": "#eb6834", "cmd": "#2a78d6", "meas": "#1baf7a"}
+COLORS = {"target": "#eb6834", "cmd": "#2a78d6", "meas": "#1baf7a", "force": "#7a4fbf"}
 
 
 def load(path):
@@ -61,7 +62,10 @@ def main():
         if n >= 3 and (burst is None or n > burst[1]):
             burst = (start, n)
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(11, 8))
+    force = None
+    if all("f" + a in d for a in AXES):
+        force = [math.sqrt(sum(d["f" + a][i] ** 2 for a in AXES)) for i in range(len(t))]
+    fig, axes = plt.subplots(3 + (force is not None), 1, sharex=True, figsize=(11, 8 + 2 * (force is not None)))
     for ax, axis in zip(axes, AXES):
         ax.step(t, d["target_" + axis], where="post", color=COLORS["target"], lw=1.2, label="target (raw)")
         ax.plot(t, d["cmd_" + axis], color=COLORS["cmd"], lw=2, label="commanded O_T_EE_c")
@@ -81,13 +85,23 @@ def main():
         axes[0].annotate(f"burst: {burst[1]} targets in 100 ms", (t[burst[0]], 1.0),
                          xycoords=("data", "axes fraction"), va="bottom", ha="right", fontsize=9,
                          color=COLORS["target"])
+    if force is not None:
+        ax = axes[3]
+        ax.plot(t, force, color=COLORS["force"], lw=1.2, label="|F_ext| (O_F_ext_hat_K)")
+        ax.set_ylabel("|F_ext| [N]")
+        ax.set_ylim(bottom=0)
+        ax.grid(True, color="#e5e5e5", lw=0.6)
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        ax.legend(loc="upper right", frameon=False, fontsize=9)
     axes[-1].set_xlabel("time [s]")
     axes[0].legend(loc="upper right", frameon=False, fontsize=9)
     title = args.title or f"{args.csv}: {len(changes)} target changes, {len(t)} cycles"
     fig.suptitle(f"{title} -- peak commanded speed {peak_speed(d, 'cmd_'):.3f} m/s", fontsize=11)
     fig.tight_layout()
     fig.savefig(args.png, dpi=130)
-    print(f"{args.png}: peak commanded speed {peak_speed(d, 'cmd_'):.4f} m/s")
+    print(f"{args.png}: peak commanded speed {peak_speed(d, 'cmd_'):.4f} m/s"
+          + (f", peak |F_ext| {max(force):.2f} N" if force is not None else ""))
 
 
 if __name__ == "__main__":

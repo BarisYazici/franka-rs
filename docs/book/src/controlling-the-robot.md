@@ -126,19 +126,58 @@ what the robot sees:
 
 | mode | `limit_rate` | `cutoff_frequency` | what happens to a 5 cm step |
 |---|---|---|---|
-| `--bridged` (default) | `true` | 1 Hz | The filter's gain per 1 ms cycle is `dt / (dt + 1 / (2π f_c))` = 0.0062, so the step becomes a demand of 0.31 m/s decaying with a 0.16 s time constant; the limiter turns that into a jerk-limited ramp to 9 m/s² and a peak of 0.29 m/s (0.37 m/s when a second step lands while the first is still under way). |
-| `--raw` | `false` | `MAX_CUTOFF_FREQUENCY` | The step goes to the robot as a 50 m/s jump. The motion generator refuses it with `cartesian_motion_generator_velocity_discontinuity`; the example prints the robot's error text, calls `automatic_error_recovery()` and exits 0. |
+| `--bridged` (default) | `true` | 1 Hz | The example first runs the public `cartesian_low_pass_filter` at 1 Hz — gain per 1 ms cycle `dt / (dt + 1 / (2π f_c))` = 0.0062, so the step becomes a demand of 0.31 m/s decaying with a 0.16 s time constant — and then `limit_rate_cartesian_pose` with its own budget of **0.3 m/s, 0.5 m/s², 20 m/s³** (`--budget V,A,J` overrides it), which turns the demand into a jerk-limited ramp peaking at about 0.25 m/s. The loop's own limiter stays on as the backstop and never binds. |
+| `--raw` | `false` | `MAX_CUTOFF_FREQUENCY` | The step goes to the robot as a 50 m/s jump. The motion generator refuses it with `cartesian_motion_generator_velocity_limits_violation`, `cartesian_motion_generator_velocity_discontinuity` and `cartesian_motion_generator_acceleration_discontinuity`; the example prints the robot's error text, calls `automatic_error_recovery()` and exits 0. |
 
-Two details are worth carrying into your own code. The **first setpoint is always the start
-pose**, whatever the slot holds: on FCI v10 the first command of a motion is its own filter
-reference (libfranka's `initialized_filter_`), so a target that arrived before the first cycle
-would go out unfiltered and unlimited — exactly the jump the bridge exists to prevent. And the
-motion ends not when the commander is done but when the commanded `O_T_EE_c` has *settled* on
-the last target (within 1 mm for 250 cycles), so the final `motion_finished` is sent from rest;
-a measured deviation of more than 30 cm from the start freezes the target where the command is
-and ends the same way. `--log PATH` records one row per cycle — the raw target, the echoed
-`O_T_EE_c`, the measured `O_T_EE`, the joint angles — into a `Vec` sized before the loop, and
-`bench/commander/plot.py` draws it with the stall and the burst marked.
+On a real FER (2026-09-08) the bridged mode ran the full 19 s sequence with no reflex — peak
+commanded speed 0.25 m/s, measured pose within a few millimetres of the command — with the
+default budget and libfranka's example collision thresholds (20 N nominal); raw mode held the
+start pose for 0.5 s and was refused at the first 5 cm step, and `automatic_error_recovery()`
+cleared it.
+
+#### Why the bridge has a budget of its own
+
+The crate's rate limiter with `limit_rate = true` is a faithful port of libfranka's, and its
+constants — 13 m/s² and 6500 m/s³ on an FER, 9 m/s² and 4500 m/s³ on an FR3 — are what the
+robot accepts *in Cartesian space*. The robot also runs inverse kinematics on every commanded
+pose and checks the continuity of the result in **joint space**, and that is the check a
+stepped target stream trips. Measured on a real FER near the ready pose: a ramp at 2.5 m/s²
+with 500 m/s³ of jerk was refused within six cycles as
+`cartesian_motion_generator_joint_velocity_discontinuity`; a ramp at libfranka's own
+Cartesian limits tripped both the joint velocity and the joint acceleration discontinuity;
+1.5 m/s² with 200 m/s³ passed. The check is the ordinary per-joint acceleration limit
+applied to the joint motion the poses imply: at that pose joint 2 moves about 3.2 rad per
+metre of x-travel, so 2.5 m/s² is 8 rad/s² against its 7.5 rad/s² limit (see
+[FER specifics](./fer.md#joint-space-continuity-of-cartesian-pose-commands)). libfranka
+behaves identically — its Cartesian examples pass only because their trajectories start
+with near-zero acceleration — and the simulator
+currently accepts what the robot refuses here. So a program that steps its targets needs a
+smaller budget than the limiter's, applied through the public `cartesian_low_pass_filter`
+and `limit_rate_cartesian_pose`, with the loop's limiter left on as the backstop; that is
+what the example does.
+
+A second limit appeared on the same arm above roughly 1 m/s² of commanded acceleration: the
+robot's external-force estimate `O_F_ext_hat_K` crossed 20 N at about 0.25 m/s and raised
+`cartesian_reflex`, so for fast target steps the collision thresholds, not the kinematic
+limits, were the binding constraint. The examples' shared `set_default_behavior` (10 N
+nominal) was crossed at 0.25 m/s, which is why this example sets libfranka's current example
+thresholds explicitly. Both figures are an observation on one arm, not a specification.
+
+Three details are worth carrying into your own code. The **first setpoint is always the
+start pose**, whatever the slot holds: on FCI v10 the first command of a motion is its own
+filter reference (libfranka's `initialized_filter_`), so a target that arrived before the
+first cycle would go out unfiltered and unlimited — exactly the jump the bridge exists to
+prevent. The start pose is **anchored in the first control cycle**, from that cycle's
+`O_T_EE_c`, not from the `read_once` before the motion: on a real robot the commanded pose
+drifts by micrometres between the two, and raw mode would send that difference as a jump. And
+the motion ends not when the commander is done but when the commanded `O_T_EE_c` has
+*settled* on the last target (within 1 mm for 250 cycles), so the final `motion_finished` is
+sent from rest; a measured deviation of more than 30 cm from the start freezes the target
+where the command is and ends the same way. `--log PATH` records one row per cycle — the raw
+target, the echoed `O_T_EE_c`, the measured `O_T_EE`, the joint angles `q0..q6` and the
+external wrench `O_F_ext_hat_K` as `fx,fy,fz,tx,ty,tz` — into a `Vec` sized before the loop,
+and `bench/commander/plot.py` draws it with the stall and the burst marked and, when the
+wrench columns are present, `|F_ext|` in a fourth panel.
 
 For a closer look, `crates/franka-rerun` replays such a log in [Rerun](https://rerun.io):
 `cargo run --release -p franka-rerun -- csv bridged.csv --robot fr3 -o bridged.rrd`, then
@@ -147,7 +186,8 @@ target, commanded and measured positions per axis, the speed, acceleration and j
 commanded position against the FR3's limits (or the FER's with `--robot fer`), the raw
 target's implied speed for contrast, the commander's steps, stall and burst as a text log,
 and a 3D replay of the arm computed from the logged joint angles with the model. It was
-developed against franka-sim; see the crate's `README.md` for the layout and the caveats.
+developed against franka-sim and has since converted the hardware logs above with
+`--robot fer`; see the crate's `README.md` for the layout and the caveats.
 
 ## `ControlException` and the control log
 
