@@ -126,14 +126,78 @@ what the robot sees:
 
 | mode | `limit_rate` | `cutoff_frequency` | what happens to a 5 cm step |
 |---|---|---|---|
-| `--bridged` (default) | `true` | 1 Hz | The example first runs the public `cartesian_low_pass_filter` at 1 Hz — gain per 1 ms cycle `dt / (dt + 1 / (2π f_c))` = 0.0062, so the step becomes a demand of 0.31 m/s decaying with a 0.16 s time constant — and then `limit_rate_cartesian_pose` with its own budget of **0.3 m/s, 0.5 m/s², 20 m/s³** (`--budget V,A,J` overrides it), which turns the demand into a jerk-limited ramp peaking at about 0.25 m/s. The loop's own limiter stays on as the backstop and never binds. |
+| `--bridged` (default) | `true` | `MAX_CUTOFF_FREQUENCY` | The example runs the crate's online trajectory generator, `CartesianOtg`, under a budget of **0.3 m/s, 0.5 m/s², 20 m/s³** (`--budget V,A,J` overrides it): every cycle it re-plans a time-optimal jerk-limited profile from the commanded state to rest at the latest target and follows it for one cycle, so the step becomes an S-curve that peaks at 0.15 m/s and lands, exactly, after 0.66 s. `limit_rate_cartesian_pose` runs after it under the same budget as the backstop, and the loop's own limiter stays on behind that; neither binds. See [Online trajectory generation](#online-trajectory-generation) below. |
 | `--raw` | `false` | `MAX_CUTOFF_FREQUENCY` | The step goes to the robot as a 50 m/s jump. The motion generator refuses it with `cartesian_motion_generator_velocity_limits_violation`, `cartesian_motion_generator_velocity_discontinuity` and `cartesian_motion_generator_acceleration_discontinuity`; the example prints the robot's error text, calls `automatic_error_recovery()` and exits 0. |
 
-On a real FER (2026-09-08) the bridged mode ran the full 19 s sequence with no reflex — peak
-commanded speed 0.25 m/s, measured pose within a few millimetres of the command — with the
-default budget and libfranka's example collision thresholds (20 N nominal); raw mode held the
-start pose for 0.5 s and was refused at the first 5 cm step, and `automatic_error_recovery()`
-cleared it.
+On a real FER (2026-09-08) an earlier version of the bridge — the public
+`cartesian_low_pass_filter` at 1 Hz followed by the same rate limiter, which turned a 5 cm step
+into a ramp peaking at about 0.25 m/s — ran the full 19 s sequence with no reflex, measured
+pose within a few millimetres of the command, with the default budget and libfranka's example
+collision thresholds (20 N nominal); raw mode held the start pose for 0.5 s and was refused at
+the first 5 cm step, and `automatic_error_recovery()` cleared it. The first version of the
+generator bridge, run on the same arm the same day, did **not** go cleanly, and the reason is
+worth the paragraph below the next one: the generator stayed on its targets, but the rate
+limiter behind it clamped it on the first two-axis move and from then on the command orbited
+at the velocity cap, until the robot refused it. The bridge as it is now has not been back on
+the arm.
+
+#### Online trajectory generation
+
+An *online trajectory generator* (OTG) is the causal answer to a stream of stepped targets: a
+small state machine that owns the commanded position, velocity and acceleration and, every
+cycle, re-plans the time-optimal jerk-limited profile from that state to rest at whatever the
+latest target is, then follows it for one cycle. The alternatives all fail on one of the
+requirements. A spline needs future knots, and a commander at 10 Hz — or silent for two
+seconds — cannot supply them. A quintic re-fitted from the current state to the target every
+cycle is smooth but has no notion of the limits: its peak velocity and acceleration scale with
+the step and shrink with the chosen duration, and no choice of duration is right for both a
+1 mm and a 10 cm step. A first-order low-pass filter is causal and cheap, but its first-cycle
+demand is the step times the gain — 0.31 m/s for 5 cm at 1 Hz — so the rate limiter behind it
+does the real work, the peak speed still scales with the step, and the approach is exponential,
+never quite arriving. The OTG is causal (it uses only the latest target), limit-respecting by
+construction (velocity, acceleration and jerk never exceed the budget, on any cycle, including
+a 2 ms one after a lost packet), C2 (the acceleration is continuous; only the jerk switches),
+time-optimal for the profile family it plans in, and it lands exactly on the target and stays
+there.
+
+The crate's `otg` module implements it per axis in about 300 lines with no dependencies and
+no allocation: the seven-segment profile (accelerate to a peak velocity with jerk-limited
+acceleration, cruise, decelerate to rest) parameterised by that peak velocity, whose value is
+found by bisection each cycle — the profile structure of Haschke, Weitnauer and Ritter
+(*On-line planning of time-optimal, jerk-limited trajectories*, IROS 2008), evaluated one
+cycle at a time the way Ruckig does. A target that moves mid-motion is re-planned from the
+current velocity and acceleration; a target closer than the braking distance is passed,
+braked for and returned to, without a jerk spike; a target that stays for seconds is reached
+and held exactly. `CartesianOtg` runs three axes with the same limits and, optionally,
+synchronised so that they arrive together. The property test in the module simulates two
+thousand random target sequences — steps at random times, holds up to three seconds, bursts
+of twenty targets 5 ms apart, gaps — and asserts every cycle that the velocity, acceleration
+and finite-difference jerk stay within the limits, that a reachable target is never
+overshot, and that every target is reached within 10 % of the time an admissible
+brake-then-move profile would take.
+
+**Putting it in a loop** has three rules, each learnt from that first run. The per-cycle log
+of the run, replayed through the generator alone, ends exactly on the last target with every
+per-axis limit respected; replayed through the generator *and* `limit_rate_cartesian_pose`,
+the limiter clamps the command by nanometres at 1.601 s — `y` braking at −0.5 m/s² while `z`
+starts at +0.5 m/s² is a norm of 0.71 m/s² and 28 m/s³ of jerk — and 300 ms later the command
+is millimetres behind the generator's own state, which never hears of it. libfranka's limiter
+has no braking logic; tracking a pose it has fallen behind it saturates at the budget, passes
+the pose, and reverses, and the replay reproduces the ±10 cm orbit in the log. So: the limits
+are **per axis** and a Cartesian budget is a norm, hence `OtgLimits::per_axis_for_norm(3)`
+(budget / √3 per axis, which is also what keeps a synchronised diagonal move inside the
+budget); step **one nominal millisecond per command** (`DELTA_T`) rather than the measured
+period, because the limiter and the robot check every packet against 1 ms and the 52 cycles
+of 2–4 ms in that log each doubled an increment; and **re-anchor the generator on the echo**
+every cycle with `set_position(O_T_EE_c)` — the position only: the echoed twist is a mean over
+the cycle, not the generator's end-of-cycle state, and re-anchoring on it throttles the plan
+to a crawl — so that whatever runs behind it can only ever shape one command, never
+accumulate a lag. With the first two rules the
+replayed backstop never touches a command (worst alteration below 1e-9 m) and every target is
+met exactly; with the third rule alone it binds by up to 50 µm and the run stays bounded
+(millimetres from the targets, no orbit) but does not land exactly, because a vector-norm
+clamp distorts one axis's corrections while another saturates. Both replays are regression
+tests in the module.
 
 #### Why the bridge has a budget of its own
 
@@ -152,9 +216,9 @@ metre of x-travel, so 2.5 m/s² is 8 rad/s² against its 7.5 rad/s² limit (see
 behaves identically — its Cartesian examples pass only because their trajectories start
 with near-zero acceleration — and the simulator
 currently accepts what the robot refuses here. So a program that steps its targets needs a
-smaller budget than the limiter's, applied through the public `cartesian_low_pass_filter`
-and `limit_rate_cartesian_pose`, with the loop's limiter left on as the backstop; that is
-what the example does.
+smaller budget than the limiter's, applied through the public `CartesianOtg` and
+`limit_rate_cartesian_pose`, with the loop's limiter left on as the backstop; that is what
+the example does.
 
 A second limit appeared on the same arm above roughly 1 m/s² of commanded acceleration: the
 robot's external-force estimate `O_F_ext_hat_K` crossed 20 N at about 0.25 m/s and raised

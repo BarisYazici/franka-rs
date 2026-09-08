@@ -58,6 +58,9 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
 - **Rate limiting and low-pass filtering** ported from `rate_limiting.cpp`,
   `joint_velocity_limits.cpp` and `lowpass_filter.cpp`, with the right constants picked
   from the negotiated version.
+- **Online trajectory generation** (`otg`): a dependency-free, allocation-free
+  jerk-limited generator that turns stepped, bursty, stalled targets into a C2, limit-respecting
+  1 kHz command; the bridge in the `nonrealtime_commander` example.
 - **`Model`** -- pose, body and zero Jacobian for all ten frames, mass, Coriolis, gravity.
   Agrees with libfranka to ~1e-14.
 - **`Gripper`** -- the Franka Hand on port 1338, byte-identical on both FCI versions.

@@ -1,25 +1,30 @@
 //! The non-realtime commander of franka-rs's `examples/nonrealtime_commander.rs`, streamed
 //! live into a Rerun viewer: the raw staircase target arriving, the robot refusing it
-//! (`--raw`) or the filtered and rate-limited command following it (`--bridged`), the arm
+//! (`--raw`) or the trajectory generator's command following it (`--bridged`), the arm
 //! moving, the derivatives of the sent position against the robot's limits, the events as
 //! they happen.
 //!
 //! ```text
 //! commander_live <robot-hostname> (--live ADDR | --out FILE) [--bridged | --raw] [--stdin]
-//!                [--budget V,A,J] [--meshes DIR] [--yes]
+//!                [--budget V,A,J] [--controller joint|cartesian] [--meshes DIR] [--yes]
 //! ```
 //!
 //! The control side is the original's: a scripted commander thread publishes targets (steps
 //! of 5 cm with irregular holds, a 2 s stall, a burst of 20 targets in 100 ms) into a seqlock
 //! slot; the 1 kHz callback reads it and hands `start pose + target` to
-//! `control_cartesian_pose`, in `--bridged` mode (the default) through the crate's 1 Hz
-//! low-pass filter and Cartesian rate limiter under a small budget (0.3 m/s, 0.5 m/s^2,
-//! 20 m/s^3; `--budget V,A,J`), in `--raw` mode as is, so the first 5 cm step reaches the
-//! robot as a 50 m/s jump and its motion generator refuses it with a reflex; the example
-//! prints the robot's error text and runs `automatic_error_recovery()`. The start pose is
-//! anchored on the first control cycle, the motion ends when the commander is done and the
-//! command has settled, or when the measured end effector strays 30 cm from the start.
-//! `--stdin` replaces the script with lines of `x y z` (metres, relative to the start).
+//! `control_cartesian_pose`. In `--bridged` mode (the default) the crate's online trajectory
+//! generator (`CartesianOtg`) re-plans, every cycle, a time-optimal jerk-limited profile from
+//! the commanded state to rest at the latest target and follows it for one cycle (a 5 cm step
+//! becomes an S-curve peaking at 0.15 m/s that lands after 0.66 s), and the Cartesian rate
+//! limiter runs after it as the backstop, both under a small budget (0.3 m/s, 0.5 m/s^2,
+//! 20 m/s^3; `--budget V,A,J`). In `--raw` mode the pose goes out as is, so the first 5 cm
+//! step reaches the robot as a 50 m/s jump and its motion generator refuses it with a reflex;
+//! the example prints the robot's error text and runs `automatic_error_recovery()`.
+//! `--controller joint|cartesian` picks the robot's internal controller (Cartesian impedance
+//! by default). The start pose is anchored on the first control cycle, the motion ends when
+//! the commander is done and the command has settled, or when the measured end effector
+//! strays 30 cm from the start. `--stdin` replaces the script with lines of `x y z` (metres,
+//! relative to the start).
 //!
 //! What is new is where it all goes. Every cycle the callback pushes the state and the pose
 //! it sent to a [`franka_rerun::Recorder`] (`--live ADDR` streams to a viewer already
@@ -51,8 +56,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use franka::{
-    cartesian_low_pass_filter, limit_rate_cartesian_pose, CartesianPose, ControllerMode, Duration,
-    FrankaError, RealtimeConfig, Robot, RobotCommandLog, RobotState, MAX_CUTOFF_FREQUENCY,
+    limit_rate_cartesian_pose, CartesianOtg, CartesianPose, ControllerMode, Duration, FrankaError,
+    FrankaResult, OtgLimits, RealtimeConfig, Robot, RobotCommandLog, RobotState, DELTA_T,
+    MAX_CUTOFF_FREQUENCY,
 };
 use franka_rerun::{distance, flight, Recorder, RecorderOptions, RobotKind, TIMELINE};
 use rerun::{TextLog, TextLogLevel};
@@ -61,11 +67,9 @@ use sink::{log_target, Clock, LiveCommander};
 
 /// Measured deviation from the start position at which the loop gives up, m.
 const MAX_DEVIATION: f64 = 0.30;
-/// Cutoff of the low-pass filter in `--bridged` mode, Hz.
-const BRIDGE_CUTOFF_FREQUENCY: f64 = 1.0;
-/// The default `--bridged` rate-limit budget: translational m/s, m/s^2, m/s^3, then rotational
-/// rad/s, rad/s^2, rad/s^3 (the orientation never changes here); see the original example
-/// for how it was chosen on a real FER.
+/// The default `--bridged` budget, shared by the trajectory generator and the rate limiter:
+/// translational m/s, m/s^2, m/s^3, then rotational rad/s, rad/s^2, rad/s^3 (the orientation
+/// never changes here); see the original example for how it was chosen on a real FER.
 const BRIDGE_LIMITS: [f64; 6] = [0.3, 0.5, 20.0, 1.0, 5.0, 500.0];
 /// The commanded pose counts as settled when it stays within `SETTLE_TOLERANCE` metres of the
 /// target for `SETTLE_CYCLES` consecutive cycles.
@@ -86,6 +90,7 @@ struct Args {
     from_stdin: bool,
     yes: bool,
     limits: [f64; 6],
+    controller: ControllerMode,
     live: Option<String>,
     out: Option<PathBuf>,
     meshes: Option<PathBuf>,
@@ -99,6 +104,7 @@ fn parse_args() -> Result<Args, String> {
         from_stdin: false,
         yes: false,
         limits: BRIDGE_LIMITS,
+        controller: ControllerMode::CartesianImpedance,
         live: None,
         out: None,
         meshes: None,
@@ -126,6 +132,13 @@ fn parse_args() -> Result<Args, String> {
                 match parsed_budget[..] {
                     [v, a, j] => parsed.limits[..3].copy_from_slice(&[v, a, j]),
                     _ => return Err(format!("--budget {text:?}: want V,A,J")),
+                }
+            }
+            "--controller" => {
+                parsed.controller = match value(&mut i, "--controller")?.as_str() {
+                    "joint" => ControllerMode::JointImpedance,
+                    "cartesian" => ControllerMode::CartesianImpedance,
+                    other => return Err(format!("--controller {other:?}: want joint|cartesian")),
                 }
             }
             other if parsed.hostname.is_empty() && !other.starts_with('-') => {
@@ -164,7 +177,8 @@ fn main() {
         Err(e) => {
             eprintln!(
                 "{e}\nUsage: commander_live <robot-hostname> (--live ADDR | --out FILE) \
-                 [--bridged | --raw] [--stdin] [--budget V,A,J] [--meshes DIR] [--yes]"
+                 [--bridged | --raw] [--stdin] [--budget V,A,J] [--controller joint|cartesian] \
+                 [--meshes DIR] [--yes]"
             );
             std::process::exit(2);
         }
@@ -181,6 +195,13 @@ fn main() {
 
 fn translation(pose: &[f64; 16]) -> [f64; 3] {
     [pose[12], pose[13], pose[14]]
+}
+
+/// `limit_rate_cartesian_pose` under the budget, against the robot's echo of its last command.
+#[rustfmt::skip]
+fn backstop(l: &[f64; 6], pose: &[f64; 16], s: &RobotState) -> FrankaResult<[f64; 16]> {
+    limit_rate_cartesian_pose(l[0], l[1], l[2], l[3], l[4], l[5], pose,
+                              &s.O_T_EE_c, &s.O_dP_EE_c, &s.O_ddP_EE_c)
 }
 
 /// Returns whether the motion was aborted by the robot (and recovered from).
@@ -217,11 +238,14 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
     let (limit_rate, name) = match args.mode {
         Mode::Bridged => (
             true,
-            "bridged: 1 Hz filter, then rate limiting within the budget",
+            "bridged: generator, then rate limiting within the budget",
         ),
-        Mode::Raw => (false, "raw: no filter, no rate limiting, expect a reflex"),
+        Mode::Raw => (
+            false,
+            "raw: no generator, no rate limiting, expect a reflex",
+        ),
     };
-    println!("Mode: {name}");
+    println!("Mode: {name}\nController: {:?}", args.controller);
     if args.mode == Mode::Bridged {
         println!("Budget: {:?} m/s, m/s^2, m/s^3", &args.limits[..3]);
     }
@@ -254,6 +278,10 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
         .store(initial.time.as_millis(), Ordering::Relaxed);
     clock.set_start(&start);
     log_target(&rec, clock.now(), Some(&start), [0.0; 2]);
+    let [max_velocity, max_acceleration, max_jerk, ..] = args.limits;
+    #[rustfmt::skip]
+    let otg_limits = OtgLimits { max_velocity, max_acceleration, max_jerk }.per_axis_for_norm(3);
+    let mut otg = CartesianOtg::new(start, otg_limits, true)?; // synchronised axes
 
     let slot = Arc::new(TargetSlot::default());
     let mut commander = LiveCommander {
@@ -305,9 +333,10 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
                 start = translation(&start_pose);
                 clock.set_start(&start);
                 last_commanded = start;
+                otg.reset(start);
                 target = [0.0; 3];
             } else if !deviated && distance(&measured, &start) > MAX_DEVIATION {
-                // Freeze the target where the command is; the bridge brings it to rest.
+                // Freeze the target where the command is; the generator brings it to rest.
                 deviated = true;
                 target = std::array::from_fn(|i| commanded[i] - start[i]);
             } else if !deviated && !slot.load(&mut target) {
@@ -317,28 +346,14 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
             let mut pose = start_pose;
             pose[12..15].copy_from_slice(&goal);
             if mode == Mode::Bridged {
-                // Filter towards the target from the last commanded pose, then limit the
-                // rate against the robot's echo of its last commanded twist and acceleration.
-                // Both only fail on non-finite input; holding the last command is the safe
-                // answer if they ever do.
-                let [v, a, j, rv, ra, rj] = limits;
-                pose =
-                    cartesian_low_pass_filter(dt, &pose, &state.O_T_EE_c, BRIDGE_CUTOFF_FREQUENCY)
-                        .and_then(|filtered| {
-                            limit_rate_cartesian_pose(
-                                v,
-                                a,
-                                j,
-                                rv,
-                                ra,
-                                rj,
-                                &filtered,
-                                &state.O_T_EE_c,
-                                &state.O_dP_EE_c,
-                                &state.O_ddP_EE_c,
-                            )
-                        })
-                        .unwrap_or(state.O_T_EE_c);
+                // The three rules from `franka::otg`: limits that stay inside the norm budget
+                // (above), re-anchor on the robot's echo of the last command, and advance by
+                // one nominal cycle. Then rate-limit against the echo as the backstop; the
+                // calls only fail on non-finite input, and holding is then safe.
+                let _ = otg.set_position(commanded);
+                let _ = otg.set_target(goal);
+                pose[12..15].copy_from_slice(&otg.step(DELTA_T));
+                pose = backstop(&limits, &pose, state).unwrap_or(state.O_T_EE_c);
             }
             // The one thing the realtime thread does for the recording: a copy into a ring.
             let command = RobotCommandLog {
@@ -347,7 +362,7 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
             };
             recorder.push(state, Some(command));
 
-            // Under the filter the command approaches the target exponentially; raw, at once.
+            // Under the generator the command lands on the target and stays; raw, at once.
             let commander_done = deviated || slot.finished.load(Ordering::SeqCst);
             if commander_done && distance(&commanded, &goal) < SETTLE_TOLERANCE {
                 settled_cycles += 1;
@@ -358,7 +373,7 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
             output.motion_finished = settled_cycles >= SETTLE_CYCLES;
             output
         },
-        ControllerMode::CartesianImpedance,
+        args.controller,
         limit_rate,
         MAX_CUTOFF_FREQUENCY,
     );

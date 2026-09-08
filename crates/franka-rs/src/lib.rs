@@ -85,6 +85,7 @@ pub mod lowpass_filter;
 pub(crate) mod math_utils;
 pub mod model;
 pub mod network;
+pub mod otg;
 pub mod rate_limiting;
 pub mod realtime;
 pub mod robot;
@@ -106,6 +107,7 @@ pub use lowpass_filter::{
     cartesian_low_pass_filter, low_pass_filter, DEFAULT_CUTOFF_FREQUENCY, MAX_CUTOFF_FREQUENCY,
 };
 pub use model::{Frame, Model};
+pub use otg::{CartesianOtg, MultiOtg, Otg, OtgLimits};
 /// libfranka puts the `limitRate` overloads and the `kMax*` rate constants of the **FR3**
 /// (FCI v10) in the bare `franka::` namespace (`include/franka/rate_limiting.h`), so they are
 /// re-exported here; every item also keeps its `franka::rate_limiting::` path.

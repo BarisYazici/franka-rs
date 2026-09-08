@@ -9,9 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **`otg` module**: an online trajectory generator (`Otg`, `MultiOtg<N>`, `CartesianOtg`,
+  `OtgLimits`) that re-plans a time-optimal, jerk-limited seven-segment profile every cycle
+  from the commanded state to rest at the latest target, so a stream of stepped, bursty or
+  stalled targets becomes a C2 command that never exceeds its velocity, acceleration and jerk
+  limits, does not overshoot a reachable target, lands exactly and stays there; optional axis
+  synchronisation, `set_position` to re-anchor on the robot's echo, `per_axis_for_norm` for
+  a budget that is a norm. Dependency-free and allocation-free. Its first outing on a real FER
+  ended in the rate limiter behind it orbiting at the velocity cap, which the module
+  documentation explains and two replay tests pin down.
 - **`nonrealtime_commander` example**: a non-realtime thread publishes Cartesian targets
-  through a lock-free slot and the 1 kHz loop bridges them with the public
-  `cartesian_low_pass_filter` and `limit_rate_cartesian_pose` under its own budget
+  through a lock-free slot and the 1 kHz loop bridges them with `CartesianOtg` and
+  `limit_rate_cartesian_pose` under its own budget
   (`--bridged`, `--budget V,A,J`), or passes them through to provoke a reflex (`--raw`);
   `--log` writes one CSV row per cycle with the joint angles and the external wrench. The
   budget exists because the robot also checks the joint-space continuity of a Cartesian
