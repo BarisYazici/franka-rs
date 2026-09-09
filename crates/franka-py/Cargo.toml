@@ -1,0 +1,27 @@
+[package]
+name = "franka-py"
+version = "0.1.0"
+description = "Python bindings for franka-rs: target control for low-rate policies, with the 1 kHz loop in Rust"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+# Built and installed with maturin (`pip install maturin && maturin develop --release`), not
+# published to crates.io: the wheel `franka-rs` on PyPI is the artefact.
+publish = false
+
+# No Rust tests: an extension module needs an interpreter around it, so the tests are
+# `tests/test_sim.py` (pytest). `cargo test --workspace --lib` still builds an empty harness.
+[lib]
+name = "_franka"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+franka = { package = "franka-rs", path = "../franka-rs", default-features = false }
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }
+numpy = "0.29"
+nalgebra.workspace = true

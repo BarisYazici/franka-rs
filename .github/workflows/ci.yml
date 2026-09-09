@@ -183,6 +183,34 @@ jobs:
           cargo test -p franka-rs --test sim_stop_and_reflex --test sim_target_control \
             -- --test-threads=1
 
+  # The Python bindings (crates/franka-py) against the same --enforce-motion-limits server:
+  # maturin builds the wheel, pip installs it, and pytest drives the target loops from Python
+  # (crates/franka-py/tests/test_sim.py, FRANKA_SIM_ADDR attaching as above).
+  python-bindings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: BarisYazici/libfranka-sim@v1
+        with:
+          args: --enforce-motion-limits
+
+      - name: Build and install the wheel
+        run: |
+          pip install maturin numpy pytest
+          maturin build --release --manifest-path crates/franka-py/Cargo.toml --out dist
+          pip install dist/*.whl
+
+      - name: pytest against the simulator
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+          FRANKA_REALTIME: ignore
+        run: pytest crates/franka-py/tests -v
+
   # A franka-sim server with a graspable object placed between the gripper's fingers, for the
   # one sim_gripper test that the nominal job above deliberately skips.
   sim-gripper-object:

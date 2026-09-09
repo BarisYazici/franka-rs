@@ -8,6 +8,7 @@
 - [Flight recorder](./flight-recorder.md)
 - [The model](./model.md)
 - [Gripper](./gripper.md)
+- [Python](./python.md)
 - [FER specifics (FCI v5)](./fer.md)
 - [Testing with franka-sim](./testing-with-franka-sim.md)
 - [Benchmarks and hardware validation](./benchmarks.md)

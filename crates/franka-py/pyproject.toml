@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "franka-rs"
+description = "Python bindings for franka-rs: drive a Franka FR3 or Panda from a low-rate policy, with the 1 kHz loop in Rust"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://barisyazici.github.io/franka-rs/"
+Repository = "https://github.com/BarisYazici/franka-rs"
+
+[tool.maturin]
+# The importable package is `franka` (python/franka/__init__.py); the native module inside it
+# is `franka._franka`, the cdylib this crate builds.
+python-source = "python"
+module-name = "franka._franka"
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

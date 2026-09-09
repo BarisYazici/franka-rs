@@ -108,7 +108,7 @@ FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-sim-test --test harness
 
 ## How CI runs it
 
-`.github/workflows/ci.yml` has three FR3 simulator jobs, each of which gets its server from
+`.github/workflows/ci.yml` has four FR3 simulator jobs, each of which gets its server from
 the [`BarisYazici/libfranka-sim`](https://github.com/BarisYazici/libfranka-sim) GitHub
 Action and sets `FRANKA_SIM_ADDR: 127.0.0.1` so the harness attaches rather than shelling
 out to Docker:
@@ -118,8 +118,9 @@ out to Docker:
 | `sim-nominal` | default | `sim_handshake`, `sim_commands`, `sim_motions`, `sim_gripper` (skipping the one test that needs an object), then the README example `readme_joint_move` against the simulator with `FRANKA_REALTIME=ignore` |
 | `sim-motion-limits` | `--enforce-motion-limits` | `sim_stop_and_reflex` — reflex, recovery and the rate-limiting envelope; `sim_target_control` — the Cartesian and joint target control loops under a stepped, bursting, stalling commander |
 | `sim-gripper-object` | `--gripper-object-width 0.04` | the one `sim_gripper` test that needs something between the fingers |
+| `python-bindings` | `--enforce-motion-limits` | `crates/franka-py/tests/test_sim.py` -- the Python bindings, wheel built with maturin, driven by pytest |
 
-A fourth job, **`sim-fer-v5`**, runs the four `sim_v5_*` binaries — but it cannot use that
+A fifth job, **`sim-fer-v5`**, runs the four `sim_v5_*` binaries — but it cannot use that
 action, because there is no published FER image for it to pull and the FER image also
 lacks the `franka-sim-check` binary the action's readiness probe needs. Instead the
 `franka-sim-test` harness starts and stops the container itself, exactly as it does

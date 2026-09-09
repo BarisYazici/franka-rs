@@ -117,6 +117,21 @@ It can also be run by hand from the Actions tab (`workflow_dispatch`).
 The site lands at <https://barisyazici.github.io/franka-rs/> and the API reference at
 <https://barisyazici.github.io/franka-rs/api/franka/index.html>.
 
+## Releasing
+
+`.github/workflows/release.yml` runs on a `v*` tag: it builds the `franka-rs` wheels
+(x86_64 and aarch64 manylinux, plus the sdist) with `PyO3/maturin-action`, uploads them to
+PyPI through trusted publishing (`pypa/gh-action-pypi-publish`) and runs
+`cargo publish -p franka-rs` with a short-lived token from crates.io's trusted publishing
+(`rust-lang/crates-io-auth-action`). No secret is stored anywhere. From the Actions tab
+(`workflow_dispatch`) it builds the wheels and dry-runs the crate publish, uploading nothing.
+
+One-time setup, before the first tag, the same on both registries: a trusted publisher for
+the GitHub repository `BarisYazici/franka-rs`, workflow `release.yml`, environment `pypi`.
+On PyPI that is a pending publisher for the project name `franka-rs` under *Publishing*; on
+crates.io it is *Trusted Publishing* in the `franka-rs` crate's settings. The `pypi`
+environment appears under the repository's Settings the first time the workflow uses it.
+
 ## Commit conventions
 
 Plain commit messages, no trailers: a subject line in the imperative mood saying what the

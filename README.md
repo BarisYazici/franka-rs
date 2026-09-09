@@ -15,6 +15,7 @@ the protocol version, so the same binary drives an FR3 and a Franka Emika Robot 
 
 **[Documentation](https://barisyazici.github.io/franka-rs/)** |
 **[API reference](https://barisyazici.github.io/franka-rs/api/franka/index.html)** |
+**[Python](https://barisyazici.github.io/franka-rs/python.html)** |
 **[Changelog](CHANGELOG.md)**
 
 ## Why a Rust client
@@ -63,6 +64,10 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
   whose `set_position` / `set_joints` a planner, a socket or a keyboard can call at any
   rate; the loop turns the steps into a smooth, limit-respecting command and `stop()`
   settles and returns the loop's result.
+- **Python bindings** (`crates/franka-py`, `import franka`): the target loops as context
+  managers with `move_to` / `move_by` / `follow` for a policy at any rate, the 1 kHz loop
+  on a Rust thread that never takes the GIL; see
+  [Python](https://barisyazici.github.io/franka-rs/python.html).
 - **Online trajectory generation** (`otg`): the dependency-free, allocation-free
   jerk-limited generator underneath it, also usable on its own in a callback loop.
 - **`Model`** -- pose, body and zero Jacobian for all ten frames, mass, Coriolis, gravity.

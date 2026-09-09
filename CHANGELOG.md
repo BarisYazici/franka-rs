@@ -60,6 +60,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   [Target control](docs/book/src/controlling-the-robot.md#target-control-low-rate-commanders).
   `franka-rerun`'s `commander_live` example is on the same API, with the `Recorder` in the
   observer.
+- **Python bindings** (`crates/franka-py`, `import franka`; the wheel `franka-rs` reaches
+  PyPI with 0.2.0, until then `maturin develop`): `Robot`, `RobotState` (numpy fields and a
+  69-float `flat()` observation), `robot.cartesian_targets()` / `robot.joint_targets()` as
+  context managers over the target control loops with `move_to`, `move_by`,
+  `follow(chunk, dt)`, `target()`, `state()` and `stop()`, `Gripper`, and `FrankaError` /
+  `ControlException`. A Cartesian target carries an optional unit quaternion, a delta an
+  optional rotation vector. The 1 kHz loop stays on its Rust thread and never takes the
+  GIL. PyO3 0.29, abi3 for Python 3.9+; tested against franka-sim in CI's
+  `python-bindings` job and run on a Panda (`crates/franka-py/examples/policy_loop.py`).
+  See [Python](docs/book/src/python.md).
 - **`automatic_error_recovery` example**: command-line recovery that prints the robot mode
   before and after.
 - **`serde` feature** (off by default): `Serialize` / `Deserialize` for `RobotState`,
