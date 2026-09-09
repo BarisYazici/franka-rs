@@ -132,15 +132,16 @@ cargo run --release --example <name> -- 172.16.0.2
 | `generate_joint_velocity_motion` | A joint-velocity motion generator: a smooth velocity profile on joints 4-7. |
 | `generate_cartesian_pose_motion` | A Cartesian pose motion generator: a circle in the end effector's x/z plane. |
 | `generate_cartesian_velocity_motion` | A Cartesian velocity motion generator: a diagonal x/z sweep. |
-| `fer_joint_impedance` | 1 kHz joint-impedance torque control against a motion generator, plus the v5-only `set_filters`. |
+| `fer_joint_impedance` | 1 kHz joint-impedance torque control on an FER, rate-limited by hand against the robot's `tau_J_d`; refuses to run on an FR3. |
 | `cartesian_impedance_active_control` | A Cartesian impedance controller (the initial pose is the equilibrium) driven through `ActiveControl`'s `read_once` / `write_once`, on both FR3 and FER. Takes `[--duration SEC] [--yes]`. |
 | `cartesian_impedance_figure_eight` | The same `ActiveControl` impedance loop with a moving equilibrium: a figure eight around the start pose, ramped in and out, with a nullspace joint spring and a one-sided virtual floor you can press against. Takes `[--duration SEC] [--period SEC] [--amplitude M] [--floor M] [--yes]`. |
 | `grasp_object` | The gripper: homes it, then grasps an object of the given width. Takes `<hostname> <object-width>`. Needs a Franka Hand. |
 | `nonrealtime_commander` | A scripted (or stdin) non-realtime commander sets jittery, bursty, stalling Cartesian targets through `start_cartesian_target_control`, whose loop on its own thread bridges them with the online trajectory generator and the rate limiter under its own budget (`--bridged`, the default; `--budget V,A,J`), or hands them to a bare `control_cartesian_pose` so the robot's reflex refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--yes] [--budget V,A,J] [--rotate]`; `--rotate` adds a slow yaw sweep of +-15 degrees through `set_orientation` (bridged only). |
 | `automatic_error_recovery` | A command-line `automatic_error_recovery()`: prints the robot mode and error flags before and after clearing a reflex. Read-only apart from the recovery; the arm does not move. |
 | `readme_joint_move` | The README's "Quick example", byte for byte; CI runs it against the simulator. |
+| `move_to_ready` | Moves the arm to libfranka's "ready" joint configuration with the examples' motion generator. Takes `[speed-factor] [--yes]`, default 0.2. |
 | `reflex_replay` (in `crates/franka-rerun/examples/`) | The [flight recorder](./flight-recorder.md): a slow joint swing with lowered collision thresholds, recorded live with `Recorder`, and the control log of the reflex a push provokes written as a Rerun recording. `cargo run --release -p franka-rerun --example reflex_replay -- <hostname>`. |
-| `commander_live` (in `crates/franka-rerun/examples/`) | `nonrealtime_commander` streamed live into a Rerun viewer: the raw staircase target, the sent and measured position per axis, the arm (with `--meshes DIR`, Franka's link meshes), the derivatives of the sent position against the limits, and the commander's events as they happen. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). Tested on the simulator. |
+| `commander_live` (in `crates/franka-rerun/examples/`) | `nonrealtime_commander` streamed live into a Rerun viewer: the raw staircase target, the sent and measured position per axis, the arm (with `--meshes DIR`, Franka's link meshes), the derivatives of the sent position against the limits, and the commander's events as they happen. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--controller joint\|cartesian] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). Tested on the simulator. |
 
 The four `generate_*` examples and `echo_robot_state` are ports of libfranka's examples of
 the same name, so their trajectories can be compared directly.
@@ -148,5 +149,8 @@ the same name, so their trajectories can be compared directly.
 `cartesian_impedance_control.cpp`, with the callback replaced by the `ActiveControl` loop.
 `cartesian_impedance_figure_eight` builds on it and is the one to run with someone standing
 next to the robot. Both have run on a real FER through `ActiveControl`.
+
+The Python examples -- `policy_loop.py`, `rotate.py` and the `quickstart.ipynb` notebook --
+live in `crates/franka-py/examples/`; see [Python](./python.md).
 
 Once that works, go to [Controlling the robot](./controlling-the-robot.md).

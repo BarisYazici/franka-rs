@@ -23,8 +23,8 @@ payload, the rate-limit envelope, whether a torque-only motion generator mode ex
 
 ### Version auto-detection
 
-`Robot::new` negotiates the version for you. It connects announcing library version 10; a
-An FER rejects that and reports version 5, and the client then opens a fresh TCP+UDP session
+`Robot::new` negotiates the version for you. It connects announcing library version 10; an
+FER rejects that and reports version 5, and the client then opens a fresh TCP+UDP session
 and connects again as version 5. `robot.fci_version()` tells you which one you got.
 
 ```rust,no_run
@@ -111,7 +111,7 @@ against which everything here is checked.
 ## Where to go next
 
 - [Getting started](./getting-started.md) — dependency, realtime prerequisites, first program.
-- [Controlling the robot](./controlling-the-robot.md) — the callback API and `ActiveControl`.
+- [Controlling the robot](./controlling-the-robot.md) — callbacks, `ActiveControl` and target control.
 - [The model](./model.md) — what it computes and where the parameters come from.
 - [Benchmarks and hardware validation](./benchmarks.md) — the numbers, on real arms.
 - [API reference](./api-reference.md) — generated rustdoc for the `franka` crate.

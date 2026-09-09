@@ -132,7 +132,7 @@ the steps into a smooth command. See
 The library is named `franka`, so `use franka::Robot;`. See
 [Getting started](https://barisyazici.github.io/franka-rs/getting-started.html) for the
 realtime prerequisites (`PREEMPT_RT`, `ulimit -r`, `RealtimeConfig`, `FRANKA_REALTIME`) and
-for the fifteen runnable
+for the seventeen runnable
 [examples](https://barisyazici.github.io/franka-rs/getting-started.html#the-examples).
 
 ### Feature flags
@@ -160,7 +160,7 @@ repository-root lock and keep to a single test thread:
 ```sh
 flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
   --test sim_handshake --test sim_commands --test sim_motions \
-  --test sim_gripper --test sim_stop_and_reflex -- --test-threads=1
+  --test sim_gripper --test sim_stop_and_reflex --test sim_target_control -- --test-threads=1
 ```
 
 Do **not** run `cargo test --tests`: it selects every integration binary in the workspace,

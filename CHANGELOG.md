@@ -23,8 +23,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   observer called every cycle on the realtime thread with what was sent (the flight
   recorder's hook). `TargetSlot<N>` is the seqlock underneath, public. `MultiOtg::with_limits`
   builds a generator with per-axis limits and `realtime::set_current_thread_scheduler_priority`
-  raises a thread to a chosen priority. Exercised against franka-sim only
-  (`tests/sim_target_control.rs`); not yet run on hardware.
+  raises a thread to a chosen priority. Tested on franka-sim
+  (`tests/sim_target_control.rs`) and run on a real FER.
 - **Cartesian target control carries an orientation.** `CartesianTargetControl::set_pose`
   (column-major, as `O_T_EE`; a rotation block within 1e-3 of orthonormal is repaired, one
   further off refused), `set_target(position, quaternion)` and `set_orientation(quaternion)`
@@ -64,14 +64,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   PyPI with 0.2.0, until then `maturin develop`): `Robot`, `RobotState` (numpy fields and a
   69-float `flat()` observation), `robot.cartesian_targets()` / `robot.joint_targets()` as
   context managers over the target control loops with `move_to`, `move_by`,
-  `follow(chunk, dt)`, `target()`, `state()` and `stop()`, `Gripper`, and `FrankaError` /
-  `ControlException`. A Cartesian target carries an optional unit quaternion, a delta an
-  optional rotation vector. The 1 kHz loop stays on its Rust thread and never takes the
-  GIL. PyO3 0.29, abi3 for Python 3.9+; tested against franka-sim in CI's
-  `python-bindings` job and run on a Panda (`crates/franka-py/examples/policy_loop.py`).
-  See [Python](docs/book/src/python.md).
+  `follow(chunk, dt)`, `target()`, `state()` and `stop()`, `Gripper`, `Model` over numpy
+  (`robot.model()`), `franka.rotated`, and `FrankaError` / `ControlException`. A Cartesian
+  target carries an optional unit quaternion, a delta an optional rotation vector. The
+  1 kHz loop stays on its Rust thread and never takes the GIL. PyO3 0.29, abi3 for
+  Python 3.9+; tested against franka-sim in CI's `python-bindings` job and run on a Panda
+  (`crates/franka-py/examples/policy_loop.py`; `rotate.py` and the `quickstart.ipynb`
+  notebook are the other two examples). See [Python](docs/book/src/python.md).
+  `.github/workflows/release.yml` builds the wheels and publishes them and the crate on a
+  `v*` tag.
 - **`automatic_error_recovery` example**: command-line recovery that prints the robot mode
-  before and after.
+  before and after. **`move_to_ready` example**: the examples' motion generator to
+  libfranka's ready pose at a fraction of full speed.
 - **`serde` feature** (off by default): `Serialize` / `Deserialize` for `RobotState`,
   `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and
   `ControlException`. `Errors` serialises as the list of the set flags' names.
@@ -82,8 +86,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   collision flags, external wrench, commanded versus measured, errors, the arm), through
   `flight::{log_records, replay_exception, save_records, load_records}`; and `Recorder`
   streams the same live from inside a control loop with a non-blocking, non-allocating
-  `push`. `examples/reflex_replay.rs` puts the last two together. See
-  [the flight recorder page](docs/book/src/flight-recorder.md).
+  `push`. `examples/reflex_replay.rs` puts the last two together; `examples/commander_live.rs`
+  streams the commander into a viewer. Both replays draw Franka's link meshes with
+  `--meshes DIR`, `csv` has the screen-capture `--layout demo` and the commander's `--budget`
+  lines, and `log` locates a contact on the arm from the external joint torques
+  (`flight::contact`). See [the flight recorder page](docs/book/src/flight-recorder.md).
 
 ## [0.1.0] - 2026-09-07
 

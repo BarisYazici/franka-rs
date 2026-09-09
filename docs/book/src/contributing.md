@@ -8,18 +8,24 @@ Everything CI's `check` job runs, in order — none of it needs Docker, a networ
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+cargo clippy -p franka-rs --all-targets --no-default-features -- -D warnings
+cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
 cargo test --workspace --lib
+cargo test -p franka-rs --lib --features serde
 cargo test -p franka-rs \
   --test wire_sizes --test model_conformance \
   --test wire_sizes_v5 --test fer_native_conformance \
   --test fer_model_conformance \
   --test example_motion_generator
 cargo test --workspace --doc
+cargo test -p franka-rerun
+cargo build -p franka-rerun --examples
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
-The second clippy invocation keeps the crate building without the default `model-library`
-feature, which is how it cross-compiles to static musl.
+The `--no-default-features` clippy invocations keep the crate building without the default
+`model-library` feature, which is how it cross-compiles to static musl; the `-p franka-rs`
+one is needed because `--workspace` unifies the other crates' default features back on.
 
 `cargo test --workspace --lib` includes the README-sync unit tests: the README's "Quick
 example" block must stay byte-identical to the body of `main` in
@@ -38,7 +44,7 @@ anything that touches the simulator:
 ```sh
 flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
   --test sim_handshake --test sim_commands --test sim_motions \
-  --test sim_gripper --test sim_stop_and_reflex -- --test-threads=1
+  --test sim_gripper --test sim_stop_and_reflex --test sim_target_control -- --test-threads=1
 ```
 
 The container harness has its own test, which starts and tears down a real container and

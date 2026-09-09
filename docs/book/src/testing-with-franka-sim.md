@@ -64,7 +64,7 @@ assert wire layout and check the model against a committed fixture:
 cargo test -p franka-rs --lib \
   --test wire_sizes --test model_conformance \
   --test wire_sizes_v5 --test fer_native_conformance \
-  --test fer_model_conformance
+  --test fer_model_conformance --test example_motion_generator
 cargo test -p franka-sim-test --lib
 cargo test --workspace --doc
 ```

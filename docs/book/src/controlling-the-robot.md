@@ -142,8 +142,7 @@ generator bridge, run on the same arm the same day, did **not** go cleanly, and 
 worth the paragraph below the next one: the generator stayed on its targets, but the rate
 limiter behind it clamped it on the first two-axis move and from then on the command orbited
 at the velocity cap, until the robot refused it. The rules that came out of that are now
-implemented by the target control loop, which has run against the simulator only and has not
-been back on the arm.
+implemented by the target control loop, which has since run clean on the same arm.
 
 #### Online trajectory generation
 
@@ -474,7 +473,7 @@ spawns a named thread that runs the crate's own control loop and hands back a ha
 `set_*` any thread can call at any rate. The loop does what the
 [commander section](#bridging-a-non-realtime-commander) learnt the hard way, and `stop()`
 brings the command to rest on the last target, finishes the motion, joins the thread and
-returns the loop's result. Everything below has been exercised against franka-sim only.
+returns the loop's result. Everything below has run on franka-sim and on a real FER.
 
 ```rust,no_run
 # extern crate franka;
@@ -601,9 +600,9 @@ example — the robot's joint-space continuity check refuses 2.5 m/s² near the 
 its collision threshold trips above about 1 m/s², so the default sits well below both. The
 joint default is deliberately slow; raise it with `JointTargetControlOptions::scaled_limits`
 or explicit limits. The rotational default is a fifth of the FR3's rotational velocity limit
-and a twenty-fifth of its acceleration limit; on the simulator with the joint side of every
+and a seventeenth of its acceleration limit; on the simulator with the joint side of every
 commanded pose checked (`--joint-discontinuity-scale 1.0`) a 20° turn of the tool passes with
-a wide margin, but it has not been run on hardware.
+a wide margin, and a ±15° yaw sweep and a ±15° tilt have run on a real FER.
 
 The **observer** is `FnMut(&RobotState, &CartesianSent)` (`&JointSent` for joints), called
 every cycle *on the realtime thread* with the state and what was sent — the pose or `q` after

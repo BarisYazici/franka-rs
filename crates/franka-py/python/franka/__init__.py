@@ -36,7 +36,6 @@ from ._franka import (
 )
 
 
-
 def rotated(quaternion, rotation_vector):
     """`quaternion` (x, y, z, w) turned by `rotation_vector` (rad, base frame): the
     composition `CartesianTargets.move_by` applies, for building `move_to` targets."""

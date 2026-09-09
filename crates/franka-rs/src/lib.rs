@@ -33,10 +33,10 @@
 //!
 //! # Realtime requirements
 //! A control loop must complete within 1 ms. [`RealtimeConfig::Enforce`] (libfranka's default)
-//! raises the calling thread to `SCHED_FIFO` priority 40 and fails when it cannot; run on a
-//! `PREEMPT_RT` kernel with the process allowed to lock memory and to set realtime priorities.
-//! [`RealtimeConfig::Ignore`] downgrades that to a warning, which is what the simulator tests
-//! and the examples use.
+//! raises the calling thread to the highest `SCHED_FIFO` priority and fails when it cannot; run
+//! on a `PREEMPT_RT` kernel with the process allowed to set realtime priorities.
+//! [`RealtimeConfig::Ignore`] skips both checks, which is what the simulator tests and the
+//! examples use.
 //!
 //! # Example
 //! ```no_run

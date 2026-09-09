@@ -261,12 +261,13 @@ position against the limits, the events as they happen.
 rerun --port 9876                         # the viewer, first
 FRANKA_REALTIME=enforce cargo run --release -p franka-rerun --example commander_live -- \
     <robot-hostname> --live 127.0.0.1:9876 --meshes /path/to/fr3-meshes [--bridged | --raw] \
-    [--stdin] [--budget V,A,J] [--out run.rrd] [--yes]
+    [--stdin] [--budget V,A,J] [--controller joint|cartesian] [--out run.rrd] [--yes]
 ```
 
 `--live ADDR` streams to a viewer already listening there, `--out FILE` writes an `.rrd`,
-either or both. The control side is franka-rs's target control
-(`Robot::start_cartesian_target_control`, the book's "Target control: low-rate commanders"):
+either or both; `--controller` picks the robot's internal controller. The control side is
+franka-rs's target control (`Robot::start_cartesian_target_control`, the book's "Target
+control: low-rate commanders"):
 the same scripted sequence, budget, collision thresholds and `automatic_error_recovery()`,
 with the anchoring, the deviation guard and the settle logic now inside the crate's loop
 thread; the CSV `--log` is gone, the recording carries all of it. The loop's observer does
