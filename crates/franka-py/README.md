@@ -38,16 +38,19 @@ with Franka's meshes. `robot.model()` is the kinematics and dynamics over numpy
 
 ## Install
 
-Until the 0.2.0 release there is no wheel on PyPI; build from the source tree into a
-virtualenv (prefix with `env -u CONDA_PREFIX` under an active conda env):
+```sh
+pip install franka-rs
+```
+
+The wheel is named `franka-rs`, the package `franka`. To build from the source tree into a
+virtualenv instead (prefix with `env -u CONDA_PREFIX` under an active conda env):
 
 ```sh
 pip install maturin
 maturin develop --release -m crates/franka-py/Cargo.toml
 ```
 
-The wheel is named `franka-rs`, the package `franka`. The crate is `publish = false`; its
-tests are
+The crate is `publish = false` on crates.io; its tests are
 
 ```sh
 flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev pytest crates/franka-py/tests

@@ -53,7 +53,7 @@ costs memory, not cycle time. The details of the exception itself are in
 
 ```toml
 [dependencies]
-franka-rs = { version = "0.1", features = ["serde"] }
+franka-rs = { version = "0.2", features = ["serde"] }
 ```
 
 Two representation choices are worth knowing:

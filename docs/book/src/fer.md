@@ -122,8 +122,12 @@ in x costs about 3.2 rad on joint 2, so 2.5 m/s² is 8 rad/s² there, over its l
 1.5 m/s² is 4.8 rad/s². The same budget at a more extended pose, where that lever is larger,
 can still trip. libfranka behaves identically, and its Cartesian examples pass because their
 trajectories start with near-zero acceleration. Both error names are in
-libfranka's error list for the FR3 too, so the check is not v5-specific; it has only been
-measured on an FER. The simulator currently accepts what the robot refuses here.
+libfranka's error list for the FR3 too, and the check is not v5-specific: on an FR3
+(2026-09-09) the same error was observed at its published 10 rad/s² limit (see
+[Validation in the README](https://github.com/BarisYazici/franka-rs#validation)).
+The FR3 image of franka-sim 1.1.5 and later runs the joint-side check under
+`--enforce-motion-limits`; the `panda-v5` image does not, and still accepts what a real
+FER refuses here.
 
 A stream of stepped targets therefore needs its own, smaller budget through the public
 `cartesian_low_pass_filter` and `limit_rate_cartesian_pose`, with the loop's limiter left on

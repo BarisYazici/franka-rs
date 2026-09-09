@@ -119,7 +119,7 @@ assert that, and CI runs the example against the simulator, so neither can drift
 
 ```toml
 [dependencies]
-franka-rs = "0.1"
+franka-rs = "0.2"
 ```
 
 For a commander that is not a 1 kHz program -- a planner, a vision loop, a script on a
@@ -194,6 +194,21 @@ including those. Full detail in
   (documented in the book). `reflex_replay`'s live `Recorder` pushed 23 941 records at 1 kHz
   with none dropped, and on every logged cycle the native FER model's end effector matched
   the measured `O_T_EE` to under 0.01 mm.
+- **Rotation targets on target control (2026-09-09).** `nonrealtime_commander --rotate`
+  ran its ±15° yaw sweep on a real FER through `start_cartesian_target_control`, a clean
+  run to the end.
+- **Python bindings on hardware (2026-09-09).** `crates/franka-py/examples/policy_loop.py`
+  drove a real FER from an irregular 6-10 Hz policy loop -- `move_to`, `move_by` and
+  `follow` chunks -- and `stop()` settled within about 0.3 s of the call. A degraded
+  Ethernet cable shows up as `communication_constraints_violation` with a clean `ping`; a
+  packet capture of the 1 kHz stream is what diagnoses it.
+- **Target control on an FR3 (FCI v10, 2026-09-09).** The bridged and rotation sequences of
+  `nonrealtime_commander` ran clean, `stop()` settled and the rate-limiter backstop never
+  bound. The robot's joint-side acceleration check was bracketed on the same arm: a run
+  whose IK peaked at 9.3 rad/s² passed, two runs were refused with
+  `cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
+  10 rad/s² (joint jerk stayed under 1400 rad/s³), so the published 10 rad/s² limit is
+  applied as is.
 - **Simulator.** 36-run A/B matrix against `franka-sim` with alternating client order and a
   fresh container per cell: median cycle time 1000 us for both clients, no detectable p99
   difference, and franka-rs cheaper on CPU in 18 of 18 paired cells.

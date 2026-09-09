@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-09
 
 ### Added
 
@@ -24,7 +24,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recorder's hook). `TargetSlot<N>` is the seqlock underneath, public. `MultiOtg::with_limits`
   builds a generator with per-axis limits and `realtime::set_current_thread_scheduler_priority`
   raises a thread to a chosen priority. Tested on franka-sim
-  (`tests/sim_target_control.rs`) and run on a real FER.
+  (`tests/sim_target_control.rs`) and run on a real FER and an FR3.
 - **Cartesian target control carries an orientation.** `CartesianTargetControl::set_pose`
   (column-major, as `O_T_EE`; a rotation block within 1e-3 of orthonormal is repaired, one
   further off refused), `set_target(position, quaternion)` and `set_orientation(quaternion)`
@@ -60,8 +60,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   [Target control](docs/book/src/controlling-the-robot.md#target-control-low-rate-commanders).
   `franka-rerun`'s `commander_live` example is on the same API, with the `Recorder` in the
   observer.
-- **Python bindings** (`crates/franka-py`, `import franka`; the wheel `franka-rs` reaches
-  PyPI with 0.2.0, until then `maturin develop`): `Robot`, `RobotState` (numpy fields and a
+- **Python bindings** (`crates/franka-py`, `import franka`; `pip install franka-rs`, or
+  `maturin develop` from the source tree): `Robot`, `RobotState` (numpy fields and a
   69-float `flat()` observation), `robot.cartesian_targets()` / `robot.joint_targets()` as
   context managers over the target control loops with `move_to`, `move_by`,
   `follow(chunk, dt)`, `target()`, `state()` and `stop()`, `Gripper`, `Model` over numpy
@@ -180,4 +180,5 @@ differs from libfranka.
   version negotiation recognise an FER on the simulator; no effect against
   a real FR3 or FER.
 
+[0.2.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.1.0

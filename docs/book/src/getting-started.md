@@ -6,7 +6,7 @@ The crate is on [crates.io](https://crates.io/crates/franka-rs):
 
 ```toml
 [dependencies]
-franka-rs = "0.1"
+franka-rs = "0.2"
 ```
 
 To follow `main` instead, depend on the git repository:
@@ -141,7 +141,7 @@ cargo run --release --example <name> -- 172.16.0.2
 | `readme_joint_move` | The README's "Quick example", byte for byte; CI runs it against the simulator. |
 | `move_to_ready` | Moves the arm to libfranka's "ready" joint configuration with the examples' motion generator. Takes `[speed-factor] [--yes]`, default 0.2. |
 | `reflex_replay` (in `crates/franka-rerun/examples/`) | The [flight recorder](./flight-recorder.md): a slow joint swing with lowered collision thresholds, recorded live with `Recorder`, and the control log of the reflex a push provokes written as a Rerun recording. `cargo run --release -p franka-rerun --example reflex_replay -- <hostname>`. |
-| `commander_live` (in `crates/franka-rerun/examples/`) | `nonrealtime_commander` streamed live into a Rerun viewer: the raw staircase target, the sent and measured position per axis, the arm (with `--meshes DIR`, Franka's link meshes), the derivatives of the sent position against the limits, and the commander's events as they happen. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--controller joint\|cartesian] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). Tested on the simulator. |
+| `commander_live` (in `crates/franka-rerun/examples/`) | `nonrealtime_commander` streamed live into a Rerun viewer: the raw staircase target, the sent and measured position per axis, the arm (with `--meshes DIR`, Franka's link meshes), the derivatives of the sent position against the limits, and the commander's events as they happen. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--controller joint\|cartesian] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). Tested on the simulator and streamed live from a real FER. |
 
 The four `generate_*` examples and `echo_robot_state` are ports of libfranka's examples of
 the same name, so their trajectories can be compared directly.

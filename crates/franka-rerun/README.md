@@ -74,10 +74,9 @@ started.
 The recording carries a blueprint, so the viewer opens with the 3D scene on the left, the
 positions and derivatives in a 3x2 grid on the right (the raw target speed is a tab behind
 the speed plot) and the event log along the bottom. `--layout demo` carries the layout made
-for a screen capture instead (`tools/demo-animation/splice.sh` cuts one into the demo
-animation): the arm at full height on the left (55 % of the width, the meshes, the target
-and sent points and the fading `world/trail`, no skeleton and no static path, a fixed
-three-quarter front camera on a solid dark background), and on the right six stacked
+for a screen capture instead: the arm at full height on the left (55 % of the width, the
+meshes, the target and sent points and the fading `world/trail`, no skeleton and no static
+path, a fixed three-quarter front camera on a solid dark background), and on the right six stacked
 plots: `x`, `y`, `z` with the raw staircase over the processed position (y range
 automatic), then the speed of both and the acceleration and jerk of the processed one
 under the red `--budget` lines, each with a fixed y range of 1.25 times its line so the
@@ -286,18 +285,18 @@ The layout (`flight::send_commander_blueprint`): the arm over the events on the 
 `y`, `z` (raw target, sent, measured) and the raw target speed down one column, speed,
 acceleration and jerk against the limits and `F_ext` down the other.
 
-On franka-sim (`--enforce-motion-limits`, FR3 image, `FRANKA_REALTIME=ignore`), before the
-port onto the target control API: bridged ran the sequence to the end, 19 107 records pushed
-and none dropped, peak sent speed 0.25 m/s against the 0.3 m/s budget; raw was refused at the first step with
+On franka-sim (`--enforce-motion-limits`, FR3 image, `FRANKA_REALTIME=ignore`, measured
+before the port onto the target control API): bridged ran the sequence to the end, 19 107
+records pushed and none dropped, peak sent speed 0.25 m/s against the 0.3 m/s budget; raw
+was refused at the first step with
 `cartesian_motion_generator_velocity_discontinuity` (the sent position's first difference
-is 50 m/s) and recovered. Two things to know: the sent position's acceleration and jerk
-peek above the budget (0.54 m/s^2 against 0.5, 70 m/s^3 against 20) for the same reason as
-in the `csv` replay -- the limiter references the robot's float32 echo of the previous
-command, whose 6e-8 m granularity the second and third differences at 1 kHz amplify -- and
-they stay far under the robot's own limits, the grey lines. And a viewer that is not being
-presented (occluded, or on a busy display) may render nothing while the data streams in
-and catch up afterwards; the `--out` file has everything regardless. Not yet run on a real
-robot.
+is 50 m/s) and recovered. The loop's rate-limiter backstop references the twist it sent,
+not the robot's float32 echo of the previous command, so it does not fire on the echo's
+rounding noise (see the `csv` replay for what that noise looks like in finite differences);
+the sent derivatives stay far under the robot's limits, the grey lines. A viewer that is
+not being presented (occluded, or on a busy display) may render nothing while the data
+streams in and catch up afterwards; the `--out` file has everything regardless. Streamed
+live from a real FER on 2026-09-08.
 
 ## Library
 

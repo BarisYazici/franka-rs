@@ -1,10 +1,16 @@
 # Python
 
 `crates/franka-py` is `import franka`: the target control loops driven from Python at any
-rate, with the 1 kHz loop on a Rust thread that never takes the GIL. Until the 0.2.0
-release there is no wheel on PyPI (it will be `franka-rs`); build from the source tree
-into a virtualenv with [maturin](https://www.maturin.rs), prefixed with
-`env -u CONDA_PREFIX` under an active conda env:
+rate, with the 1 kHz loop on a Rust thread that never takes the GIL. The wheel is
+[`franka-rs` on PyPI](https://pypi.org/project/franka-rs/), the import name `franka`:
+
+```sh
+pip install franka-rs
+```
+
+To build from the source tree into a virtualenv instead, use
+[maturin](https://www.maturin.rs), prefixed with `env -u CONDA_PREFIX` under an active
+conda env:
 
 ```sh
 pip install maturin

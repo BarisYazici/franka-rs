@@ -217,8 +217,9 @@ applied to the joint motion the poses imply: at that pose joint 2 moves about 3.
 metre of x-travel, so 2.5 m/s² is 8 rad/s² against its 7.5 rad/s² limit (see
 [FER specifics](./fer.md#joint-space-continuity-of-cartesian-pose-commands)). libfranka
 behaves identically — its Cartesian examples pass only because their trajectories start
-with near-zero acceleration — and the simulator
-currently accepts what the robot refuses here. So a program that steps its targets needs a
+with near-zero acceleration. The FR3 image of franka-sim 1.1.5 and later runs the same check
+under `--enforce-motion-limits`; the `panda-v5` image does not (see
+[Testing with franka-sim](./testing-with-franka-sim.md)). So a program that steps its targets needs a
 smaller budget than the limiter's, applied through the public `CartesianOtg` and
 `limit_rate_cartesian_pose`, with the loop's limiter left on as the backstop; that is what
 the example does.
@@ -473,7 +474,9 @@ spawns a named thread that runs the crate's own control loop and hands back a ha
 `set_*` any thread can call at any rate. The loop does what the
 [commander section](#bridging-a-non-realtime-commander) learnt the hard way, and `stop()`
 brings the command to rest on the last target, finishes the motion, joins the thread and
-returns the loop's result. Everything below has run on franka-sim and on a real FER.
+returns the loop's result. Everything below has run on franka-sim, on a real FER and on an
+FR3. The same loop is available from Python as `move_to`, `move_by` and `follow`; see
+[Python](./python.md).
 
 ```rust,no_run
 # extern crate franka;

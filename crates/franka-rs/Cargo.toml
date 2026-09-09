@@ -1,6 +1,6 @@
 [package]
 name = "franka-rs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pure-Rust libfranka client for Franka FR3 (FCI v10) and the Franka Emika Robot (FER, FCI v5)"
 edition.workspace = true
 rust-version.workspace = true

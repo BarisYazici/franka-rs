@@ -132,11 +132,11 @@ PyPI through trusted publishing (`pypa/gh-action-pypi-publish`) and runs
 (`rust-lang/crates-io-auth-action`). No secret is stored anywhere. From the Actions tab
 (`workflow_dispatch`) it builds the wheels and dry-runs the crate publish, uploading nothing.
 
-One-time setup, before the first tag, the same on both registries: a trusted publisher for
-the GitHub repository `BarisYazici/franka-rs`, workflow `release.yml`, environment `pypi`.
-On PyPI that is a pending publisher for the project name `franka-rs` under *Publishing*; on
-crates.io it is *Trusted Publishing* in the `franka-rs` crate's settings. The `pypi`
-environment appears under the repository's Settings the first time the workflow uses it.
+Trusted publishing is configured on both registries for the GitHub repository
+`BarisYazici/franka-rs`, workflow `release.yml`, environment `pypi`; no API token is stored
+in the repository or its secrets. A release is: bump the versions in
+`crates/franka-rs/Cargo.toml` and `crates/franka-py/Cargo.toml` (the wheel takes its
+version from the latter), date the section in `CHANGELOG.md`, and push a `v*` tag.
 
 ## Commit conventions
 

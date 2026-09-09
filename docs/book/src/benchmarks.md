@@ -8,7 +8,11 @@ Two measurement campaigns, both reproduced from the harness in `bench/`:
   **libfranka 0.9.2**.
 
 The full measurement records for both campaigns are kept privately and are not part of this
-repository; this page is the public summary of what they found.
+repository; this page is the public summary of what they found. The hardware runs that
+followed — target control, rotation targets and the Python bindings on an FER, target
+control on an FR3 — are listed under
+[Validation in the README](https://github.com/BarisYazici/franka-rs#validation); they are
+functional checks, not timing campaigns, and are not repeated here.
 
 Both were run on the same box: a laptop-class x86-64 CPU with 12 logical cores, Linux 6.8, **not
 `PREEMPT_RT`**. That matters for how to read the tail: every multi-millisecond `max` in

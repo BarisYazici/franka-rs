@@ -82,6 +82,15 @@ FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
   -- --test-threads=1
 ```
 
+`sim_target_control` needs franka-sim 1.1.6 or later (the drain gate). Since 1.1.5 the FR3
+image's `--enforce-motion-limits` also runs the robot's joint-side continuity check on every
+commanded Cartesian pose, scaled by `--joint-discontinuity-scale` (1.0 is the robot's own
+limit); its FR3 acceleration table, 10 rad/s², was confirmed at scale 1.0 on a real FR3 on
+2026-09-09 by the bracket described under
+[Validation in the README](https://github.com/BarisYazici/franka-rs#validation). The
+`panda-v5` image has no joint-side check (see
+[FER specifics](./fer.md#joint-space-continuity-of-cartesian-pose-commands)).
+
 The FER suite:
 
 ```sh
