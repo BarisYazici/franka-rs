@@ -10,8 +10,8 @@ FER's own `libfcimodels_x64.so`, and writes the two files the crate ships:
   CI, dumped from the shared object.
 
 Neither file needs regenerating unless the shared object changes. This tool is
-kept so the numbers in [`docs/book/src/fer.md`](../../docs/book/src/fer.md) and
-[`docs/book/src/model.md`](../../docs/book/src/model.md) can be reproduced.
+kept so the numbers in [`docs/book/src/reference/model.md`](../../docs/book/src/reference/model.md)
+can be reproduced.
 
 ## Running it
 

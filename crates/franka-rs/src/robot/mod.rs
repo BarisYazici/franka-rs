@@ -216,7 +216,7 @@ impl Robot {
     /// franka-rs did before. The two agree on kinematics to 9e-16 and on gravity
     /// to 5e-14; with a payload attached their mass matrices differ by up to
     /// 3e-3 kg m^2, because the shared object's `M_NE` is not a rigid-body model
-    /// of the payload. See `docs/book/src/fer.md`.
+    /// of the payload. See `docs/book/src/reference/model.md`.
     ///
     /// # Errors
     ///

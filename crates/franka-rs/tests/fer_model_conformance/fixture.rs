@@ -13,7 +13,7 @@ use franka::model::Model;
 /// it is not redistributable and therefore not committed. Capture it from a robot
 /// (or from the FER simulator image) and point `FRANKA_FER_MODEL_SO` at it, or
 /// drop it at this path; every test skips loudly when it is absent. See
-/// `docs/book/src/fer.md`.
+/// `docs/book/src/reference/model.md`.
 pub const DEFAULT_MODEL_LIBRARY: &str = "target/fer-fixture/libfcimodels_x64.so";
 
 /// Where the suite looks for a mesh-free FER URDF when `FRANKA_FER_URDF` is
@@ -75,7 +75,7 @@ pub fn skip_message(path: &Path) -> String {
     format!(
         "SKIP: the captured FER model library is not present at {}. \
          Set FRANKA_FER_MODEL_SO to a libfcimodels_x64.so to run the FCI v5 model \
-         conformance suite (see docs/book/src/fer.md).",
+         conformance suite (see docs/book/src/reference/model.md).",
         path.display()
     )
 }

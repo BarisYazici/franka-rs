@@ -26,7 +26,7 @@
 //! payload would give exactly zero — so no rigid-body model can match it with a
 //! payload attached. It behaves as though the payload were up to 18 g lighter
 //! than asked for. `gravity` is unaffected, and so is every kinematic quantity.
-//! See `docs/book/src/fer.md`.
+//! See `docs/book/src/reference/model.md`.
 
 use std::path::{Path, PathBuf};
 
@@ -434,7 +434,7 @@ fn skip(message: &str) {
 #[cfg(feature = "model-library")]
 const SKIP_MESSAGE: &str = "SKIP: $FRANKA_FER_MODEL_SO is unset or missing, so this test \
      compared nothing against a live libfcimodels. The committed fixture covers the rest of \
-     this suite; see docs/book/src/fer.md.";
+     this suite; see docs/book/src/reference/model.md.";
 
 /// The committed fixture is still what the library answers.
 ///

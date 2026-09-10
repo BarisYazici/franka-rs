@@ -132,7 +132,7 @@ fn command_fit() {
     let header = format!(
         "<!--\n  \
          Franka Emika Robot (FER, FCI v5), arm only, mesh-free. Generated file: see\n  \
-         `tools/fer-model-fit` and `docs/book/src/fer.md`; do not edit by hand.\n\n  \
+         `tools/fer-model-fit` and `docs/book/src/reference/model.md`; do not edit by hand.\n\n  \
          Joint origins and axes: `franka_description`'s `fer_joint1..8`, which agree with\n  \
          the robot's own `libfcimodels_x64.so` to 4e-16.\n\n  \
          `<inertial>` elements: identified from that shared object by the `fit` command of\n  \

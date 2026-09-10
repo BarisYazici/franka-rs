@@ -15,40 +15,41 @@ the protocol version, so the same binary drives an FR3 and a Franka Emika Robot 
 
 **[Documentation](https://barisyazici.github.io/franka-rs/)** |
 **[API reference](https://barisyazici.github.io/franka-rs/api/franka/index.html)** |
-**[Python](https://barisyazici.github.io/franka-rs/python.html)** |
+**[Python](https://barisyazici.github.io/franka-rs/getting-started/python.html)** |
 **[Changelog](CHANGELOG.md)**
 
 ## Why a Rust client
 
-`libfranka` works well; this crate exists for the cases where it does not fit. Measured
-against `libfranka` on the simulator and on real FR3 and FER arms, the control quality is
-the same -- identical loop timing, identical lost-cycle behaviour, model outputs equal to
-1e-14 -- so the reasons to pick `franka-rs` are elsewhere:
+`libfranka` is the reference and this crate is checked against it: wire layouts, rate
+limiting, error text and the model agree, and loop timing measured side by side on real
+FR3 and FER arms is the same. The reasons to pick `franka-rs` are elsewhere:
 
-- **One dependency, no C++ stack.** `cargo add franka-rs` replaces `libfranka` plus Poco,
-  Eigen and Pinocchio, with no system packages and no `find_package`. Static binaries and
-  aarch64 cross-builds are one flag away.
-- **One crate for both robot generations.** The FR3 (FCI v10) and the FER (FCI v5) need two
-  incompatible `libfranka` versions; here the version is negotiated at connect and the same
-  binary drives both.
-- **Memory safety at the trust boundary.** The parser, the demux and the 1 kHz loop are safe
-  Rust with no allocation per cycle; a malformed datagram becomes an error value. The only
-  `unsafe` is two audited spots: the optional robot-served model loader and two socket calls.
-- **No model download.** The FR3 model comes from the robot's URDF and the FER model from
-  shipped parameters, both evaluated natively; nothing is fetched or `dlopen`ed at runtime.
-- **`ActiveControl` on the FER.** `read_once`/`write_once` control is available on the older
-  generation too, which `libfranka` 0.9.2 does not offer.
-- **Rust ergonomics.** `Robot` is `Send + Sync` and stops from another thread through an
-  `Arc`; errors are an enum, not exceptions; the whole thing compiles in seconds.
+- **One client for both robot generations.** The FR3 (FCI v10) and the FER (FCI v5) need
+  two incompatible `libfranka` versions; here the version is negotiated at connect and the
+  same binary drives both.
+- **No C++ stack.** `cargo add franka-rs` replaces `libfranka` plus Poco, Eigen and
+  Pinocchio, with no system packages and no `find_package`; it cross-compiles to aarch64
+  (glibc, or static musl).
+- **The 1 kHz loop as a library.** Write it as a callback or with `read_once` /
+  `write_once`, or let the crate run it on a realtime thread and set targets from any
+  program at any rate -- including Python, where the GIL is never on the 1 kHz path.
+- **Safe Rust on the realtime path.** Parsing, rate limiting, trajectory generation and
+  the loops are safe Rust and allocate nothing once a motion runs; the `unsafe` in the
+  crate is the libc socket and scheduler calls in `network/` and `realtime.rs`, plus the
+  opt-in loader for the model an FER serves (`model-library` feature).
+- **The model without a download.** FR3 from the robot's URDF, FER from shipped identified
+  parameters, both evaluated natively, agreeing with `libfranka` to 1e-14.
 
-What it does **not** give you: better timing than `libfranka` (they are equal) or a
-`ros2_control` hardware interface (those are C++ plugins).
+What it does **not** give you: better timing than `libfranka` (they are equal), a
+`ros2_control` hardware interface, or a `VacuumGripper`. The book's
+[Compared with libfranka](https://barisyazici.github.io/franka-rs/reference/libfranka.html)
+has the full list, in both directions.
 
 ## Supported robots
 
 | FCI | libfranka semantics | Robot | System | `RobotState` | Model |
 |---|---|---|---|---|---|
-| **v10** | 0.20 - 0.21 | Franka Research 3 | 5.x | 1377 B | URDF from `GetRobotModel`, evaluated natively |
+| **v10** | 0.20 - 0.21 | Franka Research 3 | 5.9.0 or later | 1377 B | URDF from `GetRobotModel`, evaluated natively |
 | **v5** | 0.9.2 | Franka Emika Robot (FER) | 4.2.x | 2373 B | parameters identified from the robot's own `libfcimodels.so`, shipped and evaluated natively -- no download |
 
 ## Features
@@ -67,7 +68,7 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
 - **Python bindings** (`crates/franka-py`, `import franka`): the target loops as context
   managers with `move_to` / `move_by` / `follow` for a policy at any rate, the 1 kHz loop
   on a Rust thread that never takes the GIL; see
-  [Python](https://barisyazici.github.io/franka-rs/python.html).
+  [Python](https://barisyazici.github.io/franka-rs/getting-started/python.html).
 - **Online trajectory generation** (`otg`): the dependency-free, allocation-free
   jerk-limited generator underneath it, also usable on its own in a callback loop.
 - **`Model`** -- pose, body and zero Jacobian for all ten frames, mass, Coriolis, gravity.
@@ -78,7 +79,7 @@ What it does **not** give you: better timing than `libfranka` (they are equal) o
 - **`Robot` is `Send + Sync`** -- share it as an `Arc` and `stop()` from another thread.
 - **libfranka's exact error text**, with a `FrankaError` variant per C++ exception type and
   a control log attached to every `ControlException` -- replayable as a Rerun
-  [flight recording](https://barisyazici.github.io/franka-rs/flight-recorder.html).
+  [flight recording](https://barisyazici.github.io/franka-rs/howto/flight-recorder.html).
 - **Cross-compiles to aarch64**, glibc or static musl.
 
 ## Quick example
@@ -127,13 +128,13 @@ socket -- the same move is `let control = robot.start_cartesian_target_control(
 TargetControlOptions::default())?;`, then `control.set_position([x, y, z])?` whenever a
 target comes and `control.stop()?` at the end; the loop runs on its own thread and turns
 the steps into a smooth command. See
-[Target control](https://barisyazici.github.io/franka-rs/controlling-the-robot.html#target-control-low-rate-commanders).
+[Target control](https://barisyazici.github.io/franka-rs/howto/target-control.html).
 
 The library is named `franka`, so `use franka::Robot;`. See
-[Getting started](https://barisyazici.github.io/franka-rs/getting-started.html) for the
-realtime prerequisites (`PREEMPT_RT`, `ulimit -r`, `RealtimeConfig`, `FRANKA_REALTIME`) and
-for the seventeen runnable
-[examples](https://barisyazici.github.io/franka-rs/getting-started.html#the-examples).
+[The realtime machine](https://barisyazici.github.io/franka-rs/getting-started/realtime-machine.html)
+for the realtime prerequisites (`PREEMPT_RT`, `ulimit -r`, `RealtimeConfig`,
+`FRANKA_REALTIME`) and [Run the examples](https://barisyazici.github.io/franka-rs/howto/examples.html)
+for the seventeen runnable examples.
 
 ### Feature flags
 
@@ -166,66 +167,35 @@ flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
 Do **not** run `cargo test --tests`: it selects every integration binary in the workspace,
 including those. Full detail in
 [Contributing](https://barisyazici.github.io/franka-rs/contributing.html) and
-[Testing with franka-sim](https://barisyazici.github.io/franka-rs/testing-with-franka-sim.html).
+[Testing with franka-sim](https://barisyazici.github.io/franka-rs/howto/simulator-tests.html).
 
 ## Validation
 
-- **FR3 hardware.** Model-in-the-loop torque control at 1 kHz against a real FR3, 8 runs,
-  interleaved with libfranka 0.20.4: **0 reflexes, 0 guard trips, 0 control exceptions**,
-  interval p99 1079-1106 us for both clients, franka-rs 10.7 us cheaper per cycle in the
-  model region and 2.6 percentage points cheaper on CPU (paired, 3/3 repetitions).
-- **FER hardware.** Thirteen 30 s runs across two real FERs (system 4.2.1) against
-  libfranka 0.9.2, with **no reflex, guard trip or control exception**. franka-rs holds the
-  deadline as well as libfranka -- interval p99 1171.7 vs 1186.8 us, lost cycles 27.5 vs
-  29.5 per 30 000 -- and the two agree on every model quantity to 1e-14 on the robot.
-- **Dual-arm and `ActiveControl`.** Both FERs driven at once, as two processes and as one
-  process with a `Robot` per thread, with no cross-interference; and `read_once`/`write_once`
-  exercised on a real FER, matching the callback API within noise -- a control style
-  libfranka 0.9.2 does not offer for that robot generation.
-- **Cartesian impedance examples on hardware.** `cartesian_impedance_active_control` and
-  `cartesian_impedance_figure_eight` ran on a real FER through `ActiveControl` (2026-09-07),
-  holding and tracking the pose while being pushed, with no reflex.
-- **Cartesian pose bridging and the flight recorder on hardware (2026-09-08).**
-  `nonrealtime_commander` ran its full 19 s bridged sequence on a real FER with no reflex
-  (peak commanded speed 0.25 m/s, measured pose within a few millimetres of the command),
-  and its raw mode was refused at the first step and cleared with
-  `automatic_error_recovery()`; the runs also showed that the robot checks the joint-space
-  continuity of a Cartesian pose stream, which the client-side rate limiter does not bound
-  (documented in the book). `reflex_replay`'s live `Recorder` pushed 23 941 records at 1 kHz
-  with none dropped, and on every logged cycle the native FER model's end effector matched
-  the measured `O_T_EE` to under 0.01 mm.
-- **Rotation targets on target control (2026-09-09).** `nonrealtime_commander --rotate`
-  ran its ±15° yaw sweep on a real FER through `start_cartesian_target_control`, a clean
-  run to the end.
-- **Python bindings on hardware (2026-09-09).** `crates/franka-py/examples/policy_loop.py`
-  drove a real FER from an irregular 6-10 Hz policy loop -- `move_to`, `move_by` and
-  `follow` chunks -- and `stop()` settled within about 0.3 s of the call. A degraded
-  Ethernet cable shows up as `communication_constraints_violation` with a clean `ping`; a
-  packet capture of the 1 kHz stream is what diagnoses it.
-- **Target control on an FR3 (FCI v10, 2026-09-09).** The bridged and rotation sequences of
-  `nonrealtime_commander` ran clean, `stop()` settled and the rate-limiter backstop never
-  bound. The robot's joint-side acceleration check was bracketed on the same arm: a run
-  whose IK peaked at 9.3 rad/s² passed, two runs were refused with
-  `cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
-  10 rad/s² (joint jerk stayed under 1400 rad/s³), so the published 10 rad/s² limit is
-  applied as is.
+- **Hardware, against libfranka.** Model-in-the-loop torque control at 1 kHz on a real FR3
+  (8 runs interleaved with libfranka 0.20.4) and on two real FERs (13 runs against libfranka
+  0.9.2): no reflex, guard trip or control exception in any run; interval p99 and lost cycles
+  the same for both clients within the run-to-run spread; franka-rs 2.6 percentage points
+  cheaper on CPU on the FR3.
 - **Simulator.** 36-run A/B matrix against `franka-sim` with alternating client order and a
   fresh container per cell: median cycle time 1000 us for both clients, no detectable p99
-  difference, and franka-rs cheaper on CPU in 18 of 18 paired cells.
-- **The model.** Agrees with libfranka's Pinocchio backend to **4.97e-14** over 10 000
-  random FR3 states, and with a real FER's `libfcimodels_x64.so` to 4.4e-16 on kinematics
-  and 5e-14 on gravity. Measuring it also found a per-call `pinocchio::Data` allocation in
-  libfranka's kinematics path; the two-commit fix (see `patches/`) takes it from 143 heap
-  allocations per call to zero.
+  difference, franka-rs cheaper on CPU in 18 of 18 paired cells.
+- **The model.** Agrees with libfranka's Pinocchio backend to 4.97e-14 over 10 000 random
+  FR3 states, and with a real FER's `libfcimodels_x64.so` to 4.4e-16 on kinematics and
+  5e-14 on gravity.
+- **Every interface on real arms.** `ActiveControl`, both Cartesian impedance examples,
+  target control with translation and rotation targets, the Python policy loop and the live
+  flight recorder ran on a real FER; target control and its joint-side acceleration bracket
+  on a real FR3 (2026-09-04 to 2026-09-09).
 
-Full measurement records for both campaigns are kept privately; the summary is in the
-[book](https://barisyazici.github.io/franka-rs/benchmarks.html).
+The numbers and the per-run record are in the book's
+[Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html);
+the full measurement records are kept privately.
 
 ## Credit
 
 `franka-rs` is an independent implementation, but its API shape was informed by
 **[marcbone/libfranka-rs](https://github.com/marcbone/libfranka-rs)**, Marco Boneberger's
-Rust binding for libfranka (EUPL-1.2). No code from libfranka-rs is used, copied or derived
+pure-Rust port of libfranka 0.9 (EUPL-1.2). No code from libfranka-rs is used, copied or derived
 here; what it informed is the API shape: the `control_*` closure API, the
 `Finishable` / `motion_finished` idea, the `MotionGenerator` helper and the naming of the
 control types all trace back to that project. Thank you to Marco Boneberger and its

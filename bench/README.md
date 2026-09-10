@@ -23,7 +23,7 @@ Contents:
 | `fer-capture/` | tcpdump capture + offline pcap analysis of the FER state-arrival timing (which side stalls) — see its own [`README.md`](fer-capture/README.md) |
 
 The write-up of these numbers is summarised in the [book's benchmarks
-page](../docs/book/src/benchmarks.md); the full record is kept privately.
+page](../docs/book/src/reference/benchmarks.md); the full record is kept privately.
 
 ## What is measured
 

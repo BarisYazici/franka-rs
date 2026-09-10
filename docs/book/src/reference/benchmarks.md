@@ -9,10 +9,10 @@ Two measurement campaigns, both reproduced from the harness in `bench/`:
 
 The full measurement records for both campaigns are kept privately and are not part of this
 repository; this page is the public summary of what they found. The hardware runs that
-followed — target control, rotation targets and the Python bindings on an FER, target
-control on an FR3 — are listed under
-[Validation in the README](https://github.com/BarisYazici/franka-rs#validation); they are
-functional checks, not timing campaigns, and are not repeated here.
+followed — the impedance examples, target control, rotation targets and the Python
+bindings on an FER, target control on an FR3 — are functional checks, not timing
+campaigns; they are listed in [Hardware validation record](#hardware-validation-record) at
+the end.
 
 Both were run on the same box: a laptop-class x86-64 CPU with 12 logical cores, Linux 6.8, **not
 `PREEMPT_RT`**. That matters for how to read the tail: every multi-millisecond `max` in
@@ -231,3 +231,40 @@ bench/run.sh --duration 30 --reps 3      # takes the simulator lock, one contain
 `bench/README.md` documents the harness, the `--hardware` mode and its guards, and
 `bench/fer-capture/README.md` the wire-capture tooling. Raw per-run JSON lives under
 `bench/results/`.
+
+## Hardware validation record
+
+The functional runs on real arms after the two campaigns, in order. Each completed or
+failed exactly as described; none is a timing measurement.
+
+- **Dual-arm and `ActiveControl`.** Both FERs driven at once, as two processes and as one
+  process with a `Robot` per thread, with no cross-interference; and `read_once`/`write_once`
+  exercised on a real FER, matching the callback API within noise -- a control style
+  libfranka 0.9.2 does not offer for that robot generation.
+- **Cartesian impedance examples on hardware.** `cartesian_impedance_active_control` and
+  `cartesian_impedance_figure_eight` ran on a real FER through `ActiveControl` (2026-09-07),
+  holding and tracking the pose while being pushed, with no reflex.
+- **Cartesian pose bridging and the flight recorder on hardware (2026-09-08).**
+  `nonrealtime_commander` ran its full 19 s bridged sequence on a real FER with no reflex
+  (peak commanded speed 0.25 m/s, measured pose within a few millimetres of the command),
+  and its raw mode was refused at the first step and cleared with
+  `automatic_error_recovery()`; the runs also showed that the robot checks the joint-space
+  continuity of a Cartesian pose stream, which the client-side rate limiter does not bound
+  (see [FER / Panda specifics](./fer.md)). `reflex_replay`'s live `Recorder` pushed 23 941
+  records at 1 kHz with none dropped, and on every logged cycle the native FER model's end
+  effector matched the measured `O_T_EE` to under 0.01 mm.
+- **Rotation targets on target control (2026-09-09).** `nonrealtime_commander --rotate`
+  ran its ±15° yaw sweep on a real FER through `start_cartesian_target_control`, a clean
+  run to the end.
+- **Python bindings on hardware (2026-09-09).** `crates/franka-py/examples/policy_loop.py`
+  drove a real FER from an irregular 6-10 Hz policy loop -- `move_to`, `move_by` and
+  `follow` chunks -- and `stop()` settled within about 0.3 s of the call. A degraded
+  Ethernet cable shows up as `communication_constraints_violation` with a clean `ping`; a
+  packet capture of the 1 kHz stream is what diagnoses it.
+- **Target control on an FR3 (FCI v10, 2026-09-09).** The bridged and rotation sequences of
+  `nonrealtime_commander` ran clean, `stop()` settled and the rate-limiter backstop never
+  bound. The robot's joint-side acceleration check was bracketed on the same arm: a run
+  whose IK peaked at 9.3 rad/s² passed, two runs were refused with
+  `cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
+  10 rad/s² (joint jerk stayed under 1400 rad/s³), so the published 10 rad/s² limit is
+  applied as is.

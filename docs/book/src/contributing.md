@@ -58,7 +58,7 @@ flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-sim-tes
 Always `--test-threads=1`. Before starting anything, check that ports 1337 and 1338 are
 free and no `franka-sim*` container is running. `SimServer::start` refuses to start a second
 container, but two concurrent `cargo test` invocations will still fight over the ports of
-an already-running server. See [Testing with franka-sim](./testing-with-franka-sim.md).
+an already-running server. See [Test against the simulator](./howto/simulator-tests.md).
 
 ## No robot in CI
 
@@ -67,7 +67,7 @@ against the simulator or against nothing at all. Hardware runs are deliberate, m
 recorded: they go through `bench/`'s `--hardware` harness, with a read-only `Idle`
 precondition probe, a return-to-ready move before each run, torque and end-effector
 deviation guards checked outside the timed region, and a written record in `docs/` with the
-raw JSON under `bench/results/`. See [Benchmarks](./benchmarks.md).
+raw JSON under `bench/results/`. See [Benchmarks](./reference/benchmarks.md).
 
 If you are adding a test that would need an arm, add a simulator test and a
 characterisation assertion for the gap instead.
@@ -82,6 +82,16 @@ mdbook serve docs/book             # live reload at http://localhost:3000
 
 The build output is `target/book/`, which is already gitignored, so a local build leaves
 nothing untracked behind.
+
+The book has four parts, and a page belongs to exactly one of them. **Getting started** is
+the shortest path to a moving arm; **Things to keep in mind** is what every user must know
+before the first motion; **How-to** is one task per page, code first; **Reference** holds
+the protocol tables, constants, measurements and the reasoning behind design decisions.
+Wire-format and version differences, benchmark numbers and the long explanations go to
+Reference and are linked from the other parts, not repeated there. Every claim must be
+traceable to the code, a test or a measurement; write "measured on one arm" when that is
+what it is, and no marketing adjectives. `book.toml` keeps redirects from the 0.2.0 page
+names, so a renamed page gets a redirect entry.
 
 Every Rust snippet in the book is compiled by `mdbook test`. It needs the crate on
 rustdoc's search path, and rustdoc fails with `E0464` if that path holds more than one
@@ -102,7 +112,7 @@ them at edition 2015.
 The changelog page is an mdBook `include` of the repository's `CHANGELOG.md`, so it is
 single-sourced — edit the changelog, not the page. The full FR3 and FER measurement
 records are kept privately, outside this repository; the [benchmarks
-page](./benchmarks.md) is the public summary and should stay in sync with them.
+page](./reference/benchmarks.md) is the public summary and should stay in sync with them.
 
 Snippets are marked `no_run`: they are type-checked but never executed, because every one
 of them would otherwise try to open a socket to a robot.

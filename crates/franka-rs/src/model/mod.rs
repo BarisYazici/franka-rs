@@ -69,7 +69,7 @@ pub const DEFAULT_GRAVITY_EARTH: [f64; 3] = [0.0, 0.0, -9.81];
 ///
 /// The ten inertial parameters per link are a *base-parameter-equivalent* set,
 /// chosen to reproduce the robot's model, and not a physically realisable
-/// description of each casting; see `docs/book/src/fer.md`.
+/// description of each casting; see `docs/book/src/reference/model.md`.
 pub const FER_URDF: &str = include_str!("../../tests/data/fer.urdf");
 
 /// The seven joints, the flange, the end effector and the stiffness frame.
@@ -257,12 +257,12 @@ impl Model {
     /// [`crate::Robot::load_model`] returns on an FER.
     ///
     /// Agreement with the shared object, over 208 joint configurations
-    /// (see `docs/book/src/model.md`): poses and both Jacobians to 9e-16 at
+    /// (see `docs/book/src/reference/model.md`): poses and both Jacobians to 9e-16 at
     /// all ten frames, gravity to 5e-14 with any payload, and the mass matrix
     /// and Coriolis vector to 4e-14 with no payload. With a payload the mass
     /// matrix and Coriolis vector differ by up to 3e-3 and 5e-2, because the
     /// robot's own `M_NE` is not affine in `m_load` and therefore is not a
-    /// rigid-body model of the payload; see `docs/book/src/fer.md`. Use
+    /// rigid-body model of the payload; see `docs/book/src/reference/model.md`. Use
     /// [`crate::Robot::load_model_from_robot`] when you need the library's own
     /// answer to the last bit.
     ///

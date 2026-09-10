@@ -298,7 +298,7 @@ fn commands_and_model_against_the_fer_simulator() {
 /// `FRANKA_SIM_GRIPPER_OBJECT_WIDTH` environment variable (verified by grepping
 /// `run_server.py` inside both images), so [`SimConfig::with_gripper_object`] cannot be used
 /// with it -- `docker run` would fail with `unrecognized arguments`. A successful grasp is
-/// therefore only covered by `sim_gripper.rs` on the FR3 image; see `docs/book/src/fer.md`.
+/// therefore only covered by `sim_gripper.rs` on the FR3 image; see `docs/book/src/reference/simulator-gaps.md`.
 #[test]
 fn gripper_against_the_fer_simulator() {
     let sim = common::sim(SimConfig::fer_v5());

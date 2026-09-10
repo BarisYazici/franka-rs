@@ -57,7 +57,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   external wrench and the generator's velocity and acceleration. The budget exists because
   the robot also checks the joint-space continuity of a Cartesian pose stream, which the
   rate limiter does not bound; see
-  [Target control](docs/book/src/controlling-the-robot.md#target-control-low-rate-commanders).
+  [Target control](docs/book/src/howto/target-control.md).
   `franka-rerun`'s `commander_live` example is on the same API, with the `Recorder` in the
   observer.
 - **Python bindings** (`crates/franka-py`, `import franka`; `pip install franka-rs`, or
@@ -70,7 +70,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   1 kHz loop stays on its Rust thread and never takes the GIL. PyO3 0.29, abi3 for
   Python 3.9+; tested against franka-sim in CI's `python-bindings` job and run on a Panda
   (`crates/franka-py/examples/policy_loop.py`; `rotate.py` and the `quickstart.ipynb`
-  notebook are the other two examples). See [Python](docs/book/src/python.md).
+  notebook are the other two examples). See [Python](docs/book/src/getting-started/python.md).
   `.github/workflows/release.yml` builds the wheels and publishes them and the crate on a
   `v*` tag.
 - **`automatic_error_recovery` example**: command-line recovery that prints the robot mode
@@ -90,7 +90,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   streams the commander into a viewer. Both replays draw Franka's link meshes with
   `--meshes DIR`, `csv` has the screen-capture `--layout demo` and the commander's `--budget`
   lines, and `log` locates a contact on the arm from the external joint torques
-  (`flight::contact`). See [the flight recorder page](docs/book/src/flight-recorder.md).
+  (`flight::contact`). See [the flight recorder page](docs/book/src/howto/flight-recorder.md).
 
 ## [0.1.0] - 2026-09-07
 
@@ -106,7 +106,7 @@ differs from libfranka.
 ### Added
 
 - **Franka Emika Robot (FER) support (FCI v5)**, alongside the FR3 (FCI v10); see
-  [the FER specifics page](docs/book/src/fer.md). `Robot::new` negotiates the version
+  [the FER specifics page](docs/book/src/reference/fer.md). `Robot::new` negotiates the version
   automatically (connects announcing v10, retries as v5 if the robot reports
   `kIncompatibleLibraryVersion`); `RobotOptions::with_version(VersionPolicy::
   Exact(FciVersion::V5))` skips the extra round trip when the generation is
@@ -128,7 +128,7 @@ differs from libfranka.
   backend, solved with a truncated SVD), agreeing with the library to
   9e-16 on kinematics and 4e-14 on dynamics with no payload, and
   characterising the one known gap, a payload non-linearity in the library
-  itself (see [the model page](docs/book/src/model.md)).
+  itself (see [the model page](docs/book/src/reference/model.md)).
   `Robot::load_model_from_robot()` keeps the previous behaviour (download +
   `dlopen` on v5, unchanged `GetRobotModel` URDF on v10). The native model
   is checked in CI via `tests/fer_native_conformance.rs` against a

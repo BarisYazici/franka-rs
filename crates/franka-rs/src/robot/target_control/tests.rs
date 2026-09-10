@@ -621,7 +621,7 @@ fn the_cartesian_stop_waits_for_the_orientation_to_land_and_holds_the_echo() {
         }
         assert!(cycles < STOP_TIMEOUT_CYCLES);
     }
-    // 0.3 rad about z under 0.289 rad/s per axis takes 1.6 s; the 5 cm alone would take 0.66 s
+    // 0.3 rad about z under 0.289 rad/s per axis takes 1.6 s; the 5 cm alone would take 0.85 s
     // and is stretched to arrive with it.
     let (first_hold, translated, turned) =
         (first_hold.unwrap(), translated.unwrap(), turned.unwrap());

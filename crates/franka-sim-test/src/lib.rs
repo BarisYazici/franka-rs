@@ -1,5 +1,5 @@
 //! Test harness that boots franka-sim in Docker. See
-//! `docs/book/src/testing-with-franka-sim.md`.
+//! `docs/book/src/howto/simulator-tests.md`.
 //!
 //! [`SimServer::start`] launches a `franka-sim` (libfranka-sim) container on
 //! Docker's host network, waits for it to serve the Franka Control Interface

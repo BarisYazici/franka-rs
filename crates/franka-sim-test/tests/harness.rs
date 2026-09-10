@@ -1,6 +1,6 @@
 //! Integration tests for the franka-sim-test harness itself. These start a
 //! real franka-sim Docker container; see
-//! `docs/book/src/testing-with-franka-sim.md`.
+//! `docs/book/src/howto/simulator-tests.md`.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};

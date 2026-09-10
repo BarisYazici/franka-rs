@@ -7,11 +7,12 @@
 //! the online trajectory generator re-plans a jerk-limited profile every cycle under a small
 //! budget (0.3 m/s, 0.5 m/s^2, 20 m/s^3 by default; `--budget V,A,J`), re-anchored on the
 //! robot's echo, with the rate limiter under the same budget as the backstop, so a 5 cm step
-//! becomes an S-curve peaking at 0.15 m/s that lands after 0.66 s. In `--raw` mode the same
-//! targets go to `control_cartesian_pose` as they are, with no generator and no limiting, so
-//! the first 5 cm target reaches the robot as a 50 m/s jump and its motion generator refuses
-//! it with a reflex; the example prints the error text, runs `automatic_error_recovery()` and
-//! exits 0. That is the contrast.
+//! becomes an S-curve peaking at about 0.12 m/s that lands after about 0.85 s (the budget is a
+//! norm; each axis gets 1/sqrt(3) of it). In `--raw` mode the same targets go to
+//! `control_cartesian_pose` as they are, with no generator and no limiting, so the first 5 cm
+//! target reaches the robot as a 50 m/s jump and its motion generator refuses it with a
+//! reflex; the example prints the error text, runs `automatic_error_recovery()` and exits 0.
+//! That is the contrast.
 //!
 //! The scripted commander steps the target by +-5 cm in x, y or z inside a +-12 cm box around
 //! the start pose (never more than 5 cm below it), with irregular holds, one 2 s stall and one

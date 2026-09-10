@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Franka Emika Robot (FER, FCI v5), arm only, mesh-free. Generated file: see
-  `tools/fer-model-fit` and `docs/book/src/fer.md`; do not edit by hand.
+  `tools/fer-model-fit` and `docs/book/src/reference/model.md`; do not edit by hand.
 
   Joint origins and axes: `franka_description`'s `fer_joint1..8`, which agree with
   the robot's own `libfcimodels_x64.so` to 4e-16.

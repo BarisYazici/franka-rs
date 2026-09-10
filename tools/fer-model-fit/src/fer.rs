@@ -3,7 +3,7 @@
 //!
 //! The joint origins and axes are `franka_description`'s `fer_joint1..8`,
 //! which agree with the robot's own `libfcimodels_x64.so` to 4e-16 (see
-//! `docs/book/src/model.md`). The inertial parameters are what
+//! `docs/book/src/reference/model.md`). The inertial parameters are what
 //! [`crate::fit`] identifies from that shared object.
 
 use nalgebra::{Matrix3, Vector3};

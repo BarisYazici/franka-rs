@@ -16,8 +16,23 @@ default-theme = "rust"
 preferred-dark-theme = "ayu"
 git-repository-url = "https://github.com/BarisYazici/franka-rs"
 edit-url-template = "https://github.com/BarisYazici/franka-rs/edit/main/docs/book/{path}"
-no-section-label = false
+# Part titles carry the structure; running chapter numbers across four parts would not.
+no-section-label = true
 
 [output.html.fold]
 enable = true
 level = 1
+
+# The 0.2.0 book was a flat list of pages; links to those names exist in the wild (README,
+# changelog, crates.io). Keep them working.
+[output.html.redirect]
+"/getting-started.html" = "getting-started/install.html"
+"/controlling-the-robot.html" = "howto/target-control.html"
+"/robot-state-and-errors.html" = "concepts/state-and-errors.html"
+"/flight-recorder.html" = "howto/flight-recorder.html"
+"/model.html" = "howto/model.html"
+"/gripper.html" = "howto/gripper.html"
+"/python.html" = "getting-started/python.html"
+"/fer.html" = "reference/fer.html"
+"/testing-with-franka-sim.html" = "howto/simulator-tests.html"
+"/benchmarks.html" = "reference/benchmarks.html"

@@ -8,7 +8,8 @@
 //! ```
 //!
 //! The FCI v5 `Move::Status` and `StopMove::Status` enums are shorter than v10's and numbered
-//! differently (`Preempted = 2` on v5 against 4 on v10; `ReflexAborted = 6` against 8). Test 3
+//! differently past `Preempted = 2` (v10 inserts the two safety-function statuses after it, so
+//! `ReflexAborted` is 6 on v5 against 8 on v10). Test 3
 //! is where that becomes evidence: it asserts `MoveStatus::ReflexAborted` on a reply whose
 //! status byte the container log shows as 6, which only the v5 table maps that way.
 //!
@@ -19,7 +20,7 @@
 //! a surviving session -- plus the exact wording of both possible errors.
 //!
 //! Two properties of the `franka-sim:panda-v5` image shape this file, both established by
-//! reading its container logs and its bundled sources (see `docs/book/src/fer.md`):
+//! reading its container logs and its bundled sources (see `docs/book/src/reference/simulator-gaps.md`):
 //!
 //! 1. Its `StopMove` handler answers the running motion's `Move` with **`kSuccess`** instead
 //!    of `kPreempted`. The newer `franka-sim:dev` image answers `kPreempted`, which is what

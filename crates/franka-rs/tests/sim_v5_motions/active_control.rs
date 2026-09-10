@@ -33,7 +33,7 @@ use crate::{fer, CUTOFF, DRIVEN_JOINT, LIMIT_RATE};
 /// ```
 ///
 /// Joint 1 does track *position* commands (test 1 moves it 0.2 rad), because the simulator's
-/// position law has a stiffness term that survives the clipping. See `docs/book/src/fer.md`.
+/// position law has a stiffness term that survives the clipping. See `docs/book/src/reference/simulator-gaps.md`.
 #[test]
 fn active_control_joint_velocity_then_torques() {
     let sim = common::sim(SimConfig::fer_v5());

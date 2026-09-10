@@ -57,4 +57,4 @@ flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev pytest crates/franka-py/test
 ```
 
 against the simulator (see the book's
-[Testing with franka-sim](https://barisyazici.github.io/franka-rs/testing-with-franka-sim.html)).
+[Testing with franka-sim](https://barisyazici.github.io/franka-rs/howto/simulator-tests.html)).
