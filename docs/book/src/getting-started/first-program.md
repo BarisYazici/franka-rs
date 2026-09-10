@@ -95,9 +95,10 @@ If the robot refuses the motion, `stop()` returns `FrankaError::Control` with th
 error text and the reflex reason, and `robot.automatic_error_recovery()` clears it; see
 [State and errors](../concepts/state-and-errors.md).
 
-The README's quick example (`examples/readme_joint_move.rs`) is the callback-style
-equivalent of a first motion: a joint-space cosine on joint 4 through
-`control_joint_positions`. CI runs it against the simulator.
+The README's quick example (`examples/readme_joint_move.rs`) is the 1 kHz-side
+equivalent of a first motion: a joint-space cosine on joint 4 written as a loop of your own,
+`read_once` then `write_once`, on `start_joint_position_control` (see
+[Drive the loop yourself](../howto/active-control.md)). CI runs it against the simulator.
 
 ## Where next
 

@@ -10,7 +10,7 @@
 //!
 //! Usage: `readme_joint_move <robot-hostname>`, with `FRANKA_REALTIME=ignore|enforce`
 //! (default `enforce`, as in libfranka) like every other example here.
-use franka::{ControllerMode, JointPositions, RealtimeConfig, Robot, DEFAULT_CUTOFF_FREQUENCY};
+use franka::{JointPositions, MoveControllerMode, RealtimeConfig, Robot};
 use std::{env, f64::consts::PI};
 
 fn main() -> franka::FrankaResult<()> {
@@ -21,19 +21,19 @@ fn main() -> franka::FrankaResult<()> {
     let robot = Robot::new(&env::args().nth(1).expect("usage: <hostname>"), realtime)?;
     // `q_d`, the commanded position: FCI v5 rate-limits the first command against it.
     let initial = robot.read_once()?.q_d;
+    let mut control = robot.start_joint_position_control(MoveControllerMode::JointImpedance)?;
     let mut time = 0.0;
-    robot.control_joint_positions(
-        |_state, period| {
-            time += period.as_secs_f64();
-            let mut q = initial;
-            q[3] += PI / 8.0 * (1.0 - (PI / 2.5 * time).cos());
-            let mut output = JointPositions::new(q);
-            output.motion_finished = time >= 5.0;
-            output
-        },
-        ControllerMode::JointImpedance,
-        true,
-        DEFAULT_CUTOFF_FREQUENCY,
-    )?;
+    loop {
+        let (_state, period) = control.read_once()?;
+        time += period.as_secs_f64();
+        let mut q = initial;
+        q[3] += PI / 8.0 * (1.0 - (PI / 2.5 * time).cos());
+        let mut output = JointPositions::new(q);
+        output.motion_finished = time >= 5.0;
+        control.write_once(&output, None)?;
+        if output.motion_finished {
+            break;
+        }
+    }
     Ok(())
 }

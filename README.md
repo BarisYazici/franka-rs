@@ -59,28 +59,30 @@ Without a robot, a simulated FR3 is
     let robot = Robot::new(&env::args().nth(1).expect("usage: <hostname>"), realtime)?;
     // `q_d`, the commanded position: FCI v5 rate-limits the first command against it.
     let initial = robot.read_once()?.q_d;
+    let mut control = robot.start_joint_position_control(MoveControllerMode::JointImpedance)?;
     let mut time = 0.0;
-    robot.control_joint_positions(
-        |_state, period| {
-            time += period.as_secs_f64();
-            let mut q = initial;
-            q[3] += PI / 8.0 * (1.0 - (PI / 2.5 * time).cos());
-            let mut output = JointPositions::new(q);
-            output.motion_finished = time >= 5.0;
-            output
-        },
-        ControllerMode::JointImpedance,
-        true,
-        DEFAULT_CUTOFF_FREQUENCY,
-    )?;
+    loop {
+        let (_state, period) = control.read_once()?;
+        time += period.as_secs_f64();
+        let mut q = initial;
+        q[3] += PI / 8.0 * (1.0 - (PI / 2.5 * time).cos());
+        let mut output = JointPositions::new(q);
+        output.motion_finished = time >= 5.0;
+        control.write_once(&output, None)?;
+        if output.motion_finished {
+            break;
+        }
+    }
 ```
 
 Takes the robot's hostname from `argv[1]`, picks `RealtimeConfig` from `FRANKA_REALTIME`
 (`ignore` or `enforce`, default `enforce`) like every example here, reads the commanded joint
-configuration and moves joint 4 through a smooth 0-to-`pi/8`-and-back cosine ramp over 5
-seconds using the robot's internal joint impedance controller. That block is the body of
-`main` in [`examples/readme_joint_move.rs`](crates/franka-rs/examples/readme_joint_move.rs),
-byte for byte; CI runs it against the simulator.
+configuration and drives the 1 kHz loop itself: `read_once` waits for the next robot state,
+`write_once` answers it, and joint 4 goes through a smooth 0-to-`pi/8`-and-back cosine ramp
+over 5 seconds with the robot's internal joint impedance controller tracking. That block is
+the body of `main` in
+[`examples/readme_joint_move.rs`](crates/franka-rs/examples/readme_joint_move.rs), byte for
+byte; CI runs it against the simulator.
 
 The same move for a program that is not a 1 kHz program:
 
