@@ -70,8 +70,9 @@ use control_loop::{ControlLoop, ControlLoopMotion};
 pub use options::{RobotOptions, VersionPolicy, VirtualWallCuboid};
 use robot_impl::{RobotImpl, DEFAULT_DEVIATION, NUM_JOINTS};
 pub use target_control::{
-    CartesianSent, CartesianTargetControl, JointSent, JointTargetControl,
-    JointTargetControlOptions, Settle, TargetControlOptions,
+    impedance_torques, Backend, CartesianSent, CartesianTargetControl, IkOptions, ImpedanceGains,
+    ImpedanceOptions, JointSent, JointTargetControl, JointTargetControlOptions, Leash, Settle,
+    TargetControlOptions,
 };
 
 /// Default size of the control log attached to a [`crate::error::ControlException`]

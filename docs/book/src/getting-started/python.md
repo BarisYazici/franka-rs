@@ -28,8 +28,47 @@ with robot.cartesian_targets(max_velocity=0.3, max_acceleration=0.5, max_jerk=20
 `with` block stops the loop; an exception inside it still stops the motion and is re-raised.
 The keyword arguments are the Rust [`TargetControlOptions`](../howto/target-control.md)
 (`max_deviation`, `max_angular_velocity`, `max_angular_acceleration`, `max_angular_jerk`,
-`max_angular_deviation`, `controller_mode`, `limit_rate`, `realtime_priority`), and
+`max_angular_deviation`, `backend`, `cartesian_stiffness`, `cartesian_damping`,
+`joint_stiffness`, `joint_damping`, `torque_limits`, `posture`, `torque_cutoff`,
+`velocity_feedforward`, `leash`, `project_joint_gains`, `controller_mode`, `limit_rate`,
+`realtime_priority`), and
 `franka.Robot(address, realtime='ignore')` overrides `FRANKA_REALTIME`.
+
+## Compliance
+
+The loop tracks the targets with the crate's own impedance torques by default
+(`backend='impedance'`), so the arm is a spring around the target: push it and it gives way,
+let go and it returns. `cartesian_stiffness` is that spring, 6 values (x, y, z in N/m, then
+three rotational in Nm/rad) or one float for the three translational entries with the
+rotational defaults kept; the defaults are 750 N/m and 15 Nm/rad.
+
+```python
+with robot.cartesian_targets(cartesian_stiffness=400) as arm:   # softer than the default 750 N/m
+    arm.move_by([0.03, 0.0, 0.0])
+```
+
+`cartesian_damping` (same shape), `joint_stiffness` and `joint_damping` (7 each, the joint
+term), `torque_limits` (7, Nm), `posture` (7 rad, the configuration the inverse kinematics
+prefers; default the start) and `torque_cutoff` (Hz, default 100) are the rest of the Rust
+`ImpedanceOptions`; `None` keeps each default, a wrong length is a `ValueError`. Three more:
+
+- `velocity_feedforward=True`: the damping acts on the velocity error, not the velocity;
+  `False` is DROID's form, and with `cartesian_damping=[37, 37, 37, 2, 2, 2]` its law.
+- `leash=(metres, radians)`, default `(0.025, 0.15)`: how far the target may run ahead of an
+  arm that is held back, so the spring never pulls harder than the felt stiffness times the
+  leash (roughly 25 to 30 N at the defaults at the ready pose; target control sets no
+  collision thresholds, so set at least 40 N / 40 Nm with the default gains, see
+  [Collision thresholds](../howto/target-control.md#backends)).
+- `project_joint_gains=False`: `True` confines the joint term to the nullspace, so the end
+  effector feels `cartesian_stiffness` alone.
+
+`joint_targets` takes `backend`, `joint_stiffness`, `joint_damping`, `torque_limits`,
+`torque_cutoff`, `velocity_feedforward`, `leash` (one float, rad per joint, default 0.1) and
+`project_joint_gains`. `backend='robot'` has the robot's own controller (`controller_mode`) track
+the targets instead, as the bindings did before the impedance backend existed; it takes none
+of the gains. The law, the defaults and what differs between the backends are in
+[Command from a low-rate program](../howto/target-control.md#backends). The impedance backend
+has run on franka-sim and not yet on a real arm.
 
 | call | what it does |
 |---|---|
@@ -102,7 +141,8 @@ robot, `FRANKA_REALTIME` defaults to `ignore`, and the last cells need
 
 `examples/policy_loop.py <hostname> [--yes]` is a jittery 6-10 Hz policy loop: a 4 cm circle
 through `move_to`, yaw and tilt through `move_by`, a 20-row `follow` chunk back to the start.
-It drove a real FER on 2026-09-09. `examples/rotate.py <hostname>` is the rotation alone: a
+It drove a real FER on 2026-09-09, with the robot's controller tracking. `examples/rotate.py
+<hostname>` is the rotation alone: a
 20° yaw as a quaternion target, a 10° tilt as a rotation vector, back to the start, printing
 the measured angle after each.
 

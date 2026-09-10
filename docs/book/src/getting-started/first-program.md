@@ -79,7 +79,11 @@ loop on a realtime thread of its own and returns a handle. `set_position` writes
 into a slot that the loop reads every cycle, and an online trajectory generator in the loop
 re-plans a jerk-limited profile from the current command to the target on every cycle, under
 a budget of 0.3 m/s, 0.5 m/s² and 20 m/s³ by default (a norm; each axis gets 1/√3 of it).
-The robot's own Cartesian impedance controller tracks the resulting pose stream. `stop()`
+The loop tracks the resulting pose stream itself: every cycle it solves for the joint
+configuration of the pose and sends the torques of an impedance law that pulls the arm
+there, 750 N/m in translation by default, so the arm gives way when pushed and returns when
+let go. `TargetControlOptions::default().with_backend(Backend::RobotController)` has the
+robot's own Cartesian impedance controller track the stream instead. `stop()`
 waits until the command has landed on the target, holds it for 250 cycles and then finishes
 the motion, because the robot refuses to finish on a moving command. `set_position` can be
 called from any thread at any rate, which is the point: a planner at 10 Hz, a script, a

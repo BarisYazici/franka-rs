@@ -135,9 +135,10 @@ pub use rate_limiting::{
 };
 pub use realtime::RealtimeConfig;
 pub use robot::{
-    ActiveMotionGenerator, ActiveMotionInput, ActiveTorqueControl, CartesianSent,
-    CartesianTargetControl, JointSent, JointTargetControl, JointTargetControlOptions, Robot,
-    RobotOptions, Settle, TargetControlOptions, VersionPolicy, VirtualWallCuboid,
+    impedance_torques, ActiveMotionGenerator, ActiveMotionInput, ActiveTorqueControl, Backend,
+    CartesianSent, CartesianTargetControl, IkOptions, ImpedanceGains, ImpedanceOptions, JointSent,
+    JointTargetControl, JointTargetControlOptions, Leash, Robot, RobotOptions, Settle,
+    TargetControlOptions, VersionPolicy, VirtualWallCuboid,
 };
 pub use robot_state::{RobotMode, RobotState};
 /// The FCI protocol version a connection speaks: v5 (FER) or v10 (FR3).

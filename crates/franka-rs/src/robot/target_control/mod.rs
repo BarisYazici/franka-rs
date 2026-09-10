@@ -11,18 +11,40 @@
 //! rate, with any target. The handle's [`stop`](CartesianTargetControl::stop) brings the
 //! command to rest on the last target, finishes the motion and returns the loop's result.
 //!
+//! # Two backends
+//! The [`Backend`] of the options decides what the generator's output becomes. The default,
+//! [`Backend::Impedance`], sends **torques**: the hybrid joint and Cartesian impedance law of
+//! [`ImpedanceGains`] (`Kp = J^T Kx J + Kq`, `Kd = J^T Kxd J + Kqd`, the damping on the
+//! velocity error `dq_goal - dq` with the goal's own velocity as the feedforward, plus the
+//! Coriolis term, clamped to the torque limits) tracks a joint target `q_goal` -- the
+//! generator's own output on the joint interface, the solution of a differential inverse
+//! kinematics following the generator's pose one cycle at a time on the Cartesian one
+//! ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's low-pass filter
+//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. There is no echo of a
+//! torque command, so the loop anchors on the *measured* configuration in its first cycle
+//! (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
+//! then, every cycle, on the measured state pulled toward the previous desired by at most the
+//! [`Leash`]: exactly the previous desired while the arm follows, so the generator runs from
+//! its own last output and its limits are the whole budget; a bounded distance ahead of an arm
+//! that is held back, so the spring force is bounded by the stiffness times the leash and the
+//! generator resumes from where the arm is once it is let go. [`Backend::RobotController`]
+//! instead streams the generator's output as a pose or joint-position command to the robot's
+//! own impedance controller (`controller_mode`); the rest of this page describes that path
+//! where the two differ.
+//!
 //! # What the loop does every cycle
 //! The three rules of the [`otg`](crate::otg) module, learnt on a real arm: the generator's
 //! limits are **per axis** (a Cartesian budget is a norm, so it gets
 //! [`OtgLimits::per_axis_for_norm`](crate::otg::OtgLimits::per_axis_for_norm)`(3)`), it steps **one nominal cycle** per command
 //! ([`DELTA_T`](crate::rate_limiting::DELTA_T)) whatever the measured period, and it is
-//! **re-anchored on the robot's echo** of the last command (`O_T_EE_c`, `q_d`) with
-//! `set_position` before every re-plan. Then the
-//! rate limiter under the same budget runs as the backstop that must never bind
+//! **re-anchored on the last command** -- the robot's echo of it (`O_T_EE_c`, `q_d`) with
+//! [`Backend::RobotController`], the leashed previous output with [`Backend::Impedance`] --
+//! with `set_position` before every re-plan. With [`Backend::RobotController`] the
+//! rate limiter under the same budget then runs as the backstop that must never bind
 //! (`limit_rate_cartesian_pose`, `limit_rate_joint_positions`), and the loop's own libfranka
 //! limiter stays on behind it; the observer is told by how much the backstop moved the
-//! command. The first setpoint of the motion is always the echo itself,
-//! anchored in the first cycle -- on FCI v10 the first command is its own filter reference
+//! command. The first setpoint of the motion is always the anchor itself
+//! -- on FCI v10 the first command is its own filter reference
 //! and would otherwise go out as a jump -- and the start returns only once that cycle has
 //! run, so [`target`](CartesianTargetControl::target) and
 //! [`state`](CartesianTargetControl::state) are valid from the first call.
@@ -38,11 +60,18 @@
 //! stop never finishes on a moving command: once every axis of the generator has landed
 //! (within [`Settle::tolerance`] of the target, slower than [`REST_VELOCITY`], accelerating
 //! less than [`REST_ACCELERATION`] -- the orientation included, in rad) the loop stops
-//! stepping it and sends the robot's echo of the last command -- continuous with what the
-//! robot has by construction, whatever the backstop took off that command -- bit for bit and
-//! past the backstop, for [`Settle::cycles`] cycles, then sets `motion_finished` on one more
-//! of it: the sequence a robot accepts as "finished at rest". If the generator has not landed
-//! within [`STOP_TIMEOUT_CYCLES`] the same hold starts from wherever the command is.
+//! stepping it and holds the last command -- with [`Backend::RobotController`] the robot's
+//! echo of it, continuous with what the robot has by construction, whatever the backstop took
+//! off that command, sent bit for bit and past the backstop; with [`Backend::Impedance`] the
+//! landed desired pose or joint goal, whose torques are those of rest -- for
+//! [`Settle::cycles`] cycles, then
+//! sets `motion_finished` on one more of it: the sequence a robot accepts as "finished at
+//! rest". If the generator has not landed within [`STOP_TIMEOUT_CYCLES`] the same hold starts
+//! from wherever the command is. That hold settles the generator, not the arm: in torque mode
+//! an arm still closing its lag would be handed to the robot's controller short of the goal,
+//! so [`Backend::Impedance`] finishes only once every joint moves slower than
+//! [`REST_JOINT_VELOCITY`], or after [`STOP_TIMEOUT_CYCLES`] more cycles, the law kept on the
+//! held goal meanwhile.
 //!
 //! # Threads
 //! The commander side is a single-writer seqlock ([`TargetSlot`]) the loop polls without
@@ -87,22 +116,27 @@
 //! ```
 
 mod cartesian;
+mod ik;
+mod impedance;
 mod joint;
+mod options;
 mod rotation;
 mod runner;
 mod slot;
+mod torque;
 
-pub use cartesian::{
-    CartesianObserver, CartesianSent, CartesianTargetControl, TargetControlOptions,
+pub use cartesian::{CartesianObserver, CartesianSent, CartesianTargetControl};
+pub use ik::{IkOptions, MAX_POSTURE_RATE};
+pub use impedance::{
+    impedance_torques, Backend, ImpedanceGains, ImpedanceOptions, Leash, RATED_TORQUES,
 };
-pub use joint::{
-    JointObserver, JointSent, JointTargetControl, JointTargetControlOptions, DEFAULT_LIMIT_FRACTION,
-};
+pub use joint::{JointObserver, JointSent, JointTargetControl};
+pub use options::{JointTargetControlOptions, TargetControlOptions, DEFAULT_LIMIT_FRACTION};
 pub use rotation::{ORTHONORMAL_TOLERANCE, UNIT_QUATERNION_TOLERANCE};
 pub use slot::TargetSlot;
 
 use runner::Runner;
-pub use runner::{REST_ACCELERATION, REST_VELOCITY};
+pub use runner::{REST_ACCELERATION, REST_JOINT_VELOCITY, REST_VELOCITY};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender};
@@ -110,12 +144,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use crate::error::{ControlException, FrankaError, FrankaResult};
+use crate::rate_limiting;
 use crate::realtime::{
     set_current_thread_scheduler_priority, set_current_thread_to_highest_scheduler_priority,
     RealtimeConfig,
 };
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
+use crate::wire::robot::codec::FciVersion;
 
 /// Cycles a stop waits for the generator to land before holding and finishing from wherever
 /// the command is: five seconds.
@@ -158,7 +194,11 @@ fn validate_common(
     max_deviation: f64,
     settle: Settle,
     realtime_priority: Option<i32>,
+    backend: &Backend,
 ) -> FrankaResult<()> {
+    if let Backend::Impedance(impedance) = backend {
+        impedance.validate()?;
+    }
     let positive = |x: f64| x.is_finite() && x > 0.0;
     if !positive(max_deviation) {
         return Err(FrankaError::InvalidArgument(format!(
@@ -179,6 +219,46 @@ fn validate_common(
         }
     }
     Ok(())
+}
+
+/// The joint position limits (lower, upper) of the negotiated version's arm.
+fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
+    match version {
+        FciVersion::V5 => rate_limiting::fer::JOINT_POSITION_LIMITS,
+        FciVersion::V10 => rate_limiting::JOINT_POSITION_LIMITS,
+    }
+}
+
+/// How far, rad, inside the negotiated version's joint position limits a joint target and an
+/// impedance posture must lie: [`JointTargetControl::set_joints`] and both `start`s refuse a
+/// configuration outside.
+pub const JOINT_LIMIT_INSET: f64 = 0.02;
+
+/// Refuses a `q` outside `limits` inset by [`JOINT_LIMIT_INSET`], naming the joint and `what`.
+fn check_joint_limits(q: &[f64; 7], limits: &([f64; 7], [f64; 7]), what: &str) -> FrankaResult<()> {
+    for (i, value) in q.iter().enumerate() {
+        let lower = limits.0[i] + JOINT_LIMIT_INSET;
+        let upper = limits.1[i] - JOINT_LIMIT_INSET;
+        if !(lower..=upper).contains(value) {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: the {what} puts joint {} at {value} rad, outside \
+                 [{lower}, {upper}] ({JOINT_LIMIT_INSET} rad inside the arm's limits)",
+                i + 1
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The posture of an impedance backend, checked against the arm's limits at `start`.
+fn check_posture(backend: &Backend, limits: &([f64; 7], [f64; 7])) -> FrankaResult<()> {
+    match backend {
+        Backend::Impedance(ImpedanceOptions {
+            posture: Some(posture),
+            ..
+        }) => check_joint_limits(posture, limits, "posture"),
+        _ => Ok(()),
+    }
 }
 
 /// What the user thread and the loop thread share.
@@ -344,15 +424,18 @@ where
 
 impl Robot {
     /// Starts a Cartesian target control loop on its own thread and returns once its first
-    /// cycle has anchored on the current commanded pose; see the
-    /// [module documentation](self).
+    /// cycle has anchored on the current pose (the model's pose of the measured configuration
+    /// with [`Backend::Impedance`], the commanded one with [`Backend::RobotController`]); see
+    /// the [module documentation](self).
     ///
     /// # Errors
     /// [`FrankaError::InvalidArgument`] if the options are invalid,
     /// [`FrankaError::Realtime`] if the loop thread cannot be raised to `SCHED_FIFO` under
-    /// [`RealtimeConfig::Enforce`], and whatever [`Robot::control_cartesian_pose`] fails with
-    /// before its first cycle, [`FrankaError::InvalidOperation`] if another control or read
-    /// operation is running among them.
+    /// [`RealtimeConfig::Enforce`], whatever [`Robot::load_model`] fails with under
+    /// [`Backend::Impedance`], and whatever [`Robot::control_torques`] or
+    /// [`Robot::control_cartesian_pose`] fails with before its first cycle,
+    /// [`FrankaError::InvalidOperation`] if another control or read operation is running
+    /// among them.
     pub fn start_cartesian_target_control(
         self: &Arc<Self>,
         options: TargetControlOptions,
@@ -361,12 +444,11 @@ impl Robot {
     }
 
     /// Starts a joint target control loop on its own thread and returns once its first cycle
-    /// has anchored on the current commanded joint positions; see the
-    /// [module documentation](self).
+    /// has anchored on the current joint positions; see the [module documentation](self).
     ///
     /// # Errors
     /// As [`Robot::start_cartesian_target_control`], with
-    /// [`Robot::control_joint_positions`] as the loop.
+    /// [`Robot::control_joint_positions`] as the [`Backend::RobotController`] loop.
     pub fn start_joint_target_control(
         self: &Arc<Self>,
         options: JointTargetControlOptions,

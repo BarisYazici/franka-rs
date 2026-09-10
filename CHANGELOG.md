@@ -5,6 +5,62 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **An impedance backend for target control**, the default. `TargetControlOptions` /
+  `JointTargetControlOptions` gain `backend: Backend` (`with_backend`):
+  `Backend::Impedance(ImpedanceOptions)` runs the loop through `control_torques` and sends,
+  every cycle, the torques of the hybrid joint impedance law of DROID's controller (polymetis
+  `HybridJointImpedanceControl`), `tau = (Jᵀ Kx J + Kq)(q_goal − q) + (Jᵀ Kxd J +
+  Kqd)(dq_goal − dq) + coriolis`, clamped to `torque_limits` and low-pass filtered at
+  `cutoff_frequency` (100 Hz); the arm is compliant around the target. The damping acts on
+  the velocity error (`velocity_feedforward`, default on; off is DROID's form). Without an
+  echo of a torque command the generator is anchored every cycle on the measured state
+  pulled toward the previous desired by at most the `Leash` (0.025 m, 0.15 rad; 0.1 rad per
+  joint), also during the stop's hold, so an arm that is held back never meets more than the
+  felt stiffness times the leash (roughly 25 to 30 N at the default gains at the ready pose,
+  18.75 N with `project_joint_gains`; on the joint interface the torque clamp bounds the
+  torque) and the generator resumes from the arm on release. Target control sets no
+  collision thresholds: with the default gains set at least 40 N / 40 Nm, or lower the
+  stiffness. On the Cartesian interface `q_goal` comes from a differential inverse kinematics
+  (damped least squares, nullspace drift toward `posture` capped at 0.5 rad/s, a step cap
+  `max_step` of 0.01 rad per cycle, clamp to the joint position limits; `IkOptions`) that
+  follows the generator one cycle at a time, so an unreachable target lags rather than
+  jumps; on the joint interface it is the generator's output. A `posture` or joint target
+  outside the joint limits (inset 0.02 rad) is refused with `InvalidArgument`.
+  `project_joint_gains` (default off) confines the joint gains to the Jacobian's nullspace so
+  the end effector feels `Kx` alone (unprojected, the joint springs make the default 750 N/m
+  about 990 to 1180 N/m at the ready pose). The finish waits for the arm to rest
+  (`REST_JOINT_VELOCITY`, 0.01 rad/s, or the 5 s timeout). `ImpedanceGains` (`CARTESIAN`:
+  750 N/m and 15 Nm/rad with damping 50, 50, 90 Ns/m, about ζ 0.8 at the ready pose, and a
+  small joint term; `DROID`: DROID's gains as they were, damping 37; `JOINT`: the
+  `fer_joint_impedance` example's), `ImpedanceOptions::cartesian()` / `::joint()` with
+  `with_*` builders, `franka::impedance_torques` (the law, public at the crate root) and
+  `rate_limiting::JOINT_POSITION_LIMITS` (FR3) / `rate_limiting::fer::JOINT_POSITION_LIMITS`
+  (FER), from the URDFs in the repository. `nonrealtime_commander` gains `--no-feedforward`,
+  `--project-joint-gains`, `--leash M` and `--thresholds N`, and its CSV `leash_alteration`.
+  `CartesianSent` / `JointSent` gain `q_goal`, the
+  clamped `tau`, `leash_alteration` (and `leash_angular_alteration` for a pose) and, for a
+  pose, the IK residual `ik_error`. The Python `cartesian_targets` and `joint_targets` take
+  `backend` (`'impedance'` | `'robot'`), `cartesian_stiffness`, `cartesian_damping` (6
+  values, or one float for the translational three), `joint_stiffness`, `joint_damping`,
+  `torque_limits`, `posture`, `torque_cutoff`, `velocity_feedforward`, `leash` and
+  `project_joint_gains`. Run on franka-sim; not yet on a real arm. See
+  [The impedance backend](docs/book/src/reference/impedance.md).
+
+### Changed
+
+- **Target control is compliant by default.** Both interfaces now send the impedance
+  backend's torques; the robot's own controller tracking a pose or joint-position stream,
+  the only behaviour before, is `Backend::RobotController`
+  (`TargetControlOptions::default().with_backend(Backend::RobotController)`, Python
+  `backend="robot"`), and `controller_mode` applies to that backend only. The robot's
+  joint-side continuity check no longer refuses a fast Cartesian budget in the default
+  backend; the deviation guard and the collision thresholds apply to both. A change of
+  default behaviour: the next release is 0.3.0.
+
 ## [0.2.0] - 2026-09-09
 
 ### Added
@@ -180,5 +236,6 @@ differs from libfranka.
   version negotiation recognise an FER on the simulator; no effect against
   a real FR3 or FER.
 
+[Unreleased]: https://github.com/BarisYazici/franka-rs/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.1.0

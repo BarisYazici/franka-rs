@@ -29,11 +29,13 @@ How-to: [Drive the loop yourself](../howto/active-control.md).
 `Robot::start_cartesian_target_control` and `start_joint_target_control` spawn the loop on a
 realtime thread of the crate's own and hand back a handle whose `set_position`,
 `set_orientation`, `set_pose` or `set_joints` any thread can call at any rate. The loop turns
-every new target into a jerk-limited profile within a budget, and the robot's impedance
-controller does the tracking. `stop()` lands on the last target, then finishes the motion.
-There is no torque backend. The Python bindings move the arm through this interface only.
-How-to:
-[Command from a low-rate program](../howto/target-control.md).
+every new target into a jerk-limited profile within a budget and tracks it through one of two
+backends. The default, `Backend::Impedance`, sends torques from the crate's impedance law: the
+arm is compliant, and pushing it away from the target meets a spring of `cartesian_stiffness`
+(750 N/m by default). `Backend::RobotController` sends the profile as a pose or joint-position
+stream and the robot's own impedance controller tracks it, stiffly. `stop()` lands on the last
+target, then finishes the motion. The Python bindings move the arm through this interface
+only. How-to: [Command from a low-rate program](../howto/target-control.md).
 
 ## Which one
 
@@ -41,13 +43,14 @@ How-to:
 |---|---|
 | runs at 1 kHz on a realtime machine and computes the next setpoint from the state | callback or `ActiveControl` |
 | is a planner, policy, teleoperation or script that produces targets at its own rate | target control |
-| needs to command torques | callback or `ActiveControl`; target control has no torque backend, the robot's impedance controller does the tracking |
-| wants the crate's low-pass filter and rate limiter behind it | callback, with `limit_rate` and `cutoff_frequency`; target control has the rate limiter as a backstop under its own budget, with the filter off |
+| needs to command torques of its own law | callback or `ActiveControl`; target control's default backend sends torques from its impedance law, with the gains as options but the law fixed |
+| wants the crate's low-pass filter and rate limiter behind it | callback, with `limit_rate` and `cutoff_frequency`; target control has the rate limiter as a backstop under its own budget, and its impedance backend filters the torques at 100 Hz |
 | is written in Python | target control: `move_to`, `move_by`, `follow` |
 
 Rate limiting and low-pass filtering exist on the callback path; target control keeps the
-rate limiter as a backstop and runs with the filter off. `ActiveControl` has neither, in
-this crate as in libfranka.
+rate limiter as a backstop, filters its torques at 100 Hz in the impedance backend and runs
+with the filter off in the robot-controller backend. `ActiveControl` has neither, in this
+crate as in libfranka.
 
 ## What they share
 

@@ -17,12 +17,20 @@ or a policy at 10 Hz, a script, a notebook cell or a person at a keyboard: it se
 targets at its own rate and the crate turns them into a continuous command the robot
 accepts.
 
+![Stepped targets from a commander at 5 to 30 Hz enter franka-rs; a continuous, jerk-limited command leaves for the robot.](./assets/bridge.png)
+
+<sub>Stepped, bursty, stalling targets in; one continuous command out. Illustration of the
+generator's profile for a scripted target sequence under a 0.25 m/s, 0.5 m/s², 20 m/s³
+budget.</sub>
+
 ## What you get
 
 - **The realtime loop as a library.** Write the loop yourself as a callback or with
   `read_once` / `write_once`, or let the crate run it on a realtime thread and set targets
   from any thread at any rate. Stepped, bursty or stalled targets become a smooth command
-  under a velocity, acceleration and jerk budget; `stop()` settles and finishes the motion.
+  under a velocity, acceleration and jerk budget, tracked by the crate's own impedance
+  torques (the arm stays compliant) or by the robot's controller; `stop()` settles and
+  finishes the motion.
 - **A small, safe footprint.** One crate. Parsing, rate limiting, trajectory generation and
   the control loops are safe Rust and allocate nothing once a motion has started; the
   `unsafe` in the crate is confined to the scheduler and socket system calls and to the
@@ -47,11 +55,11 @@ accepts.
 
 Version 0.2. Both protocol versions, every control interface, target control from Rust
 and Python, the gripper and the flight recorder have run on real arms; the dates and
-figures are in [Benchmarks and hardware validation](./reference/benchmarks.md). Not there
-yet: a torque backend for target control (the robot's own impedance controller does the
-tracking), a `ros2_control` hardware interface, the vacuum gripper, and a published
-simulator image for the FER. The [changelog](./changelog.md) lists what changed in each
-release.
+figures are in [Benchmarks and hardware validation](./reference/benchmarks.md). The
+impedance backend of target control, added after 0.2.0 and the default now, has run on
+franka-sim and not yet on a real arm. Not there yet: a `ros2_control` hardware interface, the vacuum
+gripper, and a published simulator image for the FER. The [changelog](./changelog.md)
+lists what changed in each release.
 
 `franka-rs` is an unofficial project and is not affiliated with Franka Robotics GmbH;
 Franka, Franka Emika, Panda and FR3 are their trademarks. The crate is Apache-2.0, like

@@ -94,6 +94,14 @@ pub const MAX_ELBOW_VELOCITY: f64 =
     1.5 - LIMIT_EPS - TOL_NUMBER_PACKETS_LOST * DELTA_T * MAX_ELBOW_ACCELERATION;
 /// Minimum elbow velocity. Port of `franka::kMinElbowVelocity`.
 pub const MIN_ELBOW_VELOCITY: f64 = -MAX_ELBOW_VELOCITY;
+/// Joint position limits (lower, upper), rad: the `<limit>` of `joint1..7` in the FR3 URDF of
+/// libfranka's test suite (`test/fr3.urdf`, the crate's `tests/data/fr3.urdf`).
+pub const JOINT_POSITION_LIMITS: ([f64; 7], [f64; 7]) = (
+    [
+        -2.7501, -1.7918, -2.9065, -3.0481, -2.8101, 0.54092, -3.0196,
+    ],
+    [2.7501, 1.7918, 2.9065, -0.1458, 2.8101, 4.5205, 3.0196],
+);
 
 #[cfg(test)]
 mod tests;

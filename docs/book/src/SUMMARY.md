@@ -37,6 +37,7 @@
 - [FER / Panda specifics](./reference/fer.md)
 - [Rate limiting and filtering](./reference/rate-limiting.md)
 - [Online trajectory generation](./reference/otg.md)
+- [The impedance backend](./reference/impedance.md)
 - [Model parameters and conformance](./reference/model.md)
 - [Benchmarks and hardware validation](./reference/benchmarks.md)
 - [Simulator gaps](./reference/simulator-gaps.md)

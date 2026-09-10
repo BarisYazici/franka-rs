@@ -90,7 +90,7 @@ stops after the first state, as 0.9.2 does.
 | `LoadModelLibrary` | yes (`Robot::load_model_from_robot`) | **no such command** |
 | joint velocity limits | flat: 2.175 rad/s (J1–4), 2.610 rad/s (J5–7) | position-dependent envelope from the URDF |
 | `kTolNumberPacketsLost` | 3.0 | 0.0 |
-| joint limits | J1 ±2.8973, J2 ±1.7628, J3 ±2.8973, J4 [−3.0718, −0.0698], J5 ±2.8973, J6 [−0.0175, 3.7525], J7 ±2.8973 | different (J1 ±2.7437, …) |
+| joint position limits (`JOINT_POSITION_LIMITS`, from the robots' URDFs; the FR3 row is the robot URDF's hard limits, a few mrad wider than franka_description's datasheet values) | J1 ±2.8973, J2 ±1.7628, J3 ±2.8973, J4 [−3.0718, −0.0698], J5 ±2.8973, J6 [−0.0175, 3.7525], J7 ±2.8973 | J1 ±2.7501, J2 ±1.7918, J3 ±2.9065, J4 [−3.0481, −0.1458], J5 ±2.8101, J6 [0.5409, 4.5205], J7 ±3.0196 |
 | gripper protocol | **identical** (version 3, port 1338) | identical |
 
 The status enums other than `Move::Status` are shorter on v5 in the same way (no

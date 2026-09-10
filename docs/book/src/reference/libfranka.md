@@ -37,7 +37,8 @@ the measurements are on [Benchmarks and hardware validation](./benchmarks.md).
   onto the 1 kHz loop is otherwise left to the user or to software built on top of
   libfranka. Here `start_cartesian_target_control` / `start_joint_target_control` run the
   loop on a realtime thread, take Cartesian poses or joint targets at any rate on both
-  robot generations, and the Python bindings are built on it.
+  robot generations, track them with the crate's impedance torques (compliant, the gains
+  as options) or with the robot's own controller, and the Python bindings are built on it.
 - **`ActiveControl` on an FER.** libfranka 0.9.2 has only the callback API for that
   generation.
 - **The model without a download.** libfranka evaluates the FR3 model with Pinocchio and,

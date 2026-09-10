@@ -387,3 +387,50 @@ fn fer_constants_match_the_0_9_2_header() {
     assert_eq!(fer::NORM_EPS, f64::EPSILON);
     assert_eq!(fer::FACTOR_CARTESIAN_ROTATION_POSE_INTERFACE, 0.99);
 }
+
+/// The `<limit lower upper>` of `joint1..7` (`fr3_joint1` counts too) of a URDF.
+fn urdf_joint_position_limits(urdf: &str) -> ([f64; 7], [f64; 7]) {
+    let document = roxmltree::Document::parse(urdf.trim_start()).expect("the URDF parses");
+    let mut limits = ([f64::NAN; 7], [f64::NAN; 7]);
+    for joint in document
+        .root_element()
+        .children()
+        .filter(|n| n.has_tag_name("joint"))
+    {
+        let name = joint.attribute("name").unwrap_or_default();
+        let Some(index) = name
+            .rsplit_once("joint")
+            .and_then(|(_, n)| n.parse::<usize>().ok())
+            .filter(|n| (1..=7).contains(n))
+        else {
+            continue;
+        };
+        let limit = joint
+            .children()
+            .find(|n| n.has_tag_name("limit"))
+            .unwrap_or_else(|| panic!("{name} has no <limit>"));
+        let bound = |attribute: &str| {
+            limit
+                .attribute(attribute)
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or_else(|| panic!("{name} has no numeric {attribute}"))
+        };
+        limits.0[index - 1] = bound("lower");
+        limits.1[index - 1] = bound("upper");
+    }
+    limits
+}
+
+#[test]
+fn joint_position_limits_match_the_fr3_urdf() {
+    let urdf = include_str!("../../../tests/data/fr3.urdf");
+    assert_eq!(urdf_joint_position_limits(urdf), JOINT_POSITION_LIMITS);
+}
+
+#[test]
+fn fer_joint_position_limits_match_the_fer_urdf() {
+    assert_eq!(
+        urdf_joint_position_limits(crate::model::FER_URDF),
+        super::fer::JOINT_POSITION_LIMITS
+    );
+}

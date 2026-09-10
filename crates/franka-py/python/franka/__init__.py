@@ -14,6 +14,11 @@ the 1 kHz control loop runs on a Rust thread that never touches the GIL::
         arm.move_to([0.4, 0.0, 0.3])          # absolute, base frame, metres
         arm.follow(chunk, dt=0.02)            # (N, 3) or (N, 7) rows, one every 20 ms
 
+The loop is compliant by default -- it sends torques from the crate's impedance law,
+``cartesian_stiffness=`` sets how hard the arm pulls back toward the target and ``leash=``
+how far the target may run ahead of an arm that is held -- while ``backend="robot"`` has
+the robot's own controller track the targets instead.
+
 Every error is a :class:`FrankaError`; a motion the robot aborted is a
 :class:`ControlException` (a subclass) whose ``reason`` names the reflex.
 """

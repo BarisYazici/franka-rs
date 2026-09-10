@@ -1,11 +1,15 @@
 //! Target control (`Robot::start_cartesian_target_control`, `start_joint_target_control`)
 //! against franka-sim with motion limits enforced: a low-rate commander steps, bursts and
-//! stalls its targets from the test thread while the crate's loop runs on its own.
+//! stalls its targets from the test thread while the crate's loop runs on its own. Tests 1-3
+//! here stream through the robot's controller (`Backend::RobotController`); tests 4-7 in
+//! [`impedance`] send the impedance backend's torques (the default).
 //!
 //! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_target_control
 //! -- --test-threads=1`.
 
 mod common;
+#[path = "sim_target_control/impedance.rs"]
+mod impedance;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -13,8 +17,8 @@ use std::time::Duration;
 
 use franka::robot::target_control::ENDED_MESSAGE;
 use franka::{
-    CartesianSent, FrankaError, JointSent, JointTargetControlOptions, RobotMode, RobotState,
-    TargetControlOptions,
+    Backend, CartesianSent, FrankaError, JointSent, JointTargetControlOptions, RobotMode,
+    RobotState, TargetControlOptions,
 };
 use franka_sim_test::SimConfig;
 
@@ -95,7 +99,9 @@ fn cartesian_target_control_follows_a_stepped_commander() {
             counters.note(speed, sent.backstop_alteration);
         }
     };
-    let options = TargetControlOptions::default().with_observer(observer);
+    let options = TargetControlOptions::default()
+        .with_backend(Backend::RobotController)
+        .with_observer(observer);
     let budget = options.limits;
     let control = robot
         .start_cartesian_target_control(options)
@@ -218,7 +224,9 @@ fn joint_target_control_follows_a_stepped_commander() {
             }
         }
     };
-    let options = JointTargetControlOptions::default().with_observer(observer);
+    let options = JointTargetControlOptions::default()
+        .with_backend(Backend::RobotController)
+        .with_observer(observer);
     let control = robot
         .start_joint_target_control(options)
         .expect("start_joint_target_control failed");
@@ -306,7 +314,9 @@ fn joint_target_control_follows_a_stepped_commander() {
 
     // A handle whose loop was preempted by `robot.stop()`: `set_*` refuses, `stop()` reports.
     let control = robot
-        .start_joint_target_control(JointTargetControlOptions::default())
+        .start_joint_target_control(
+            JointTargetControlOptions::default().with_backend(Backend::RobotController),
+        )
         .expect("second start failed");
     robot.stop().expect("robot.stop() failed");
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
@@ -377,7 +387,9 @@ fn cartesian_target_control_reaches_a_rotated_pose() {
             counters.note(rate, sent.backstop_angular_alteration);
         }
     };
-    let options = TargetControlOptions::default().with_observer(observer);
+    let options = TargetControlOptions::default()
+        .with_backend(Backend::RobotController)
+        .with_observer(observer);
     let budget = options.rotation_limits;
     let control = robot
         .start_cartesian_target_control(options)

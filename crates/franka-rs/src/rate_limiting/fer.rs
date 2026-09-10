@@ -115,3 +115,11 @@ pub const MAX_ELBOW_VELOCITY: f64 =
 /// is symmetric (`src/control_loop.cpp:254`). 0.21.2 spells the negation out as a constant
 /// and the crate follows it, so the v5 module defines the same derived value.
 pub const MIN_ELBOW_VELOCITY: f64 = -MAX_ELBOW_VELOCITY;
+/// Joint position limits (lower, upper), rad: the `<limit>` of `joint1..7` in the FER URDF
+/// the crate compiles in ([`crate::model::FER_URDF`], `tests/data/fer.urdf`).
+pub const JOINT_POSITION_LIMITS: ([f64; 7], [f64; 7]) = (
+    [
+        -2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973,
+    ],
+    [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],
+);

@@ -22,6 +22,9 @@ pub const REST_VELOCITY: f64 = 1e-4;
 /// ... and accelerating less than this (m/s^2, rad/s^2); the micro-profiles above peak at
 /// about 0.01.
 pub const REST_ACCELERATION: f64 = 0.05;
+/// An *arm* whose every joint moves slower than this, rad/s, is at rest: what a stop in torque
+/// mode waits for before `motion_finished`, the hold having settled only the generator.
+pub const REST_JOINT_VELOCITY: f64 = 0.01;
 
 /// Maps the slot's target and the robot's echo (`S` values each) to where the generator is
 /// re-anchored and where it is to go (`N` values each) for one cycle.

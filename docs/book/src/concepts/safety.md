@@ -35,7 +35,10 @@ force estimate
 of commanded acceleration it crossed 20 N: for fast target steps the collision thresholds,
 not the kinematic limits, were the binding constraint. Measured on one arm, not a
 specification. The two Cartesian impedance examples set 100 Nm and 100 N so that the arm can
-be pushed around; keep the user stop in hand there.
+be pushed around; keep the user stop in hand there. Target control's default backend is a
+spring too and sets no thresholds itself: at its default stiffness a 2.7 cm push reaches
+20 N, so set at least 40 N and 40 Nm there or lower the stiffness (see
+[Collision thresholds](../howto/target-control.md#backends)).
 
 ## What a reflex is, from the client
 

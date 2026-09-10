@@ -9,6 +9,7 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 
 mod gripper;
+mod impedance;
 mod model;
 mod robot;
 mod state;

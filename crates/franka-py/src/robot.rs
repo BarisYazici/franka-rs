@@ -6,11 +6,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use franka::{
-    ControllerMode, FciVersion, JointTargetControlOptions, OtgLimits, RealtimeConfig,
-    TargetControlOptions,
+    ControllerMode, FciVersion, ImpedanceOptions, JointTargetControlOptions, OtgLimits,
+    RealtimeConfig, TargetControlOptions,
 };
 
 use crate::gripper::Gripper;
+use crate::impedance::ImpedanceArgs;
 use crate::model::Model;
 use crate::state::RobotState;
 use crate::targets::{CartesianTargets, JointTargets};
@@ -180,16 +181,37 @@ impl Robot {
     /// in m/s, m/s^2, m/s^3, rotation in rad/s, rad/s^2, rad/s^3 (`None`: the Rust defaults);
     /// `max_deviation` (m) and `max_angular_deviation` (rad) end the loop with a
     /// `ControlException` when the measured pose strays that far from the start.
+    ///
+    /// `backend='impedance'` (the default) sends torques from the crate's impedance law, so
+    /// the arm is compliant: `cartesian_stiffness` and `cartesian_damping` take 6 values
+    /// (x, y, z, then three rotational; N/m and Nm/rad, Ns/m and Nms/rad) or one float for
+    /// the three translational entries, `joint_stiffness` / `joint_damping` (7) hold the
+    /// nullspace and, unprojected, also stiffen the end effector, `torque_limits` (7, Nm)
+    /// clamp the command, `posture` (7, rad, within the joint limits) is the configuration
+    /// the inverse kinematics prefers (default: the start) and `torque_cutoff` (Hz) the
+    /// low-pass filter on the torques; `None` keeps the Rust default. `velocity_feedforward`
+    /// damps the velocity error rather than the velocity (`False`: DROID parity, with
+    /// `cartesian_damping=[37, 37, 37, 2, 2, 2]`), `leash=(metres, radians)` bounds how far
+    /// the desired pose may run ahead of the measured one (default 0.025 m, 0.15 rad: the
+    /// spring's force stays under the felt stiffness times the leash, roughly 25 to 30 N at
+    /// the defaults; set the collision thresholds accordingly, target control sets none),
+    /// `project_joint_gains` confines the joint gains to the Jacobian's nullspace so the end
+    /// effector feels the Cartesian gains alone. `backend='robot'` has the robot's own
+    /// controller (`controller_mode`) track the pose stream instead, and takes none of those
+    /// arguments.
     #[pyo3(signature = (
         *, max_velocity = 0.3, max_acceleration = 0.5, max_jerk = 20.0, max_deviation = 0.30,
         max_angular_velocity = None, max_angular_acceleration = None, max_angular_jerk = None,
-        max_angular_deviation = None, controller_mode = "cartesian_impedance", limit_rate = true,
-        realtime_priority = None
+        max_angular_deviation = None, backend = "impedance", cartesian_stiffness = None,
+        cartesian_damping = None, joint_stiffness = None, joint_damping = None,
+        torque_limits = None, posture = None, torque_cutoff = None, velocity_feedforward = true,
+        leash = None, project_joint_gains = false, controller_mode = "cartesian_impedance",
+        limit_rate = true, realtime_priority = None
     ))]
     #[allow(clippy::too_many_arguments)]
-    fn cartesian_targets(
+    fn cartesian_targets<'py>(
         &self,
-        py: Python<'_>,
+        py: Python<'py>,
         max_velocity: f64,
         max_acceleration: f64,
         max_jerk: f64,
@@ -198,10 +220,35 @@ impl Robot {
         max_angular_acceleration: Option<f64>,
         max_angular_jerk: Option<f64>,
         max_angular_deviation: Option<f64>,
+        backend: &str,
+        cartesian_stiffness: Option<Bound<'py, PyAny>>,
+        cartesian_damping: Option<Bound<'py, PyAny>>,
+        joint_stiffness: Option<Bound<'py, PyAny>>,
+        joint_damping: Option<Bound<'py, PyAny>>,
+        torque_limits: Option<Bound<'py, PyAny>>,
+        posture: Option<Bound<'py, PyAny>>,
+        torque_cutoff: Option<f64>,
+        velocity_feedforward: bool,
+        leash: Option<Bound<'py, PyAny>>,
+        project_joint_gains: bool,
         controller_mode: &str,
         limit_rate: bool,
         realtime_priority: Option<i32>,
     ) -> PyResult<CartesianTargets> {
+        let impedance = ImpedanceArgs {
+            cartesian_stiffness,
+            cartesian_damping,
+            joint_stiffness,
+            joint_damping,
+            torque_limits,
+            posture,
+            torque_cutoff,
+            velocity_feedforward,
+            leash,
+            joint_leash: false,
+            project_joint_gains,
+        };
+        let backend = impedance.backend(backend, ImpedanceOptions::cartesian())?;
         let defaults = TargetControlOptions::default();
         let rotation = OtgLimits {
             max_velocity: max_angular_velocity.unwrap_or(defaults.rotation_limits.max_velocity),
@@ -219,6 +266,7 @@ impl Robot {
             .with_rotation_limits(rotation)
             .with_max_deviation(max_deviation)
             .with_max_angular_deviation(angular_deviation)
+            .with_backend(backend)
             .with_controller_mode(parse_controller_mode(controller_mode)?)
             .with_limit_rate(limit_rate)
             .with_realtime_priority(realtime_priority);
@@ -230,15 +278,34 @@ impl Robot {
     /// Starts a joint target loop on a Rust thread with `fraction` of the robot's joint
     /// velocity, acceleration and jerk limits as its budget; `max_deviation` in rad. Use the
     /// result as a context manager.
+    ///
+    /// `backend='impedance'` (the default) sends torques from the crate's joint impedance
+    /// law: `joint_stiffness` (7, Nm/rad), `joint_damping` (7, Nms/rad), `torque_limits`
+    /// (7, Nm), `torque_cutoff` (Hz), `velocity_feedforward` (damp the velocity error, not
+    /// the velocity), `leash` (one float, rad: how far the goal may run ahead of any joint,
+    /// default 0.1; the torque clamp, not the leash, bounds the torque) and
+    /// `project_joint_gains`; `None` for the Rust default. `backend='robot'`
+    /// has the robot's own controller (`controller_mode`) track the joint stream instead.
     #[pyo3(signature = (
-        *, fraction = 0.2, max_deviation = 1.0, controller_mode = "joint_impedance",
-        limit_rate = true, realtime_priority = None
+        *, fraction = 0.2, max_deviation = 1.0, backend = "impedance", joint_stiffness = None,
+        joint_damping = None, torque_limits = None, torque_cutoff = None,
+        velocity_feedforward = true, leash = None, project_joint_gains = false,
+        controller_mode = "joint_impedance", limit_rate = true, realtime_priority = None
     ))]
-    fn joint_targets(
+    #[allow(clippy::too_many_arguments)]
+    fn joint_targets<'py>(
         &self,
-        py: Python<'_>,
+        py: Python<'py>,
         fraction: f64,
         max_deviation: f64,
+        backend: &str,
+        joint_stiffness: Option<Bound<'py, PyAny>>,
+        joint_damping: Option<Bound<'py, PyAny>>,
+        torque_limits: Option<Bound<'py, PyAny>>,
+        torque_cutoff: Option<f64>,
+        velocity_feedforward: bool,
+        leash: Option<Bound<'py, PyAny>>,
+        project_joint_gains: bool,
         controller_mode: &str,
         limit_rate: bool,
         realtime_priority: Option<i32>,
@@ -248,10 +315,23 @@ impl Robot {
                 "franka: fraction must be positive, got {fraction}"
             )));
         }
+        let impedance = ImpedanceArgs {
+            joint_stiffness,
+            joint_damping,
+            torque_limits,
+            torque_cutoff,
+            velocity_feedforward,
+            leash,
+            joint_leash: true,
+            project_joint_gains,
+            ..ImpedanceArgs::default()
+        };
+        let backend = impedance.backend(backend, ImpedanceOptions::joint())?;
         let limits = JointTargetControlOptions::scaled_limits(self.inner.fci_version(), fraction);
         let options = JointTargetControlOptions::default()
             .with_limits(limits)
             .with_max_deviation(max_deviation)
+            .with_backend(backend)
             .with_controller_mode(parse_controller_mode(controller_mode)?)
             .with_limit_rate(limit_rate)
             .with_realtime_priority(realtime_priority);
