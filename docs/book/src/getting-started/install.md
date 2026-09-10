@@ -13,7 +13,7 @@ or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-franka-rs = "0.2"
+franka-rs = "0.3"
 ```
 
 The library is named `franka`, so you write `use franka::Robot;`. Rust 1.85 or newer

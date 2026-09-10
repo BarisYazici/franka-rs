@@ -38,7 +38,7 @@ The ring is sized once, so a large log costs memory, not cycle time.
 ## Save it: the `serde` feature
 
 The optional `serde` feature of `franka-rs` (off by default;
-`franka-rs = { version = "0.2", features = ["serde"] }`) derives `Serialize` and
+`franka-rs = { version = "0.3", features = ["serde"] }`) derives `Serialize` and
 `Deserialize` for `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`,
 `RobotCommandLog`, `MoveStatus` and `ControlException`. Two representation choices: `Errors`
 serialises as the list of the set flags' names in libfranka's order

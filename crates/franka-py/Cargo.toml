@@ -1,6 +1,6 @@
 [package]
 name = "franka-py"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python bindings for franka-rs: target control for low-rate policies, with the 1 kHz loop in Rust"
 edition.workspace = true
 rust-version.workspace = true

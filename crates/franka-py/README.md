@@ -25,6 +25,17 @@ loop; an exception inside the block still stops the motion and is re-raised. Err
 `franka.FrankaError`; a motion the robot aborted is a `franka.ControlException` with the
 reflex `reason`. `robot.gripper()` drives the Franka Hand, releasing the GIL while it waits.
 
+The loop tracks the targets with the crate's own impedance torques by default, so the arm
+is a spring around the target: push it and it gives way, let go and it returns.
+`cartesian_stiffness=400` softens the default 750 N/m (15 Nm/rad rotational);
+`cartesian_damping`, `joint_stiffness`, `joint_damping`, `torque_limits`, `posture`,
+`leash` and `project_joint_gains` are the other knobs, and `backend='robot'` has the
+robot's own controller track the targets instead, as the bindings did in 0.2.0. Target
+control sets no collision thresholds: with the default gains give
+`robot.set_collision_behavior_simple(...)` at least 40 N / 40 Nm. The law and the defaults
+are on the book's
+[Python page](https://barisyazici.github.io/franka-rs/getting-started/python.html#compliance).
+
 A Cartesian target of 7 elements (`move_to`, the rows of `follow`) sets the orientation
 too, as a unit quaternion `x, y, z, w` after the position; a `move_by` of 6 elements
 appends a rotation vector (axis times angle, rad) composed onto the target orientation in

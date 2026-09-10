@@ -113,13 +113,12 @@ with robot.cartesian_targets() as arm:
 
 ## Status
 
-Version 0.2. Both protocol versions, every control interface, target control from Rust and
+Version 0.3. Both protocol versions, every control interface, target control from Rust and
 Python, the gripper and the flight recorder have run on real FR3 and FER arms; measured side
 by side with libfranka, loop timing is the same and the model agrees to 1e-14. Target
-control's torque backend, added after 0.2.0 and the default now, has run on the simulator
-only, so far. Not there yet:
-a `ros2_control` hardware interface, the vacuum gripper, a published simulator image for the
-FER. The dates and figures are in
+control's impedance backend, new in 0.3.0 and the default, has run on the simulator and on
+two real FERs, not yet on an FR3. Not there yet: a `ros2_control` hardware interface, the
+vacuum gripper, a published simulator image for the FER. The dates and figures are in
 [Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html),
 what changed in [`CHANGELOG.md`](CHANGELOG.md).
 

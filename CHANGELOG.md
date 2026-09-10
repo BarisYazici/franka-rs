@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-10
 
 ### Added
 
@@ -61,7 +61,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `backend="robot"`), and `controller_mode` applies to that backend only. The robot's
   joint-side continuity check no longer refuses a fast Cartesian budget in the default
   backend; the deviation guard and the collision thresholds apply to both. A change of
-  default behaviour: the next release is 0.3.0.
+  default behaviour, hence 0.3.0 rather than 0.2.1.
+- **The book is reorganised** into Getting started, Things to keep in mind, How-to and
+  Reference; the 0.2.0 page names redirect. The README is the front door only, with the
+  quick example on `ActiveControl`.
 
 ## [0.2.0] - 2026-09-09
 
@@ -238,6 +241,6 @@ differs from libfranka.
   version negotiation recognise an FER on the simulator; no effect against
   a real FR3 or FER.
 
-[Unreleased]: https://github.com/BarisYazici/franka-rs/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.3.0
 [0.2.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.1.0

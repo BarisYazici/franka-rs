@@ -53,12 +53,12 @@ budget.</sub>
 
 ## Status
 
-Version 0.2. Both protocol versions, every control interface, target control from Rust
+Version 0.3. Both protocol versions, every control interface, target control from Rust
 and Python, the gripper and the flight recorder have run on real arms; the dates and
 figures are in [Benchmarks and hardware validation](./reference/benchmarks.md). The
-impedance backend of target control, added after 0.2.0 and the default now, has run on
-franka-sim and on two real FERs, not yet on an FR3. Not there yet: a `ros2_control`
-hardware interface, the vacuum gripper, and a published simulator image for the FER. The
+impedance backend of target control, new in 0.3.0 and the default, has run on franka-sim
+and on two real FERs, not yet on an FR3. Not there yet: a `ros2_control` hardware
+interface, the vacuum gripper, and a published simulator image for the FER. The
 [changelog](./changelog.md) lists what changed in each release.
 
 `franka-rs` is an unofficial project and is not affiliated with Franka Robotics GmbH;
