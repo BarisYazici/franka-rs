@@ -1,4 +1,8 @@
-# franka-rs
+<p align="center">
+  <img src="./assets/logo.png" width="160" alt="">
+</p>
+
+<h1 align="center" id="franka-rs">franka-rs</h1>
 
 `franka-rs` is a Rust client for the Franka Control Interface, the network protocol a
 Franka Research 3 or a Franka Emika Robot (Panda) is controlled through. It speaks that
