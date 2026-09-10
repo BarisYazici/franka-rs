@@ -1,6 +1,7 @@
 //! The TCP command set of [`franka::Robot`] against the franka-sim simulator.
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_commands`.
+//! Run with
+//! `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs --test sim_commands`.
 //!
 //! All checks share one container and one FCI session: the simulator resets its session state
 //! when the TCP client disconnects, so the `set_k` / `set_ee` echoes are only observable while

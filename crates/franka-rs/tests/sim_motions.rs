@@ -1,6 +1,6 @@
 //! Motion generators, torque control and `ActiveControl` against the franka-sim simulator.
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_motions`.
+//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs --test sim_motions`.
 //!
 //! The motion profiles are ports of libfranka's `examples/generate_*_motion.cpp`, shortened so
 //! that a test finishes in a few seconds. Every test starts its own container, because a motion

@@ -1,6 +1,7 @@
 //! `Robot::stop()` from a second thread, and the reflex/recovery path, against franka-sim.
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_stop_and_reflex`.
+//! Run with
+//! `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs --test sim_stop_and_reflex`.
 
 mod common;
 

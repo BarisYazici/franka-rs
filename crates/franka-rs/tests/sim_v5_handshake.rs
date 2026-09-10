@@ -4,7 +4,7 @@
 //! Run under the machine-wide simulator lock:
 //!
 //! ```text
-//! flock .sim.lock cargo test -p franka-rs --test sim_v5_handshake
+//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_handshake
 //! ```
 //!
 //! The image comes from [`SimConfig::fer_v5`]: `$FRANKA_SIM_FER_IMAGE`, else

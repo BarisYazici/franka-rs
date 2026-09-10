@@ -80,11 +80,16 @@ which is not committed; without `FRANKA_FER_MODEL_SO` it prints `SKIP:` lines an
 ## The FR3 suite
 
 ```sh
-flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
+flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs \
   --test sim_handshake --test sim_commands --test sim_motions \
   --test sim_gripper --test sim_stop_and_reflex --test sim_target_control \
   -- --test-threads=1
 ```
+
+`--release`, as for a robot: the loops under test answer the server's 1 kHz state stream,
+and unoptimised the impedance loop of target control takes about a millisecond per cycle
+(35 µs optimised), so on a loaded machine it falls behind until the server's continuity
+checks abort the motion.
 
 `sim_target_control` needs franka-sim 1.1.6 or later. Its tests, and some of those in
 `sim_stop_and_reflex`, request `--enforce-motion-limits` through the `SimConfig` they build;
@@ -96,13 +101,13 @@ real FR3 on 2026-09-09 ([Benchmarks and hardware validation](../reference/benchm
 ## The FER suite
 
 ```sh
-flock .sim.lock env FRANKA_SIM_FER_IMAGE=franka-sim:panda-v5 cargo test -p franka-rs \
+flock .sim.lock env FRANKA_SIM_FER_IMAGE=franka-sim:panda-v5 cargo test --release -p franka-rs \
   --test sim_v5_handshake --test sim_v5_commands --test sim_v5_motions \
   --test sim_v5_stop_and_reflex -- --test-threads=1
 ```
 
 The `panda-v5` image has no joint-side check ([FER / Panda specifics](../reference/fer.md)).
-A full `cargo test --workspace` needs both images, both variables set, and the lock.
+A full `cargo test --release --workspace` needs both images, both variables set, and the lock.
 
 ## The harness self-test
 

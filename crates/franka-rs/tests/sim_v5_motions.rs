@@ -4,7 +4,7 @@
 //! Run under the machine-wide simulator lock:
 //!
 //! ```text
-//! flock .sim.lock cargo test -p franka-rs --test sim_v5_motions
+//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_motions
 //! ```
 //!
 //! These are `sim_motions.rs` (the FR3 / FCI v10 suite) with the same profiles, horizons and

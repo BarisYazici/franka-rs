@@ -1,7 +1,8 @@
 //! End-to-end checks of the wire and network layers against the franka-sim simulator, plus two
 //! loopback-mock checks for behaviour the simulator does not exercise.
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_handshake`.
+//! Run with
+//! `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs --test sim_handshake`.
 
 mod common;
 

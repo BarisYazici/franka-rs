@@ -4,7 +4,7 @@
 //! Run under the machine-wide simulator lock:
 //!
 //! ```text
-//! flock .sim.lock cargo test -p franka-rs --test sim_v5_stop_and_reflex
+//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_stop_and_reflex
 //! ```
 //!
 //! The FCI v5 `Move::Status` and `StopMove::Status` enums are shorter than v10's and numbered

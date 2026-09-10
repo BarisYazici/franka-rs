@@ -133,6 +133,11 @@ jobs:
   # 127.0.0.1 instead of starting its own Docker container; in that mode the `SimConfig` each
   # test builds is informational only; --skip drops the one sim_gripper test that needs an
   # object between the fingers, which this server does not have (see the sim-gripper-object job).
+  #
+  # Every simulator job builds with --release. The control loops under test must answer the
+  # server's 1 kHz state stream in time: unoptimised, the impedance loop of target control
+  # takes about a millisecond per cycle (35 us optimised) and, sharing a runner with the
+  # simulator, falls behind until the server's continuity checks abort the motion.
   sim-nominal:
     runs-on: ubuntu-latest
     steps:
@@ -145,7 +150,7 @@ jobs:
         env:
           FRANKA_SIM_ADDR: 127.0.0.1
         run: |
-          cargo test -p franka-rs \
+          cargo test --release -p franka-rs \
             --test sim_handshake --test sim_commands --test sim_motions --test sim_gripper \
             -- --test-threads=1 --skip grasp_with_object_between_the_fingers
 
@@ -156,7 +161,7 @@ jobs:
       - name: README example (readme_joint_move)
         env:
           FRANKA_REALTIME: ignore
-        run: cargo run -p franka-rs --example readme_joint_move -- 127.0.0.1
+        run: cargo run --release -p franka-rs --example readme_joint_move -- 127.0.0.1
 
   # A franka-sim server with --enforce-motion-limits, exercising the reflex/recovery and rate-
   # limiting envelope tests in sim_stop_and_reflex.rs, and the target control loops of
@@ -180,7 +185,7 @@ jobs:
         env:
           FRANKA_SIM_ADDR: 127.0.0.1
         run: |
-          cargo test -p franka-rs --test sim_stop_and_reflex --test sim_target_control \
+          cargo test --release -p franka-rs --test sim_stop_and_reflex --test sim_target_control \
             -- --test-threads=1
 
   # The Python bindings (crates/franka-py) against the same --enforce-motion-limits server:
@@ -227,7 +232,7 @@ jobs:
         env:
           FRANKA_SIM_ADDR: 127.0.0.1
         run: |
-          cargo test -p franka-rs --test sim_gripper grasp_with_object_between_the_fingers \
+          cargo test --release -p franka-rs --test sim_gripper grasp_with_object_between_the_fingers \
             -- --test-threads=1
 
   # The FER / FCI v5 simulator suite. Unlike the FR3 jobs above, this does not use the
@@ -250,6 +255,6 @@ jobs:
         env:
           FRANKA_SIM_FER_IMAGE: ${{ vars.FRANKA_SIM_FER_IMAGE }}
         run: |
-          cargo test -p franka-rs \
+          cargo test --release -p franka-rs \
             --test sim_v5_handshake --test sim_v5_commands --test sim_v5_motions \
             --test sim_v5_stop_and_reflex -- --test-threads=1

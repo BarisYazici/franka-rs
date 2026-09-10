@@ -4,8 +4,8 @@
 //! here stream through the robot's controller (`Backend::RobotController`); tests 4-7 in
 //! [`impedance`] send the impedance backend's torques (the default).
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_target_control
-//! -- --test-threads=1`.
+//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs \
+//! --test sim_target_control -- --test-threads=1`.
 
 mod common;
 #[path = "sim_target_control/impedance.rs"]

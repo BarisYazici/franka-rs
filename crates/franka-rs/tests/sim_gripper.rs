@@ -1,18 +1,34 @@
 //! End-to-end checks of the gripper client against the franka-sim simulator's gripper server
 //! (port 1338).
 //!
-//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs --test sim_gripper`.
+//! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs --test sim_gripper`.
 
 mod common;
 
+use std::time::{Duration, Instant};
+
 use franka::error::FrankaError;
-use franka::gripper::Gripper;
+use franka::gripper::{Gripper, GripperState};
 use franka_sim_test::SimConfig;
 
 /// Tolerance used throughout: the sim's kinematic gripper model applies commanded widths
 /// instantly and exactly, but the tolerance keeps these checks robust to future physical
 /// backends.
 const WIDTH_TOL: f64 = 0.005;
+
+/// The first state after a command that satisfies `shows`, or the last one read once a second
+/// has passed. The state stream is the server's own thread: a datagram snapshotted before the
+/// command took effect can still arrive after `read_once` drained the queue, so the one state
+/// read right after the reply may predate it (seen on a loaded CI runner).
+fn state_after(gripper: &Gripper, shows: impl Fn(&GripperState) -> bool) -> GripperState {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let state = gripper.read_once().expect("read_once failed");
+        if shows(&state) || Instant::now() > deadline {
+            return state;
+        }
+    }
+}
 
 /// Homing, moving across the full stroke, and grasping in thin air, against the nominal sim
 /// configuration (no object between the fingers).
@@ -23,7 +39,7 @@ fn nominal_gripper_workflow() {
 
     assert!(gripper.homing().expect("homing failed"));
 
-    let state = gripper.read_once().expect("read_once after homing failed");
+    let state = state_after(&gripper, |s| (s.max_width - 0.08).abs() < WIDTH_TOL);
     assert!(
         (state.max_width - 0.08).abs() < WIDTH_TOL,
         "max_width = {}, expected ~0.08",
@@ -36,7 +52,7 @@ fn nominal_gripper_workflow() {
             .expect("move to 0.04 failed"),
         "move to 0.04 should succeed"
     );
-    let state = gripper.read_once().expect("read_once after move failed");
+    let state = state_after(&gripper, |s| (s.width - 0.04).abs() < WIDTH_TOL);
     assert!(
         (state.width - 0.04).abs() < WIDTH_TOL,
         "width = {}, expected ~0.04",
@@ -48,9 +64,7 @@ fn nominal_gripper_workflow() {
         gripper.move_gripper(0.0, 0.05).expect("move to 0.0 failed"),
         "move to 0.0 (fully closed) should succeed"
     );
-    let state = gripper
-        .read_once()
-        .expect("read_once after move to 0.0 failed");
+    let state = state_after(&gripper, |s| s.width.abs() < WIDTH_TOL);
     assert!(
         state.width.abs() < WIDTH_TOL,
         "width = {}, expected ~0.0",
@@ -63,9 +77,7 @@ fn nominal_gripper_workflow() {
             .expect("move to 0.08 failed"),
         "move to 0.08 (fully open) should succeed"
     );
-    let state = gripper
-        .read_once()
-        .expect("read_once after move to 0.08 failed");
+    let state = state_after(&gripper, |s| (s.width - 0.08).abs() < WIDTH_TOL);
     assert!(
         (state.width - 0.08).abs() < WIDTH_TOL,
         "width = {}, expected ~0.08",
@@ -77,7 +89,7 @@ fn nominal_gripper_workflow() {
         .grasp(0.04, 0.05, 10.0, 0.005, 0.005)
         .expect("grasp in thin air failed unexpectedly");
     assert!(!grasped, "grasp in thin air should report false");
-    let state = gripper.read_once().expect("read_once after grasp failed");
+    let state = state_after(&gripper, |s| (s.width - 0.04).abs() < WIDTH_TOL);
     assert!(!state.is_grasped, "is_grasped should be false");
 
     assert!(gripper.stop().expect("stop failed"));
@@ -112,7 +124,7 @@ fn grasp_with_object_between_the_fingers() {
         .expect("grasp on a matching object failed unexpectedly");
     assert!(grasped, "grasp on a matching object should report true");
 
-    let state = gripper.read_once().expect("read_once after grasp failed");
+    let state = state_after(&gripper, |s| s.is_grasped);
     assert!(state.is_grasped, "is_grasped should be true");
     assert!(
         (state.width - 0.04).abs() < WIDTH_TOL,

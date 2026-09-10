@@ -42,10 +42,13 @@ by the protocol and only one client may hold them at a time. Take the machine-wi
 anything that touches the simulator:
 
 ```sh
-flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test -p franka-rs \
+flock .sim.lock env FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs \
   --test sim_handshake --test sim_commands --test sim_motions \
   --test sim_gripper --test sim_stop_and_reflex --test sim_target_control -- --test-threads=1
 ```
+
+`--release` because the loops under test answer a 1 kHz state stream; unoptimised, the
+impedance loop of target control needs about a millisecond per cycle.
 
 The container harness has its own test, which starts and tears down a real container and
 asserts on `docker ps`. No CI job runs it, because it cannot share a server with anything
