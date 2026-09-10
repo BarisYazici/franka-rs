@@ -268,3 +268,12 @@ failed exactly as described; none is a timing measurement.
   `cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
   10 rad/s² (joint jerk stayed under 1400 rad/s³), so the published 10 rad/s² limit is
   applied as is.
+- **Torque backend of target control on both FERs (2026-09-10).** First hardware run of the
+  impedance backend (`PREEMPT_RT` host, `FRANKA_REALTIME=enforce`, thresholds 40 N): the
+  commander's stepped and rotating sequences, joint targets and stops ran with no reflex,
+  the first torque of every session under 0.04 Nm, IK residual under 1e-6, tracking error at
+  the holds 4.6 mm (L) and 2.8 mm (R) at 750 N/m against 3.7 mm for the robot's own
+  controller on the same sequence. Push tests measured 725 to 1090 N/m felt stiffness, the
+  leash holding the error at 25.0 mm, and 45 to 50 N under a fast push, which trips 40 N
+  thresholds and not 60 N. The numbers are on
+  [The impedance backend](./impedance.md). The FR3 was not reachable that day.

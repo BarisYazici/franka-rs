@@ -47,7 +47,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `backend` (`'impedance'` | `'robot'`), `cartesian_stiffness`, `cartesian_damping` (6
   values, or one float for the translational three), `joint_stiffness`, `joint_damping`,
   `torque_limits`, `posture`, `torque_cutoff`, `velocity_feedforward`, `leash` and
-  `project_joint_gains`. Run on franka-sim; not yet on a real arm. See
+  `project_joint_gains`. Run on franka-sim and on two real FERs (2026-09-10: stepped and
+  rotating targets, joint targets, stops, and push tests that measured the felt stiffness,
+  the leash and the force a fast push reaches); not yet on an FR3. See
   [The impedance backend](docs/book/src/reference/impedance.md).
 
 ### Changed

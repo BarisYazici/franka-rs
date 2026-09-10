@@ -67,8 +67,8 @@ prefers; default the start) and `torque_cutoff` (Hz, default 100) are the rest o
 `project_joint_gains`. `backend='robot'` has the robot's own controller (`controller_mode`) track
 the targets instead, as the bindings did before the impedance backend existed; it takes none
 of the gains. The law, the defaults and what differs between the backends are in
-[Command from a low-rate program](../howto/target-control.md#backends). The impedance backend
-has run on franka-sim and not yet on a real arm.
+[Command from a low-rate program](../howto/target-control.md#backends), with what two real
+FERs measured on 2026-09-10.
 
 | call | what it does |
 |---|---|

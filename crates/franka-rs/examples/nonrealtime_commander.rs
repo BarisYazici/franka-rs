@@ -19,7 +19,7 @@
 //! the start pose (never more than 5 cm below it), with irregular holds, one 2 s stall and one
 //! burst of 20 targets inside 100 ms, about 20 s in all; `--stdin` reads
 //! `x y z` lines (metres, relative to the start) instead. `--log PATH` writes one CSV row per
-//! cycle (raw target, echoed `O_T_EE_c`, measured `O_T_EE`, joint angles, external wrench, the
+//! cycle (raw target, the sent pose, measured `O_T_EE`, joint angles, external wrench, the
 //! generator's velocity and acceleration of the command -- zero in `--raw` mode) from the
 //! loop's observer into a `Vec` sized before the loop. `--rotate` (bridged only) adds a slow
 //! yaw sweep of +-15 degrees about the base z, a sine with a 12 s period set at 20 Hz from a
@@ -245,7 +245,10 @@ impl Log {
             let mut out = [0.0; ROW_WIDTH];
             out[0] = t;
             out[1..4].copy_from_slice(target);
-            out[4..7].copy_from_slice(&translation(&state.O_T_EE_c));
+            // The pose the loop sent (the torque backend's desired pose; the robot's echo
+            // `O_T_EE_c` is zero without a Cartesian motion generator), or the echo in `--raw`.
+            let command = sent.map_or(state.O_T_EE_c, |s| s.pose);
+            out[4..7].copy_from_slice(&translation(&command));
             out[7..10].copy_from_slice(&translation(&state.O_T_EE));
             out[10..17].copy_from_slice(&state.q);
             out[17..23].copy_from_slice(&state.O_F_ext_hat_K);

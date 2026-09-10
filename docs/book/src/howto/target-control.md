@@ -235,10 +235,24 @@ let parity = ImpedanceOptions::cartesian()
 the robot's reflexes watch the external forces whatever commands the torques. A spring meets
 them by deflection: at the default gains a push of 2.7 cm reaches the examples' 20 N
 threshold (750 N/m; sooner at the felt stiffness), and an arm held at the leash pulls with
-roughly 25 to 30 N at the ready pose, so with the default gains set the thresholds to at
-least 40 N and 40 Nm (the values DROID ran with), or lower the stiffness. On the joint
-interface the `JOINT` preset reaches the examples' 20 Nm joint threshold at 0.033 rad of
-error. `nonrealtime_commander` takes `--thresholds N` for its collision thresholds.
+roughly 25 to 30 N at the ready pose. Measured on a real FER (2026-09-10): a slow push read
+725 N/m along one direction and about 1090 N/m from the other side, the leash held the error
+at exactly 2.5 cm, and a fast push at the leash (0.25 m/s) reached 45 to 50 N, because the
+damping adds to the spring: with 40 N thresholds that push ended in a `cartesian_reflex`,
+with 60 N it did not. So set the thresholds to at least 40 N and 40 Nm for a commander that
+only sends targets, and to 60 N or more where someone will push the arm; or lower the
+stiffness. On the joint interface the `JOINT` preset reaches the examples' 20 Nm joint
+threshold at 0.033 rad of error. `nonrealtime_commander` takes `--thresholds N` for its
+collision thresholds.
+
+**Hand-guiding and the deviation guard.** The guard measures the arm against the *start*
+pose (`max_deviation` 0.30 m, `max_angular_deviation` 0.5 rad). Compliance lets a person
+move the arm, and moving it past either bound ends the loop: the target freezes where the
+command is, the loop finishes at rest, and the robot's own controller holds the arm where
+it was left (measured on the FER: a push that dragged the hand 12 cm and turned the wrist
+past 0.5 rad ended the session that way, cleanly, without a reflex). That is the right
+default against a runaway commander; a session where the arm is meant to be moved by hand
+raises both bounds.
 
 **`Backend::RobotController`** sends the setpoint stream as poses (`control_cartesian_pose`)
 or joint positions (`control_joint_positions`) and the robot's own controller, selected by
@@ -276,11 +290,18 @@ What changes between the two:
 - **The finish waits for the arm.** `stop()` in the impedance backend sets `motion_finished`
   only once every joint is slower than `REST_JOINT_VELOCITY`, or after the 5 s timeout.
 
-The impedance backend has run on franka-sim 1.1.6, where the arm did not move at the start
-of a session (measured change 0 to within floating point over the first 500 cycles), a 5 cm
-step lands 0.5 to 0.8 mm
-from the target and the peak lag during the motion is 3.7 mm with velocity feedforward and
-12.3 mm without. It has not yet run on a real arm.
+On franka-sim 1.1.6 the arm did not move at the start of a session (measured change 0 to
+within floating point over the first 500 cycles), a 5 cm step lands 0.5 to 0.8 mm from the
+target and the peak lag during the motion is 3.7 mm with velocity feedforward and 12.3 mm
+without. On two real FERs (2026-09-10, `PREEMPT_RT` host, thresholds 40 N) the first torque
+of a session was that of rest (under 0.04 Nm), the commander's stepped sequence and the
+±15° yaw sweep ran with no reflex and an IK residual under 1e-6, joint targets landed within
+0.6 mrad (a 0.2 rad step) to 4 mrad, `stop()` at rest took 0.44 s and mid-motion 0.9 s, and
+the tracking error at the holds was 4.6 mm (arm L) and 2.8 mm (arm R) at 750 N/m, 2.7 mm at
+1500 N/m, 8 to 10 mm along a slow circle: a constant residual force of about 4 N on these
+arms that the robot's own controller also shows (3.7 mm at the same holds) and that scales
+with 1/K. The push tests are under [Collision thresholds](#backends) above. The full record
+is in [Benchmarks and hardware validation](../reference/benchmarks.md).
 
 ## What the loop does every cycle
 
@@ -328,5 +349,5 @@ Target control with the robot's controller tracking has run on franka-sim, on a 
 (2026-09-09: the commander's translation and rotation sequences, and the Python policy loop)
 and on a real FR3 (2026-09-09: the same sequences, with the robot's joint-side acceleration
 check bracketed at 10 rad/s²); see
-[Benchmarks and hardware validation](../reference/benchmarks.md). The impedance backend has
-run on franka-sim only.
+[Benchmarks and hardware validation](../reference/benchmarks.md). The impedance backend ran
+on both FERs on 2026-09-10 (the FR3 was not reachable that day); see [Backends](#backends).

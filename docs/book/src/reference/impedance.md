@@ -172,6 +172,32 @@ torques are near zero, so the robot's controller takes over from rest, as it doe
 a 5 cm step lands 0.5 to 0.8 mm from the target. The law itself, `impedance_torques`, is
 public at the crate root for a loop of your own.
 
+## Measured on two FERs (2026-09-10)
+
+Both Pandas of the earlier campaigns, system 4.2.1, `PREEMPT_RT` host, `FRANKA_REALTIME=enforce`,
+default gains, collision thresholds 40 N unless stated. No run ended in a reflex except the one
+that was meant to find the threshold.
+
+| run | result |
+|---|---|
+| 5 s at rest, then `stop()` | first-cycle torque under 0.04 Nm, peak 0.22 Nm, tracking 0.13 mm (L) / 0.23 mm (R), `stop()` 0.44 s |
+| the commander's 19 s stepped sequence | no reflex, IK residual under 1e-6, leash never bound, peak torque 4.4 Nm; tracking error at the holds 4.6 mm (L) / 2.8 mm (R), moving p95 9.6 / 8.7 mm; the robot's own controller on the same sequence: 3.7 mm at the holds, 4.4 mm moving |
+| the same at Kx 1500 N/m (damping 75) | 2.7 mm at the holds, 6.3 mm moving |
+| the sequence with the ±15° yaw sweep | no reflex, same tracking figures |
+| joint targets (Python, `JOINT` preset, 20 % budget) | a 0.2 rad step on joint 1 landed within 0.6 mrad, a three-joint step within 4 mrad (joint 6), `stop()` mid-motion 0.9 s, arm `Idle` |
+| a 4 cm circle at 5, 10 and 30 Hz (Python) | rate-independent, 8 to 10 mm p50 along the slow circle, back at the start within 7 to 9 mm |
+| push tests, 40 N thresholds | two light pushes: 16.6 mm for 12 N, felt stiffness 725 N/m along the push, back within 2 mm in 0.3 s; a fast push reached 50 N in 250 ms at 25 mm and tripped `cartesian_reflex` |
+| push tests from the other side, 60 N thresholds | 24.8 N at 22.8 mm quasi-static (about 1090 N/m felt), the leash held the error at exactly 25.0 mm under 45 to 47 N at 0.26 m/s, no reflex; a push that dragged the hand 12 cm and turned the wrist past 0.5 rad ended the loop through the deviation guard, the arm held in place |
+
+Two things the numbers settle. The tracking error at rest scales with 1/K (4.6 mm at 750,
+2.7 mm at 1500) and the robot's own external-force estimate reads 3 to 4 N at those holds:
+a constant residual force of the arm (load or friction) that the robot's own impedance
+controller deflects under as well; a spring has no integrator, so users who need millimetre
+placement raise the stiffness. And the leash bounds the *position* error, not the force: a
+fast push adds the damping term (50 to 90 N s/m times the speed), which is why 45 to 50 N
+appeared at 0.25 m/s. A cap on the reaction force, spring and damper together, is the
+follow-up. The FR3 was not reachable that day.
+
 ## Compared with the operational-space law
 
 `examples/cartesian_impedance_active_control.rs` is libfranka's Cartesian impedance example:
