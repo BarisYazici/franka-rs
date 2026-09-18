@@ -57,8 +57,10 @@ fn rows(var: &str, width: usize) -> Vec<Vec<f64>> {
         "{path}: not rows of {width} f64"
     );
     let values: Vec<f64> = bytes
-        .chunks_exact(8)
-        .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| f64::from_le_bytes(*c))
         .collect();
     values.chunks_exact(width).map(<[f64]>::to_vec).collect()
 }
