@@ -139,7 +139,7 @@ impl TorqueLoop<6, 7, PoseTracker> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::mpsc::{sync_channel, TryRecvError};
 
     /// A tuning whose every word is `k`: the `k`-th publish into a fresh slot, whose sequence is
     /// then `2k`, so a set carries the version it came from.
@@ -155,44 +155,57 @@ mod tests {
     /// lands the *last* publish in it is rare.
     #[test]
     fn the_sequence_recorded_is_never_ahead_of_the_set_it_was_read_with() {
-        const PUBLISHES: u64 = 200_000;
-        let slot = Arc::new(TargetSlot::<{ LiveTuning::WORDS }>::default());
-        let writer = {
-            let slot = Arc::clone(&slot);
-            std::thread::spawn(move || {
-                for k in 1..=PUBLISHES {
-                    slot.publish(published(k).to_words());
+        const ROUNDS: u64 = 200;
+        const WRITES_PER_ROUND: u64 = 1_000;
+        let slot = TargetSlot::<{ LiveTuning::WORDS }>::default();
+        let (done_tx, done_rx) = sync_channel(0);
+        let (resume_tx, resume_rx) = sync_channel(0);
+        let slot = &slot;
+        std::thread::scope(move |threads| {
+            threads.spawn(move || {
+                for round in 1..=ROUNDS {
+                    let last = round * WRITES_PER_ROUND;
+                    for k in last - WRITES_PER_ROUND + 1..=last {
+                        slot.publish(published(k).to_words());
+                    }
+                    // Pause after each batch so even a reader sharing one CPU with the writer
+                    // observes every round. Disconnecting also releases the writer on failure.
+                    if done_tx.send(last).is_err() || resume_rx.recv().is_err() {
+                        return;
+                    }
                 }
-            })
-        };
-        let mut tuning = Tuning::new(published(0));
-        let (mut cycles, mut taken) = (0u64, 0u64);
-        while !writer.is_finished() {
-            let before = tuning.target;
-            tuning.cycle(&slot);
-            let version = 2 * tuning.target.joint_stiffness[0] as u64;
-            assert!(
-                tuning.sequence <= version,
-                "cycle {cycles}: sequence {} names a newer set than the one in hand ({version})",
-                tuning.sequence
-            );
-            cycles += 1;
-            taken += u64::from(tuning.target != before);
-        }
-        writer.join().unwrap();
-        // One more cycle brings a target left behind by a tear, or by a write that landed after
-        // the sequence was read, up to date; nothing is lost for good.
-        tuning.cycle(&slot);
-        assert_eq!(
-            tuning.target.to_words().map(f64::to_bits),
-            published(PUBLISHES).to_words().map(f64::to_bits),
-            "the loop ended on a set the writer had replaced"
-        );
-        assert_eq!(tuning.sequence, 2 * PUBLISHES);
-        assert!(
-            taken > 100,
-            "the reader raced the writer only {taken} times"
-        );
-        assert!(cycles > taken, "{cycles} cycles for {taken} reads");
+            });
+            let mut tuning = Tuning::new(published(0));
+            for round in 1..=ROUNDS {
+                loop {
+                    tuning.cycle(slot);
+                    let version = 2 * tuning.target.joint_stiffness[0] as u64;
+                    assert!(
+                        tuning.sequence <= version,
+                        "round {round}: sequence {} names a newer set than the one in hand ({version})",
+                        tuning.sequence
+                    );
+                    match done_rx.try_recv() {
+                        Ok(last) => {
+                            assert_eq!(last, round * WRITES_PER_ROUND);
+                            break;
+                        }
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => panic!("writer stopped early"),
+                    }
+                }
+                // With the writer paused, one cycle must recover a read left behind by a tear
+                // or a write after the sequence read. It must never skip that update for good.
+                tuning.cycle(slot);
+                let last = round * WRITES_PER_ROUND;
+                assert_eq!(
+                    tuning.target.to_words().map(f64::to_bits),
+                    published(last).to_words().map(f64::to_bits),
+                    "round {round}: the loop ended on a set the writer had replaced"
+                );
+                assert_eq!(tuning.sequence, 2 * last);
+                resume_tx.send(()).unwrap();
+            }
+        });
     }
 }
