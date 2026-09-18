@@ -20,20 +20,30 @@
 //! generator's own output on the joint interface, the solution of a differential inverse
 //! kinematics following the generator's pose one cycle at a time on the Cartesian one
 //! ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's low-pass filter
-//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. There is no echo of a
-//! torque command, so the loop anchors on the *measured* configuration in its first cycle
-//! (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
+//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. The goal never moves a joint
+//! faster than [`ImpedanceOptions::joint_velocity_fraction`] of the arm's limit
+//! ([`max_joint_velocity`], which narrows toward the position limits on the FR3): a faster step
+//! is scaled down as a whole and the generator re-anchored on what went out. A joint *measured*
+//! faster than the cap, or than [`FADE_BAND`] of its limit under the barrier's onset if that is
+//! lower, keeps less and less of the law's torque along its motion, none from
+//! [`ImpedanceOptions::velocity_barrier_fraction`] of its limit, where it meets a damping of
+//! [`VELOCITY_BARRIER_GAIN`] on the excess, added before the clamp. Toward a joint
+//! position limit the goal brakes to stop [`ImpedanceOptions::joint_position_margin`] inside it; a
+//! joint measured inside the margin keeps less of the law's torque toward the limit over
+//! [`POSITION_FADE_BAND`], then meets a spring ([`POSITION_BARRIER_STIFFNESS`]). There is no echo of
+//! a torque command, so the loop anchors on the *measured* configuration in its first
+//! cycle (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
 //! then, every cycle, on the measured state pulled toward the previous desired by at most the
-//! [`Leash`]: exactly the previous desired while the arm follows, so the generator runs from
-//! its own last output and its limits are the whole budget; a bounded distance ahead of an arm
-//! that is held back, so the spring force is bounded by the stiffness times the leash and the
-//! generator resumes from where the arm is once it is let go. [`Backend::RobotController`]
-//! instead streams the generator's output as a pose or joint-position command to the robot's
-//! own impedance controller (`controller_mode`); the rest of this page describes that path
-//! where the two differ.
+//! [`Leash`]: exactly the previous desired while the arm follows, so the generator runs from its
+//! own last output and its limits are the whole budget; a bounded distance ahead of an arm that is
+//! held back, so the spring force is bounded by the stiffness times the leash and the generator
+//! resumes from where the arm is once it is let go.
+//! [`Backend::RobotController`] instead streams the generator's output as a pose or joint-position
+//! command to the robot's own impedance controller (`controller_mode`); the rest of this page
+//! describes that path where the two differ.
 //!
 //! # What the loop does every cycle
-//! The three rules of the [`otg`](crate::otg) module, learnt on a real arm: the generator's
+//! The three rules of the [`otg`](crate::otg) module: the generator's
 //! limits are **per axis** (a Cartesian budget is a norm, so it gets
 //! [`OtgLimits::per_axis_for_norm`](crate::otg::OtgLimits::per_axis_for_norm)`(3)`), it steps **one nominal cycle** per command
 //! ([`DELTA_T`](crate::rate_limiting::DELTA_T)) whatever the measured period, and it is
@@ -84,8 +94,10 @@
 //! what it is for.
 //!
 //! The loop thread is raised to `SCHED_FIFO` like `Robot::new` raises its caller: to the
-//! highest priority, or to `realtime_priority` when the options name one; a failure is fatal
-//! under [`RealtimeConfig::Enforce`] and ignored under [`RealtimeConfig::Ignore`].
+//! highest priority, or to `realtime_priority` when the options name one; when they name a
+//! `cpu`, it also pins itself to that core, whether or not the raise succeeded. A failure of
+//! either is fatal under [`RealtimeConfig::Enforce`] and ignored under
+//! [`RealtimeConfig::Ignore`].
 //!
 //! Only one control or read operation may run on a `Robot` at a time, so while a target
 //! control runs, `robot.read()` and the other loops fail with
@@ -98,7 +110,7 @@
 //! use franka::{RealtimeConfig, Robot, TargetControlOptions};
 //!
 //! # fn main() -> franka::FrankaResult<()> {
-//! let robot = Arc::new(Robot::new("192.168.0.1", RealtimeConfig::Enforce)?);
+//! let robot = Arc::new(Robot::new("172.16.0.2", RealtimeConfig::Enforce)?);
 //! let control = robot.start_cartesian_target_control(TargetControlOptions::default())?;
 //! let start = control.target();
 //! for step in 1..=5 {
@@ -116,24 +128,35 @@
 //! ```
 
 mod cartesian;
+mod envelope;
 mod ik;
 mod impedance;
 mod joint;
 mod options;
+mod position;
 mod rotation;
 mod runner;
 mod slot;
 mod torque;
+mod tuning;
+mod velocity;
 
 pub use cartesian::{CartesianObserver, CartesianSent, CartesianTargetControl};
 pub use ik::{IkOptions, MAX_POSTURE_RATE};
 pub use impedance::{
-    impedance_torques, Backend, ImpedanceGains, ImpedanceOptions, Leash, RATED_TORQUES,
+    impedance_torques, Backend, ImpedanceGains, ImpedanceOptions, Leash, MIN_FEEDFORWARD_CUTOFF,
+    RATED_TORQUES,
 };
 pub use joint::{JointObserver, JointSent, JointTargetControl};
 pub use options::{JointTargetControlOptions, TargetControlOptions, DEFAULT_LIMIT_FRACTION};
+pub use position::{POSITION_BARRIER_STIFFNESS, POSITION_FADE_BAND};
 pub use rotation::{ORTHONORMAL_TOLERANCE, UNIT_QUATERNION_TOLERANCE};
 pub use slot::TargetSlot;
+pub use tuning::{
+    FieldBound, LiveTuning, SlewGains, TuningDanger, TuningPolicy, TuningUpdate,
+    MIN_JOINT_DAMPING_RATIO, SLEW_TAU,
+};
+pub use velocity::{FADE_BAND, VELOCITY_BARRIER_GAIN};
 
 use runner::Runner;
 pub use runner::{REST_ACCELERATION, REST_JOINT_VELOCITY, REST_VELOCITY};
@@ -146,8 +169,8 @@ use std::thread::JoinHandle;
 use crate::error::{ControlException, FrankaError, FrankaResult};
 use crate::rate_limiting;
 use crate::realtime::{
-    set_current_thread_scheduler_priority, set_current_thread_to_highest_scheduler_priority,
-    RealtimeConfig,
+    pin_current_thread_to_cpu, set_current_thread_scheduler_priority,
+    set_current_thread_to_highest_scheduler_priority, RealtimeConfig,
 };
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
@@ -161,6 +184,21 @@ pub const STOP_TIMEOUT_CYCLES: u32 = 5000;
 /// ended, for whatever reason; `stop()` has the reason.
 pub const ENDED_MESSAGE: &str =
     "franka target control: the control loop has ended; stop() returns its result.";
+
+/// The message of the [`FrankaError::InvalidOperation`] a live-tuning call returns on a session
+/// whose interface or backend has none: [`LiveTuning`] describes the impedance law of the
+/// Cartesian interface, and nothing else runs one.
+pub const NO_TUNING_MESSAGE: &str = "franka target control: this session has no live tuning; \
+     it is the Cartesian interface's on the impedance backend.";
+
+/// The message of the [`FrankaError::InvalidOperation`] a live-tuning call returns on a Cartesian
+/// impedance session whose gains [`LiveTuning::gains`] cannot rebuild from one Cartesian
+/// stiffness -- [`ImpedanceGains::DROID`] is the preset this is true of. Such a session keeps the
+/// gains it was started with and is given no tuning slot, rather than having the six derived
+/// dampings rewritten in one cycle by the first change to any other field.
+pub const DERIVED_GAINS_MESSAGE: &str = "franka target control: this session has no live tuning; \
+     its Cartesian gains are not a scaled ImpedanceGains::CARTESIAN, which is all the one \
+     tunable stiffness can rebuild.";
 
 /// The message of the [`FrankaError::Control`] the loop ends with after the deviation guard
 /// froze the target.
@@ -189,11 +227,19 @@ impl Default for Settle {
     }
 }
 
+/// How the loop thread is scheduled: its `SCHED_FIFO` priority (`None`: the highest) and the
+/// CPU it is pinned to, if any.
+#[derive(Debug, Clone, Copy)]
+struct Scheduling {
+    priority: Option<i32>,
+    cpu: Option<usize>,
+}
+
 /// Checks the options both interfaces share.
 fn validate_common(
     max_deviation: f64,
     settle: Settle,
-    realtime_priority: Option<i32>,
+    scheduling: Scheduling,
     backend: &Backend,
 ) -> FrankaResult<()> {
     if let Backend::Impedance(impedance) = backend {
@@ -211,38 +257,81 @@ fn validate_common(
              cycle, got {settle:?}"
         )));
     }
-    if let Some(priority) = realtime_priority {
+    if let Some(priority) = scheduling.priority {
         if !(1..=99).contains(&priority) {
             return Err(FrankaError::InvalidArgument(format!(
                 "target control: realtime_priority must be within 1..=99, got {priority}"
             )));
         }
     }
+    if let Some(cpu) = scheduling.cpu {
+        if cpu >= libc::CPU_SETSIZE as usize {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: cpu must be below {}, got {cpu}",
+                libc::CPU_SETSIZE
+            )));
+        }
+    }
     Ok(())
 }
 
-/// The joint position limits (lower, upper) of the negotiated version's arm.
-fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
+/// The joint position limits (lower, upper), rad, of the arm speaking `version`: the FER's or
+/// the FR3's `JOINT_POSITION_LIMITS`.
+pub fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
     match version {
         FciVersion::V5 => rate_limiting::fer::JOINT_POSITION_LIMITS,
         FciVersion::V10 => rate_limiting::JOINT_POSITION_LIMITS,
     }
 }
 
+/// The FR3's joint velocity caps, rad/s: the specifications page's `dq_max`, where its
+/// position-dependent envelope saturates away from the joint limits; the `<limit velocity>` of
+/// its URDF carries the same values. Nominal, where the V5 branch of [`max_joint_velocity`]
+/// returns the FER's `MAX_JOINT_VELOCITY` already less libfranka's `LIMIT_EPS` and lost-packet
+/// tolerance: each branch hands back the constant its arm's module defines, so the two differ by
+/// that 1e-3 rad/s.
+const FR3_MAX_JOINT_VELOCITY: [f64; 7] = [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26];
+
+/// The joint velocity limits, rad/s, of the arm speaking `version` away from its joint position
+/// limits: the FER's `MAX_JOINT_VELOCITY` or the FR3's caps. The FR3's limit narrows toward the
+/// position limits, which the impedance backend follows; the FER's is flat. Its cap and barrier
+/// ([`ImpedanceOptions::joint_velocity_fraction`], [`ImpedanceOptions::velocity_barrier_fraction`])
+/// and [`JointTargetControlOptions::scaled_limits`] are fractions of these.
+pub fn max_joint_velocity(version: FciVersion) -> [f64; 7] {
+    match version {
+        FciVersion::V5 => rate_limiting::fer::MAX_JOINT_VELOCITY,
+        FciVersion::V10 => FR3_MAX_JOINT_VELOCITY,
+    }
+}
+
 /// How far, rad, inside the negotiated version's joint position limits a joint target and an
 /// impedance posture must lie: [`JointTargetControl::set_joints`] and both `start`s refuse a
-/// configuration outside.
+/// configuration outside. [`Backend::Impedance`] refuses one inside
+/// [`ImpedanceOptions::joint_position_margin`] where that is larger.
 pub const JOINT_LIMIT_INSET: f64 = 0.02;
 
-/// Refuses a `q` outside `limits` inset by [`JOINT_LIMIT_INSET`], naming the joint and `what`.
-fn check_joint_limits(q: &[f64; 7], limits: &([f64; 7], [f64; 7]), what: &str) -> FrankaResult<()> {
+/// The inset, rad, targets and postures of `backend` are refused inside.
+fn joint_limit_inset(backend: &Backend) -> f64 {
+    match backend {
+        Backend::Impedance(impedance) => JOINT_LIMIT_INSET.max(impedance.joint_position_margin),
+        Backend::RobotController => JOINT_LIMIT_INSET,
+    }
+}
+
+/// Refuses a `q` outside `limits` inset by `inset`, naming the joint and `what`.
+fn check_joint_limits(
+    q: &[f64; 7],
+    limits: &([f64; 7], [f64; 7]),
+    inset: f64,
+    what: &str,
+) -> FrankaResult<()> {
     for (i, value) in q.iter().enumerate() {
-        let lower = limits.0[i] + JOINT_LIMIT_INSET;
-        let upper = limits.1[i] - JOINT_LIMIT_INSET;
+        let lower = limits.0[i] + inset;
+        let upper = limits.1[i] - inset;
         if !(lower..=upper).contains(value) {
             return Err(FrankaError::InvalidArgument(format!(
                 "target control: the {what} puts joint {} at {value} rad, outside \
-                 [{lower}, {upper}] ({JOINT_LIMIT_INSET} rad inside the arm's limits)",
+                 [{lower}, {upper}] ({inset} rad inside the arm's limits)",
                 i + 1
             )));
         }
@@ -256,7 +345,7 @@ fn check_posture(backend: &Backend, limits: &([f64; 7], [f64; 7])) -> FrankaResu
         Backend::Impedance(ImpedanceOptions {
             posture: Some(posture),
             ..
-        }) => check_joint_limits(posture, limits, "posture"),
+        }) => check_joint_limits(posture, limits, joint_limit_inset(backend), "posture"),
         _ => Ok(()),
     }
 }
@@ -264,10 +353,15 @@ fn check_posture(backend: &Backend, limits: &([f64; 7], [f64; 7])) -> FrankaResu
 /// What the user thread and the loop thread share.
 struct Shared<const N: usize> {
     slot: TargetSlot<N>,
+    /// The live tuning, as [`LiveTuning::to_words`]: the same seqlock as `slot` and the same
+    /// single writer, but the loop only ever reads it, and what it carries are targets the loop
+    /// crosses to over [`SLEW_TAU`] rather than a command for the next cycle. A session without
+    /// live tuning leaves it unwritten, which is what [`NO_TUNING_MESSAGE`] reports.
+    tuning: TargetSlot<{ LiveTuning::WORDS }>,
     stop: AtomicBool,
     running: AtomicBool,
     state: Mutex<RobotState>,
-    /// Serialises the writers of `slot`.
+    /// Serialises the writers of `slot` and of `tuning`.
     writer: Mutex<()>,
 }
 
@@ -275,6 +369,7 @@ impl<const N: usize> Default for Shared<N> {
     fn default() -> Self {
         Shared {
             slot: TargetSlot::default(),
+            tuning: TargetSlot::default(),
             stop: AtomicBool::new(false),
             running: AtomicBool::new(false),
             state: Mutex::new(RobotState::default()),
@@ -314,6 +409,48 @@ impl<const N: usize> Handle<N> {
         }
         self.shared.slot.publish(target);
         Ok(())
+    }
+
+    /// Applies `update` to the published tuning and returns the bounds that clamped a value.
+    ///
+    /// The read, the gate and the publish are one critical section under the same `writer` lock
+    /// `modify_target` takes, so two callers moving different sliders cannot lose each other's,
+    /// and [`LiveTuning::apply_update`] is the only way into the slot: there is no setter that
+    /// takes values past [`LiveTuning::BOUNDS`].
+    fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        let _writer = self
+            .shared
+            .writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if !self.is_running() {
+            return Err(FrankaError::InvalidOperation(ENDED_MESSAGE.to_string()));
+        }
+        let mut tuning = self.published_tuning()?;
+        let clamped = tuning.apply_update(update)?;
+        self.shared.tuning.publish(tuning.to_words());
+        Ok(clamped)
+    }
+
+    /// The published tuning targets; the loop is somewhere between these and what it started
+    /// with (see [`TuningPolicy::remaining`]).
+    fn tuning(&self) -> FrankaResult<LiveTuning> {
+        let _writer = self
+            .shared
+            .writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.published_tuning()
+    }
+
+    /// The tuning slot, read by a caller already holding `writer`: the slot's one writer is
+    /// therefore excluded, so a load cannot tear and a failure means the slot was never seeded.
+    fn published_tuning(&self) -> FrankaResult<LiveTuning> {
+        let mut words = [0.0; LiveTuning::WORDS];
+        if !self.shared.tuning.load(&mut words) {
+            return Err(FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()));
+        }
+        Ok(LiveTuning::from_words(&words))
     }
 
     fn target(&self) -> [f64; N] {
@@ -367,13 +504,16 @@ fn join(thread: JoinHandle<FrankaResult<()>>) -> FrankaResult<()> {
     })
 }
 
-/// `SCHED_FIFO` for the loop thread, the way `Robot::new` does it for its caller.
-fn raise_priority(config: RealtimeConfig, priority: Option<i32>) -> FrankaResult<()> {
-    let result = match priority {
+/// `SCHED_FIFO` for the loop thread, the way `Robot::new` does it for its caller, and the
+/// pin to `scheduling.cpu` if there is one. Both are attempted (the pin needs no privilege
+/// the raise may lack); the first failure is the one reported.
+fn schedule(config: RealtimeConfig, scheduling: Scheduling) -> FrankaResult<()> {
+    let priority = match scheduling.priority {
         None => set_current_thread_to_highest_scheduler_priority(),
         Some(priority) => set_current_thread_scheduler_priority(priority),
     };
-    match result {
+    let pin = scheduling.cpu.map_or(Ok(()), pin_current_thread_to_cpu);
+    match priority.and(pin) {
         Err(message) if config == RealtimeConfig::Enforce => Err(FrankaError::Realtime(message)),
         _ => Ok(()),
     }
@@ -386,7 +526,7 @@ fn spawn<const N: usize, F>(
     name: &str,
     robot: &Arc<Robot>,
     shared: Arc<Shared<N>>,
-    priority: Option<i32>,
+    scheduling: Scheduling,
     body: F,
 ) -> FrankaResult<Handle<N>>
 where
@@ -400,7 +540,7 @@ where
     let thread = std::thread::Builder::new()
         .name(name.to_string())
         .spawn(move || {
-            let result = raise_priority(config, priority).and_then(|()| body(&robot, started));
+            let result = schedule(config, scheduling).and_then(|()| body(&robot, started));
             thread_shared.running.store(false, Ordering::SeqCst);
             result
         })
@@ -430,9 +570,9 @@ impl Robot {
     ///
     /// # Errors
     /// [`FrankaError::InvalidArgument`] if the options are invalid,
-    /// [`FrankaError::Realtime`] if the loop thread cannot be raised to `SCHED_FIFO` under
-    /// [`RealtimeConfig::Enforce`], whatever [`Robot::load_model`] fails with under
-    /// [`Backend::Impedance`], and whatever [`Robot::control_torques`] or
+    /// [`FrankaError::Realtime`] if the loop thread cannot be raised to `SCHED_FIFO` or
+    /// pinned to `cpu` under [`RealtimeConfig::Enforce`], whatever [`Robot::load_model`]
+    /// fails with under [`Backend::Impedance`], and whatever [`Robot::control_torques`] or
     /// [`Robot::control_cartesian_pose`] fails with before its first cycle,
     /// [`FrankaError::InvalidOperation`] if another control or read operation is running
     /// among them.

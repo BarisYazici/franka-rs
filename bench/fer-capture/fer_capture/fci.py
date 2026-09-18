@@ -46,7 +46,7 @@ def fit_clock_scale(xs, ys):
     """Fit capture-clock ticks against the robot's own millisecond clock.
 
     A NIC's free-running PHY clock (``tcpdump -j adapter_unsynced``) is not
-    disciplined to anything: on this box's i219 it runs about 1.6x fast, which
+    disciplined to anything: on an Intel i219 it runs about 1.6x fast, which
     turns every normal 1 ms cadence into a 1.6 ms "gap" and makes every threshold
     in this tool meaningless.  The robot's message_id *is* a millisecond clock
     (see the module docstring), so the ratio between the two is measurable
@@ -476,7 +476,7 @@ def classify(res):
     elif cls == "HOST_STALL":
         parts.append(
             "Verdict %s: the state stream kept its cadence at the capture point while "
-            "the client stopped answering, so the loss is on this box (scheduling, "
+            "the client stopped answering, so the loss is on the host (scheduling, "
             "page faults or a blocked control thread), not on the wire." % detail)
     elif cls == "MIXED":
         parts.append(

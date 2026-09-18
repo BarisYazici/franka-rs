@@ -81,6 +81,56 @@ pub fn set_current_thread_scheduler_priority(priority: i32) -> Result<(), String
     Ok(())
 }
 
+/// Pins the calling thread to the single CPU `cpu` with `sched_setaffinity`.
+///
+/// What a [`crate::robot::target_control`] loop does right after raising its priority when
+/// its options name a `cpu`: on a host that keeps a core free for it (`isolcpus`) the loop
+/// then never migrates. `cpu` must be below `CPU_SETSIZE` and present on the machine; the
+/// `Err` names the cpu and the kernel's reason.
+pub fn pin_current_thread_to_cpu(cpu: usize) -> Result<(), String> {
+    let failed = |code: i32| {
+        format!(
+            "franka: unable to pin the thread to cpu {cpu}: {}",
+            strerror(code)
+        )
+    };
+    if cpu >= libc::CPU_SETSIZE as usize {
+        return Err(failed(libc::EINVAL));
+    }
+    // SAFETY: `cpu_set_t` is plain data for which all-zero is a valid (empty) mask, `cpu` is
+    // within its bits (checked above, what `CPU_SET` requires), and the mask outlives the
+    // call; pid 0 is this thread.
+    let rc = unsafe {
+        let mut set: libc::cpu_set_t = std::mem::zeroed();
+        libc::CPU_SET(cpu, &mut set);
+        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set)
+    };
+    if rc != 0 {
+        return Err(failed(errno()));
+    }
+    Ok(())
+}
+
+/// Nanoseconds on the host's `CLOCK_MONOTONIC`, what `clock_gettime` gives a process in any
+/// language.
+///
+/// Unlike `Instant`, which has no portable epoch, this is comparable between processes on one
+/// host, so two nodes can put their samples on one timeline without exchanging anything. It
+/// counts from boot, does not step with the wall clock, and 0 means the call failed, which on
+/// Linux it does not.
+pub fn monotonic_ns() -> u64 {
+    // Zeroed rather than a field literal: on some targets `timespec` carries private
+    // padding, and a literal naming both fields then does not compile.
+    // SAFETY: all-zero is a valid `timespec`.
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    // SAFETY: `ts` is a valid, initialised `timespec` that outlives the call, and
+    // `CLOCK_MONOTONIC` is always available on Linux.
+    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
+        return 0;
+    }
+    ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+}
+
 /// Error text libfranka raises when `RealtimeConfig::Enforce` meets a non-realtime kernel
 /// (`franka::Robot`'s constructor).
 pub const NO_REALTIME_KERNEL_MESSAGE: &str =
@@ -155,5 +205,70 @@ mod tests {
                 "unexpected message: {error}"
             );
         }
+    }
+
+    /// The CPUs this thread may run on, from `sched_getaffinity`.
+    fn allowed_cpus() -> Vec<usize> {
+        // SAFETY: an all-zero `cpu_set_t` is a valid mask the kernel fills in; every index
+        // passed to `CPU_ISSET` is below `CPU_SETSIZE`.
+        unsafe {
+            let mut set: libc::cpu_set_t = std::mem::zeroed();
+            let size = std::mem::size_of::<libc::cpu_set_t>();
+            assert_eq!(libc::sched_getaffinity(0, size, &mut set), 0);
+            (0..libc::CPU_SETSIZE as usize)
+                .filter(|&cpu| libc::CPU_ISSET(cpu, &set))
+                .collect()
+        }
+    }
+
+    #[test]
+    fn pinning_to_an_allowed_cpu_works_and_an_absent_index_is_refused() {
+        // The lowest allowed cpu rather than 0: a container's cpuset may exclude 0. On a
+        // dedicated thread so the test harness's own affinity is left alone.
+        let allowed = allowed_cpus();
+        let first = allowed[0];
+        let result = std::thread::spawn(move || pin_current_thread_to_cpu(first))
+            .join()
+            .unwrap();
+        assert_eq!(result, Ok(()));
+        let error = pin_current_thread_to_cpu(usize::MAX).unwrap_err();
+        assert!(
+            error.starts_with(&format!(
+                "franka: unable to pin the thread to cpu {}: ",
+                usize::MAX
+            )),
+            "unexpected message: {error}"
+        );
+        // Within CPU_SETSIZE but not allowed here: the kernel refuses. Skipped on a machine
+        // where the highest index is allowed.
+        let last = libc::CPU_SETSIZE as usize - 1;
+        if !allowed.contains(&last) {
+            let absent = std::thread::spawn(move || pin_current_thread_to_cpu(last))
+                .join()
+                .unwrap();
+            assert!(absent.is_err());
+        }
+    }
+
+    #[test]
+    fn the_monotonic_clock_runs_and_counts_from_boot() {
+        let first = monotonic_ns();
+        assert!(first > 0);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let second = monotonic_ns();
+        assert!(second > first, "{second} after {first}");
+        // Boot-relative, not process-relative: the value is the host's uptime, which a
+        // process that has just started could not produce from its own clock.
+        let uptime: f64 = std::fs::read_to_string("/proc/uptime")
+            .expect("/proc/uptime")
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse().ok())
+            .expect("uptime seconds");
+        let seconds = first as f64 / 1e9;
+        assert!(
+            seconds <= uptime + 5.0, // monotonic stops in suspend, uptime does not
+            "{seconds} s vs uptime {uptime} s"
+        );
     }
 }

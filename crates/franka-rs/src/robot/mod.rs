@@ -14,7 +14,7 @@
 //! use franka::{JointPositions, RealtimeConfig, Robot};
 //!
 //! # fn main() -> franka::FrankaResult<()> {
-//! let robot = Robot::new("192.168.0.1", RealtimeConfig::Enforce)?;
+//! let robot = Robot::new("172.16.0.2", RealtimeConfig::Enforce)?;
 //! let initial = robot.read_once()?.q;
 //! let mut time = 0.0;
 //! robot.control_joint_positions(
@@ -140,7 +140,7 @@ impl Robot {
     /// # fn main() -> franka::FrankaResult<()> {
     /// let options = RobotOptions::new(RealtimeConfig::Ignore)
     ///     .with_version(VersionPolicy::Exact(FciVersion::V5));
-    /// let robot = Robot::with_options("192.168.0.1", options)?;
+    /// let robot = Robot::with_options("172.16.0.2", options)?;
     /// assert_eq!(robot.fci_version(), FciVersion::V5);
     /// # Ok(())
     /// # }
@@ -213,8 +213,8 @@ impl Robot {
     ///   cannot fail, needs no `model-library` feature and works on any host.
     ///
     /// Use [`Robot::load_model_from_robot`] to download and `dlopen` the FER's
-    /// own shared object instead, which is what libfranka 0.9.2 does and what
-    /// franka-rs did before. The two agree on kinematics to 9e-16 and on gravity
+    /// own shared object instead, which is what libfranka 0.9.2 does. The two
+    /// agree on kinematics to 9e-16 and on gravity
     /// to 5e-14; with a payload attached their mass matrices differ by up to
     /// 3e-3 kg m^2, because the shared object's `M_NE` is not a rigid-body model
     /// of the payload. See `docs/book/src/reference/model.md`.

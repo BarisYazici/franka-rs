@@ -60,6 +60,7 @@ fn the_joint_loop_anchors_on_q_follows_a_step_and_holds_the_goal_then_finishes()
     assert!(max_abs_difference(&arm.state.q, &target) < 1e-6);
     // A following arm never strains the leash; at rest at the goal the torque is zero.
     assert!(records.iter().all(|r| r.leash_alteration == 0.0));
+    assert!(records.iter().all(|r| r.cap_scale == 1.0));
     assert!(last.tau.iter().all(|t| t.abs() < 1e-12), "{:?}", last.tau);
     assert!(torque.finish(Ok(())).is_ok());
 }

@@ -3,11 +3,12 @@
 use std::sync::atomic::Ordering;
 
 use super::super::cartesian::slot_values;
-use super::super::rotation::{angle_between, distance, rotation_of, translation_of};
+use super::super::rotation::{angle_between, distance, exp, rotation_of, translation_of};
 use super::super::*;
 use super::torque::{assert_held, bits, cartesian_loop, cycles_to_finish, peak_abs};
 use super::{recording, Arm, Records, READY};
 use crate::model::Frame;
+use crate::rate_limiting::DELTA_T;
 
 #[test]
 fn the_cartesian_loop_anchors_on_the_models_pose_of_the_measured_q_at_rest() {
@@ -63,6 +64,17 @@ fn the_cartesian_loop_anchors_on_the_models_pose_of_the_measured_q_at_rest() {
     assert_eq!(
         (sent.leash_alteration, sent.leash_angular_alteration),
         (0.0, 0.0)
+    );
+    // The solve's own diagnostics at rest: nothing asked for, nothing clipped, no wall.
+    assert!(sent.ik_step < 1e-6, "{}", sent.ik_step);
+    assert_eq!(
+        (
+            sent.ik_step_clipped,
+            sent.ik_blend,
+            sent.held,
+            sent.wall_age
+        ),
+        (0.0, 0.0, false, [-1, -1])
     );
 }
 
@@ -131,6 +143,80 @@ fn the_cartesian_loop_follows_a_step_lands_a_stop_and_holds_the_desired_pose_the
         .iter()
         .all(|r| r.leash_alteration == 0.0 && r.leash_angular_alteration == 0.0));
     assert!(peak_abs(&last.tau) < 1.0, "{:?}", last.tau);
+    // A 5 cm step never nears the joint velocity cap, and the record carries the goal's own
+    // velocity: the finite difference of q_goal (the hold starts after cycle 850).
+    assert!(records.iter().all(|r| r.cap_scale == 1.0));
+    // Well inside the limits nothing is clipped, nothing is held and the weighted solve runs.
+    assert!(records.iter().all(|r| r.ik_step_clipped == 0.0
+        && !r.held
+        && r.wall_age == [-1, -1]
+        && r.ik_blend == 0.0));
+    let peak_step = records.iter().map(|r| r.ik_step).fold(0.0, f64::max);
+    assert!(
+        (1e-6..1e-3).contains(&peak_step),
+        "the goal's own step per cycle: {peak_step}"
+    );
+    for pair in records[1..600].windows(2) {
+        for i in 0..7 {
+            let difference = (pair[1].q_goal[i] - pair[0].q_goal[i]) / DELTA_T;
+            assert!((pair[1].dq_goal[i] - difference).abs() < 1e-9, "joint {i}");
+        }
+    }
+}
+
+#[test]
+fn the_default_feedforward_cutoff_leaves_dq_goal_bit_identical_to_the_raw_difference() {
+    // The filter is off by default, and "off" must mean *absent*, not "a filter that happens to
+    // pass": an existing configuration has to produce the same torques to the last bit.
+    let (_, records, _) = cartesian_step_followed(ImpedanceOptions::cartesian());
+    let records = records.lock().unwrap();
+    for pair in records[1..600].windows(2) {
+        for i in 0..7 {
+            let difference = (pair[1].q_goal[i] - pair[0].q_goal[i]) / DELTA_T;
+            assert_eq!(
+                pair[1].dq_goal[i].to_bits(),
+                difference.to_bits(),
+                "joint {i}: the default path is not bit-identical"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_finite_feedforward_cutoff_attenuates_dq_goal_without_changing_its_sign() {
+    let peak_dq = |impedance: ImpedanceOptions| {
+        let (_, records, _) = cartesian_step_followed(impedance);
+        let records = records.lock().unwrap();
+        records
+            .iter()
+            .map(|r| peak_abs(&r.dq_goal))
+            .fold(0.0, f64::max)
+    };
+    let unfiltered = peak_dq(ImpedanceOptions::cartesian());
+    let filtered = peak_dq(ImpedanceOptions::cartesian().with_velocity_feedforward_cutoff(5.0));
+    assert!(unfiltered > 0.0, "the goal did not move: {unfiltered}");
+    assert!(
+        filtered < unfiltered,
+        "5 Hz did not attenuate: {filtered} vs {unfiltered}"
+    );
+    // A first-order low-pass lags, it does not invert: the filtered lead keeps the raw one's
+    // sign wherever the raw one is meaningfully non-zero.
+    let (_, records, _) = cartesian_step_followed(
+        ImpedanceOptions::cartesian().with_velocity_feedforward_cutoff(5.0),
+    );
+    let records = records.lock().unwrap();
+    for pair in records[1..600].windows(2) {
+        for i in 0..7 {
+            let raw = (pair[1].q_goal[i] - pair[0].q_goal[i]) / DELTA_T;
+            if raw.abs() > 1e-3 {
+                assert!(
+                    pair[1].dq_goal[i] * raw >= 0.0,
+                    "joint {i}: filtered lead {} opposes raw {raw}",
+                    pair[1].dq_goal[i]
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -205,6 +291,55 @@ fn the_cartesian_loop_leashes_the_desired_pose_to_a_held_arm_and_the_stop_times_
         .iter()
         .zip(&impedance.torque_limits)
         .all(|(t, l)| t.abs() < *l));
+    assert!(torque.finish(Ok(())).is_ok());
+}
+
+/// The same leash on the orientation, the half of it nothing else exercises: the target is
+/// turned 0.5 rad about z and the arm never follows, so the desired orientation runs away until
+/// the leash holds it at [`Leash::rotation`].
+#[test]
+fn the_cartesian_loop_leashes_the_desired_orientation_to_a_held_arm() {
+    let arm = Arm::at(READY);
+    let (records, observer) = recording::<CartesianSent>();
+    let options = TargetControlOptions::default().with_observer(observer);
+    let impedance = ImpedanceOptions::cartesian();
+    let (mut torque, shared, _first) = cartesian_loop(options, impedance);
+    torque.cycle(&arm.state);
+    let (start, rotation) = (
+        translation_of(&arm.state.O_T_EE),
+        rotation_of(&arm.state.O_T_EE),
+    );
+    let turned = exp(&[0.0, 0.0, 0.5]) * rotation;
+    shared.slot.publish(slot_values(&start, &turned));
+    shared.stop.store(true, Ordering::SeqCst);
+    let cycles = 1 + cycles_to_finish(|| torque.cycle(&arm.state).motion_finished);
+    // The arm never follows, so the stop times out, then holds.
+    assert_eq!(cycles, 1 + STOP_TIMEOUT_CYCLES + Settle::default().cycles);
+    let records = records.lock().unwrap();
+    // The desired orientation stays within the leash of the held arm and reaches it.
+    let leash = impedance.leash.rotation;
+    let ahead = |r: &CartesianSent| angle_between(&rotation_of(&r.pose), &rotation);
+    let furthest = records.iter().map(ahead).fold(0.0, f64::max);
+    assert!(
+        furthest <= leash + 1e-3 && furthest > leash,
+        "the desired ran {furthest} rad ahead of the arm against a leash of {leash}"
+    );
+    // The leash reports the excess it took off each cycle -- the step the generator kept
+    // trying to make -- and, the position being held at the anchor, nothing on the translation.
+    let leashed = records
+        .iter()
+        .filter(|r| r.leash_angular_alteration > 0.0)
+        .count();
+    assert!(leashed > records.len() / 2, "leashed in {leashed} cycles");
+    let taken = records
+        .iter()
+        .map(|r| r.leash_angular_alteration)
+        .fold(0.0, f64::max);
+    assert!(
+        taken > 0.0 && taken < 1e-3,
+        "took {taken} rad off in one cycle"
+    );
+    assert!(records.iter().all(|r| r.leash_alteration == 0.0));
     assert!(torque.finish(Ok(())).is_ok());
 }
 

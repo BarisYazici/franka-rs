@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "franka-node-client"
+# The workspace version; tests/test_version.py keeps the two equal.
+version = "0.4.0"
+description = "Python client for franka-node: drive a Franka arm served over Zenoh without a byte offset in your code"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.9"
+dependencies = ["eclipse-zenoh>=1.10,<2", "numpy>=1.21"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://barisyazici.github.io/franka-rs/howto/franka-node.html"
+Repository = "https://github.com/BarisYazici/franka-rs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["franka_node"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["sim: needs franka-sim and the franka-node binary"]

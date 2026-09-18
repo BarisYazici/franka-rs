@@ -13,6 +13,9 @@ use crate::math_utils::{cmax, cmin};
 /// Port of the (deprecated) `franka::computeUpperLimitsJointVelocity`, which hardcodes the FR3
 /// parameters. Prefer [`crate::joint_velocity_limits::JointVelocityLimitsConfig::upper_limits`],
 /// which reads the same parameters from the robot's URDF.
+///
+/// The hardcoded offsets and position limits are not those of Franka's FR3 specifications
+/// (e.g. joint 1: 0.30 and 2.7501 against 0.6599 and 2.9007); the port keeps libfranka's.
 pub fn compute_upper_limits_joint_velocity(q: &[f64; 7]) -> [f64; 7] {
     [
         cmin(
@@ -50,7 +53,8 @@ pub fn compute_upper_limits_joint_velocity(q: &[f64; 7]) -> [f64; 7] {
 ///
 /// Port of the (deprecated) `franka::computeLowerLimitsJointVelocity`, which hardcodes the FR3
 /// parameters. Prefer [`crate::joint_velocity_limits::JointVelocityLimitsConfig::lower_limits`],
-/// which reads the same parameters from the robot's URDF.
+/// which reads the same parameters from the robot's URDF. Its constants are libfranka's, as
+/// [`compute_upper_limits_joint_velocity`]'s.
 pub fn compute_lower_limits_joint_velocity(q: &[f64; 7]) -> [f64; 7] {
     [
         cmax(

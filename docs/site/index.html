@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>franka-rs — your targets, smooth robot motion</title>
+<meta name="description" content="A pure-Rust client for the Franka Control Interface. Drive an FR3 or a Panda from Rust, Python or a laptop over Zenoh. Targets in at any rate, one continuous command out at 1 kHz.">
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="site/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="36" height="36"> franka-rs</a>
+  <nav aria-label="Site">
+    <a href="#how">How it works</a>
+    <a href="#get-started">Get started</a>
+    <a href="#optional">Optional</a>
+    <a href="#faq">FAQ</a>
+    <a href="introduction.html">Docs</a>
+    <a href="api/franka/index.html">API</a>
+    <a href="https://github.com/BarisYazici/franka-rs">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top">
+  <p class="eyebrow">A Rust client for the Franka Control Interface</p>
+  <h1>Send targets.<br>Get smooth motion.</h1>
+  <p class="lede">Control a Franka FR3 or Panda from Rust or Python. Run on a realtime PC, or let a <strong>Raspberry Pi 5</strong> handle the robot while you work from your laptop. Your application sends goals. Rust runs the control loop, 1,000 times a second.</p>
+  <div class="actions">
+    <a class="btn primary" href="#get-started">Get started</a>
+    <a class="btn" href="introduction.html">Read the docs</a>
+  </div>
+  <p class="hero-footnote">FR3 + Panda <span> / </span> Native Rust <span> / </span> Python ready <span> / </span> Apache-2.0</p>
+</section>
+
+<section class="dark" id="how">
+  <div class="wrap">
+    <h2>Your application here. Control beside the arm.</h2>
+    <p class="lead">The core library, <strong>franka-rs</strong>, turns goals into smooth motion and communicates directly with the robot. No libfranka or C++ to install.</p>
+    <p class="lead">Want to work from your laptop? Put <strong>franka-node</strong> on a Pi&nbsp;5. It runs the trajectory generator and impedance controller there. <strong>Zenoh is just the messaging layer</strong> carrying goals and state between your laptop and the Pi. The Pi talks to the robot over wired Ethernet. No separate Zenoh router is needed.</p>
+
+    <figure class="media">
+      <video data-alt="Architecture overview: commanders on a laptop send targets over Zenoh to a Raspberry Pi 5 running franka-node, which drives the Franka arm over one Ethernet cable at 1 kHz." poster="site/media/architecture-poster.jpg" preload="metadata" controls playsinline muted loop aria-label="Architecture overview">
+        <source src="site/media/architecture-overview.mp4" type="video/mp4">
+      </video>
+      <figcaption>Targets arrive at any rate. One continuous command leaves for the robot.</figcaption>
+    </figure>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 960 300" role="img" aria-labelledby="dg-title dg-desc">
+        <title id="dg-title">Laptop to Raspberry Pi 5 to robot</title>
+        <desc id="dg-desc">A laptop sends targets over Zenoh to a Raspberry Pi 5 running franka-node. The Pi runs trajectory generation and impedance control at 1 kHz and drives the robot over a wired FCI link. Optional branches from the Pi: a camera node, the gripper, and a Rerun recording.</desc>
+        <g class="dg-box">
+          <rect x="30" y="100" width="200" height="100" rx="8"/>
+          <text x="130" y="140" class="dg-h">Laptop</text>
+          <text x="130" y="166" class="dg-s">your policy, teleop, script</text>
+          <text x="130" y="186" class="dg-s">any OS, any language</text>
+        </g>
+        <g class="dg-link">
+          <line x1="230" y1="150" x2="380" y2="150"/>
+          <text x="305" y="132" class="dg-l">Zenoh</text>
+          <text x="305" y="176" class="dg-s">targets in, state out</text>
+        </g>
+        <g class="dg-box dg-accent">
+          <rect x="380" y="90" width="220" height="120" rx="8"/>
+          <text x="490" y="128" class="dg-h">Raspberry Pi 5</text>
+          <text x="490" y="152" class="dg-s">franka-node · PREEMPT_RT</text>
+          <text x="490" y="172" class="dg-s">trajectory generation</text>
+          <text x="490" y="192" class="dg-s">impedance control · 1 kHz</text>
+        </g>
+        <g class="dg-link">
+          <line x1="600" y1="150" x2="740" y2="150"/>
+          <text x="670" y="132" class="dg-l">wired FCI</text>
+          <text x="670" y="176" class="dg-s">1 kHz UDP</text>
+        </g>
+        <g class="dg-box">
+          <rect x="740" y="100" width="190" height="100" rx="8"/>
+          <text x="835" y="140" class="dg-h">Robot</text>
+          <text x="835" y="166" class="dg-s">FR3 or Panda</text>
+          <text x="835" y="186" class="dg-s">version negotiated</text>
+        </g>
+        <g class="dg-opt">
+          <line x1="440" y1="210" x2="440" y2="260"/>
+          <text x="440" y="282" class="dg-s">camera node</text>
+          <line x1="540" y1="210" x2="540" y2="260"/>
+          <text x="540" y="282" class="dg-s">Rerun recording</text>
+          <line x1="835" y1="200" x2="835" y2="260"/>
+          <text x="835" y="282" class="dg-s">gripper</text>
+          <text x="130" y="262" class="dg-s dg-note">dashed: optional</text>
+        </g>
+      </svg>
+      <figcaption>The laptop never touches the 1&nbsp;kHz loop. Direct Rust and Python on the realtime host stay first class; the Pi is for commanders that are not on it.</figcaption>
+    </figure>
+
+    <ul class="facts">
+      <li><strong>Your application sets the goal.</strong> A script, a policy, or a device integration sends position or joint targets.</li>
+      <li><strong>The Pi runs the control algorithm.</strong> franka-node uses franka-rs to generate motion and calculate torque commands every millisecond.</li>
+      <li><strong>Add peripherals when needed.</strong> Cameras and recording run alongside control. The core library also works on its own.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="paths" id="paths">
+  <h2>Three ways in</h2>
+  <div class="grid">
+    <article>
+      <h3>Local, from Rust or Python</h3>
+      <p>Your program runs on the Linux machine wired to the robot. Install the library, prepare the realtime host, and write your application.</p>
+      <a href="#setup-rust">Rust setup</a> · <a href="#setup-python">Python setup</a>
+    </article>
+    <article>
+      <h3>Remote, through a Pi</h3>
+      <p>A Raspberry Pi&nbsp;5 next to the robot runs franka-node. Your laptop, on any OS, installs a small Python client or speaks the documented wire layout from any language.</p>
+      <a href="#setup-pi">Pi setup</a> · <a href="getting-started/raspberry-pi.html">Full guide</a>
+    </article>
+    <article>
+      <h3>No robot yet</h3>
+      <p>Try the same client against a simulated FR3 in Docker, without a realtime kernel or a robot.</p>
+      <a href="#setup-sim">Simulator setup</a> · <a href="getting-started/simulator.html">What it is not</a>
+    </article>
+  </div>
+  <p class="note">Not sure? <a href="getting-started/choose-your-setup.html">Choose your setup</a> walks through the decision. <a href="getting-started/architecture.html">See how the pieces fit →</a></p>
+</section>
+
+<section class="start" id="get-started">
+  <h2>Get started</h2>
+  <p class="lead">Choose where your application runs. The machine wired to a real robot needs <a href="getting-started/realtime-machine.html">Linux realtime setup</a>. A laptop that talks to the Pi needs ordinary Python.</p>
+
+  <nav class="selector" aria-label="Choose a setup">
+    <a href="#setup-rust">Rust</a>
+    <a href="#setup-python">Python</a>
+    <a href="#setup-pi">Laptop + Pi</a>
+    <a href="#setup-sim">Simulator</a>
+  </nav>
+
+  <div class="panels">
+    <section class="setup" id="setup-rust" aria-labelledby="h-rust">
+      <h3 id="h-rust">Rust, on the realtime host</h3>
+      <p>In an existing Cargo project. Rust 1.89 or newer; the library is imported as <code>franka</code>. Build with <code>--release</code>: a debug build of a stiff torque controller misses cycles.</p>
+      <div class="cmd"><pre><code>cargo add franka-rs</code></pre></div>
+      <p class="hint">Next: <a href="getting-started/install.html">installation details</a>, <a href="getting-started/realtime-machine.html">realtime setup</a>, then your <a href="getting-started/first-program.html">first program</a>.</p>
+    </section>
+
+    <section class="setup" id="setup-python" aria-labelledby="h-python">
+      <h3 id="h-python">Python, on the realtime host</h3>
+      <p>Use Python 3.9 or newer in a virtual environment on the Linux realtime host. Rust runs the control loop underneath your Python program.</p>
+      <div class="cmd"><pre><code>python -m pip install franka-rs</code></pre></div>
+      <div class="cmd"><pre><code>import franka
+robot = franka.Robot("172.16.0.2")
+print(robot.read_once().q)  # read joint positions; no motion</code></pre></div>
+      <p class="hint">The wheel is <code>franka-rs</code>, the import name <code>franka</code>. Prepare the robot connection first, then follow the examples in <a href="getting-started/python.html">From Python</a>.</p>
+    </section>
+
+    <section class="setup" id="setup-pi" aria-labelledby="h-pi">
+      <h3 id="h-pi">A laptop and a Raspberry Pi 5</h3>
+      <p><strong>On the laptop</strong>, use a Python virtual environment. From a checkout containing the node client:</p>
+      <div class="cmd"><pre><code>python -m pip install ./crates/franka-node/python</code></pre></div>
+      <div class="cmd"><pre><code>import franka_node
+with franka_node.Node("tcp/&lt;pi-host&gt;:7447") as node:
+    print(node.status("pi"))  # node name from the Pi guide; no motion</code></pre></div>
+      <p><strong>On the Pi</strong>, a Raspberry Pi&nbsp;5 with a <code>PREEMPT_RT</code> kernel, wired to the robot. From a checkout of the repository with Rust installed:</p>
+      <div class="cmd"><pre><code>cargo install --path crates/franka-node --locked</code></pre></div>
+      <p class="hint">Replace <code>&lt;pi-host&gt;</code> with your Pi’s address after starting the node. The node and its client are development features; these commands install from source. Configuration and the first motion: <a href="getting-started/raspberry-pi.html">Raspberry Pi guide</a> and <a href="howto/franka-node.html">Serve arms over Zenoh</a>.</p>
+    </section>
+
+    <section class="setup" id="setup-sim" aria-labelledby="h-sim">
+      <h3 id="h-sim">The simulator</h3>
+      <p><a href="getting-started/simulator.html#start-with-visualization">Watch the robot move: start the desktop viewer →</a></p>
+      <p>Start the simulator with Docker on Linux. Then use a Rust or Python client with realtime checks off. No robot is needed.</p>
+      <div class="cmd"><pre><code>docker run --rm --network host ghcr.io/barisyazici/franka-sim:1.1.7</code></pre></div>
+      <p>In a second terminal, from a source checkout with Rust installed:</p>
+      <div class="cmd"><pre><code>FRANKA_REALTIME=ignore cargo run --release --example echo_robot_state -- 127.0.0.1</code></pre></div>
+      <p class="hint">One container at a time: the ports are fixed by the protocol. Python uses the same environment variable. A node uses <code>realtime = "ignore"</code> in its TOML configuration. Divergences from the real arm are listed in <a href="getting-started/simulator.html">Without a robot</a>.</p>
+    </section>
+  </div>
+  <p class="note">Direct Python uses <code>franka-rs</code> (<code>import franka</code>). Remote Python uses <code>franka-node-client</code> (<code>import franka_node</code>). They are different packages.</p>
+</section>
+
+<section class="optional" id="optional">
+  <h2>Optional, each one page</h2>
+  <div class="grid">
+    <article>
+      <h3>Gripper</h3>
+      <p>Open, close, and grasp with a Franka Hand. Use it directly or through the node. Other grippers need a driver integration.</p>
+      <a href="howto/gripper.html">Use the gripper</a>
+    </article>
+    <article>
+      <h3>Cameras</h3>
+      <p>Stream USB cameras with franka-cam, a separate process beside the node. Cameras on the same host share its clock.</p>
+      <a href="getting-started/peripherals.html">Peripherals</a>
+    </article>
+    <article>
+      <h3>Recording</h3>
+      <p>Enable recording to inspect robot motion and targets in Rerun. Give arms and cameras an episode name to view their recordings together.</p>
+      <a href="howto/flight-recorder.html">Record and replay a run</a>
+    </article>
+  </div>
+</section>
+
+<section class="uses" id="uses">
+  <h2>What will you build?</h2>
+  <div class="grid">
+    <article>
+      <h3>Policies</h3>
+      <p>Run your model on a GPU workstation and send its goals to the robot. The realtime host handles smooth target tracking between updates.</p>
+    </article>
+    <article>
+      <h3>Teleoperation</h3>
+      <p>Connect your own joystick, tracker, or other input device. Your application turns its input into targets for the arm.</p>
+    </article>
+    <article>
+      <h3>Recorded experiments</h3>
+      <p>Record arm state, commands, and optional camera frames. Replay what happened and compare targets with the resulting motion.</p>
+    </article>
+  </div>
+  <p class="note">You supply the policy or input-device integration. Camera recording is currently tested with synthetic input; <a href="getting-started/peripherals.html">check peripheral status</a> before planning an experiment.</p>
+</section>
+
+<section class="demos" id="demos">
+  <h2>See it in motion</h2>
+  <div class="grid">
+    <figure class="media">
+      <video data-alt="Illustration of lower-rate targets becoming a smooth command for the robot." poster="site/media/bridge-poster.jpg" preload="none" controls playsinline muted loop aria-label="How targets become smooth motion">
+        <source src="site/media/bridge-demo.mp4" type="video/mp4">
+      </video>
+      <figcaption><strong>From targets to motion.</strong> An illustration of the trajectory generator bridging different update rates. <a href="howto/target-control.html">How target control works</a>.</figcaption>
+    </figure>
+    <figure class="media">
+      <video data-alt="Rerun viewer showing a robot alongside target and motion plots." poster="site/media/rerun-poster.jpg" preload="none" controls playsinline muted loop aria-label="Inspecting motion in Rerun">
+        <source src="site/media/rerun-demo.mp4" type="video/mp4">
+      </video>
+      <figcaption><strong>Understand a run.</strong> Inspect the robot and motion plots together in Rerun. <a href="howto/flight-recorder.html">Record and replay</a>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="faq" id="faq">
+  <h2>Questions</h2>
+  <details><summary>Which robots?</summary><p>The Franka Research 3 (FCI v10) and the Franka Emika Robot, the Panda (FCI v5). One binary; the protocol version is negotiated when it connects. The published simulator image is an FR3.</p></details>
+  <details><summary>Do I need a realtime kernel?</summary><p>Wherever the 1&nbsp;kHz loop runs, yes: a <code>PREEMPT_RT</code> kernel, an <code>rtprio</code> limit and a wired link. That is your machine for direct use, or the Pi for remote use. A laptop that only talks to a node needs nothing special. Against the simulator, realtime checks are simply turned off.</p></details>
+  <details><summary>Is it a 1 kHz callback API too?</summary><p>Yes. Write the loop as a callback, drive it with <code>read_once</code> and <code>write_once</code>, or let the crate run it and set targets from any thread. Target control is the recommended path for anything that is not a 1&nbsp;kHz program.</p></details>
+  <details><summary>How does it compare with libfranka?</summary><p>Wire layouts, rate limiting, filtering and error text are checked against libfranka's sources. Measured side by side against the simulator, loop timing is the same and the model agrees to 1e-14. Figures and method: <a href="reference/libfranka.html">Compared with libfranka</a> and <a href="reference/benchmarks.html">Benchmarks</a>.</p></details>
+  <details><summary>What is not there yet?</summary><p>A <code>ros2_control</code> hardware interface, the vacuum gripper and a published simulator image for the Panda. The impedance backend of target control, the default since 0.3.0, is not yet validated on an FR3. The node's gripper path is simulator-tested, and camera recording is tested with synthetic input. The <a href="changelog.html">changelog</a> tracks each release.</p></details>
+  <details><summary>Where is the code?</summary><p><a href="https://github.com/BarisYazici/franka-rs">github.com/BarisYazici/franka-rs</a>: the client, the Python bindings, franka-node, franka-cam, the flight recorder and the tests that run against the simulator in CI.</p></details>
+</section>
+
+</main>
+
+<footer>
+  <p>franka-rs is an unofficial project, not affiliated with, endorsed by or supported by Franka Robotics GmbH. Franka, Franka Emika, Panda and FR3 are trademarks of Franka Robotics GmbH, used only to identify the hardware this software talks to.</p>
+  <p>Licensed under the Apache License, Version 2.0. The reference implementation is Franka Robotics' libfranka. <a href="introduction.html">Documentation</a> · <a href="api/franka/index.html">API reference</a> · <a href="contributing.html">Contributing</a></p>
+</footer>
+
+<div class="toast" role="status" aria-live="polite"></div>
+<script src="site/site.js" defer></script>
+</body>
+</html>

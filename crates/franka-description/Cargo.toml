@@ -1,0 +1,20 @@
+[package]
+name = "franka-description"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["robotics", "franka", "meshes", "gltf", "fr3"]
+categories = ["science::robotics", "visualization", "no-std"]
+description = "Built-in glTF meshes of the Franka FR3 and FER arms and the Franka Hand, decimated"
+include = [
+    "src/**",
+    "meshes/**",
+    "LICENSE",
+    "LICENSE-franka_description",
+    "NOTICE",
+    "README.md",
+]

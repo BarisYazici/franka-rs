@@ -50,9 +50,8 @@ const DEFAULT_IMAGE: &str = "ghcr.io/barisyazici/franka-sim:latest";
 /// Default FER / FCI v5 image, used by [`SimConfig::fer_v5`] when
 /// `FRANKA_SIM_FER_IMAGE` is not set.
 ///
-/// There is no published FER image; this is a local build (its recipe is kept
-/// privately, outside this repository), so a machine without it fails the v5
-/// simulator tests loudly rather than skipping them.
+/// There is no published FER image, so a machine without a local build fails
+/// the v5 simulator tests loudly rather than skipping them.
 pub const DEFAULT_FER_IMAGE: &str = "franka-sim:panda-v5";
 
 /// Host the simulator's FCI ports are bound on (Docker's host network).
@@ -81,7 +80,7 @@ const PROBE_UDP_TIMEOUT: Duration = Duration::from_secs(5);
 const V10_ROBOT_STATE_LEN: usize = 1377;
 
 /// Expected size, in bytes, of a v5 `RobotState` UDP datagram (see
-/// `context-shared.md`, "FCI v5 facts").
+/// `crates/franka-rs/src/wire/robot/v5/rbk_types.rs`).
 const V5_ROBOT_STATE_LEN: usize = 2373;
 
 /// FCI protocol version the simulator speaks. Selects `--protocol v5` on the
@@ -90,7 +89,7 @@ const V5_ROBOT_STATE_LEN: usize = 2373;
 /// readiness check (see `wait_ready`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Protocol {
-    /// FCI v10 (FR3), milestone 1's target. Readiness is normally checked
+    /// FCI v10 (FR3). Readiness is normally checked
     /// with the image's `franka-sim-check` binary; `readiness_probe` is
     /// used only as a fallback when that binary is missing from the image.
     #[default]
@@ -125,7 +124,7 @@ impl Protocol {
 /// command line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RobotKind {
-    /// Franka Research 3, milestone 1's target.
+    /// Franka Research 3.
     #[default]
     Fr3,
     /// Franka Emika Robot (FER).
@@ -230,8 +229,8 @@ impl SimConfig {
 
     /// Configuration for the FER / FCI v5 simulator: `--protocol v5 --robot
     /// panda`, with the MuJoCo model selected via the `PANDA_MJCF` container
-    /// environment variable. Gripper enabled (the verified invocation of this
-    /// image passes no gripper flags).
+    /// environment variable. Gripper enabled (this image takes no gripper
+    /// flags).
     ///
     /// The image is `$FRANKA_SIM_FER_IMAGE`, defaulting to
     /// [`DEFAULT_FER_IMAGE`]. `FRANKA_SIM_IMAGE` is **not** consulted: that

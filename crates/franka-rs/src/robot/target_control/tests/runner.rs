@@ -4,10 +4,11 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::Arc;
 
-use super::super::runner::identity;
+use super::super::runner::{braking, identity};
 use super::super::*;
 use super::is_invalid_argument;
 use crate::otg::OtgLimits;
+use crate::rate_limiting::DELTA_T;
 use crate::wire::robot::codec::FciVersion;
 
 pub(super) const LIMITS: OtgLimits = OtgLimits {
@@ -29,7 +30,7 @@ fn the_runner_anchors_on_the_first_echo_and_signals_the_start() {
     let (mut runner, shared, first_cycle) = runner(Settle::default());
     let mut state = RobotState::default();
     state.q[0] = 0.5;
-    let step = runner.cycle(&state, [0.4, 0.1, 0.3], false);
+    let step = runner.cycle(&state, [0.4, 0.1, 0.3], false, false);
     assert_eq!(step.position, [0.4, 0.1, 0.3]);
     assert_eq!(step.target, [0.4, 0.1, 0.3]);
     assert_eq!(step.velocity, [0.0; 3]);
@@ -57,13 +58,13 @@ fn the_runner_follows_the_slot_settles_after_a_stop_and_finishes() {
     let (mut runner, shared, _first) = runner(settle);
     let state = RobotState::default();
     let mut echo = [0.0; 3];
-    runner.cycle(&state, echo, false);
+    runner.cycle(&state, echo, false, false);
     shared.slot.publish([0.05, 0.0, 0.0]);
     let mut cycles = 0;
     let mut peak_speed = 0.0f64;
     let mut finished = false;
     while !finished {
-        let step = runner.cycle(&state, echo, false);
+        let step = runner.cycle(&state, echo, false, false);
         peak_speed = peak_speed.max(step.velocity[0].abs());
         echo = step.position;
         cycles += 1;
@@ -96,12 +97,12 @@ fn the_runner_freezes_the_target_on_a_deviation_and_reports_it() {
     });
     let state = RobotState::default();
     let mut echo = [0.0; 3];
-    runner.cycle(&state, echo, false);
+    runner.cycle(&state, echo, false, false);
     shared.slot.publish([0.10, 0.0, 0.0]);
     for _ in 0..200 {
-        echo = runner.cycle(&state, echo, false).position;
+        echo = runner.cycle(&state, echo, false, false).position;
     }
-    let moving = runner.cycle(&state, echo, true);
+    let moving = runner.cycle(&state, echo, true, false);
     assert!(
         moving.target[0] < 0.10 && moving.target[0] > 0.0,
         "frozen where the command is"
@@ -110,7 +111,7 @@ fn the_runner_freezes_the_target_on_a_deviation_and_reports_it() {
     shared.slot.publish([0.0, 0.0, 0.0]); // ignored from now on
     let mut cycles = 0;
     loop {
-        let step = runner.cycle(&state, echo, true);
+        let step = runner.cycle(&state, echo, true, false);
         echo = step.position;
         cycles += 1;
         assert_eq!(step.target, frozen);
@@ -141,12 +142,12 @@ fn run_to_finish<const N: usize>(
 ) -> Vec<[f64; N]> {
     let state = RobotState::default();
     // Anchor first (which publishes the anchor into the slot), then set the target.
-    let mut echo = runner.cycle(&state, [0.0; N], false).position;
+    let mut echo = runner.cycle(&state, [0.0; N], false, false).position;
     shared.slot.publish(target);
     shared.stop.store(true, Ordering::SeqCst);
     let mut sent = vec![echo];
     loop {
-        let step = runner.cycle(&state, echo_of(echo), false);
+        let step = runner.cycle(&state, echo_of(echo), false, false);
         echo = step.position;
         sent.push(step.position);
         assert!(sent.len() < 8000, "the runner never finished");
@@ -190,6 +191,38 @@ fn a_stop_that_never_lands_times_out_and_still_holds_before_finishing() {
 }
 
 #[test]
+fn a_blocked_stop_counts_as_landed_and_holds_at_once() {
+    let settle = Settle::default();
+    let (mut runner, shared, _first) = runner(settle);
+    let state = RobotState::default();
+    runner.cycle(&state, [0.0; 3], false, false);
+    shared.slot.publish([1.0; 3]);
+    // Blocked while moving on: nothing changes until the stop.
+    let step = runner.cycle(&state, [0.0; 3], false, true);
+    assert!(!step.hold);
+    shared.stop.store(true, Ordering::SeqCst);
+    let echo = [0.01, 0.0, 0.0];
+    let first = runner.cycle(&state, echo, false, true);
+    assert!(first.hold && !first.finished);
+    assert_eq!(first.position, echo);
+    let cycles = (1..).find(|_| runner.cycle(&state, [5.0; 3], false, false).finished);
+    assert_eq!(cycles, Some(settle.cycles));
+}
+
+#[test]
+fn a_stop_with_a_new_target_does_not_land_on_the_last_one_s_block() {
+    let (mut runner, shared, _first) = runner(Settle::default());
+    let (state, echo) = (RobotState::default(), [0.01, 0.0, 0.0]);
+    runner.cycle(&state, [0.0; 3], false, false);
+    shared.slot.publish([1.0; 3]);
+    runner.cycle(&state, [0.0; 3], false, true);
+    shared.slot.publish([1.0, 0.5, 1.0]);
+    shared.stop.store(true, Ordering::SeqCst);
+    assert!(!runner.cycle(&state, echo, false, true).hold);
+    assert!(runner.cycle(&state, echo, false, true).hold);
+}
+
+#[test]
 fn the_cartesian_stop_holds_an_identical_pose_for_the_settle_window_then_finishes() {
     let settle = Settle::default();
     let (mut runner, shared, _first) = runner(settle);
@@ -217,7 +250,7 @@ fn the_stop_lands_through_a_float32_echo_with_reference_noise() {
     let mut k = 0u32;
     let sent = run_to_finish(&mut runner, &shared, [0.4, 0.0, 0.5], settle, |p| {
         k += 1;
-        let noise = if k % 3 == 0 { 3e-8 } else { -2e-8 };
+        let noise = if k.is_multiple_of(3) { 3e-8 } else { -2e-8 };
         p.map(|x| f64::from(x as f32) + noise)
     });
     let last = sent[sent.len() - 1];
@@ -278,4 +311,62 @@ fn the_handle_rejects_targets_once_the_loop_has_ended() {
     handle.set_target([4.0, 5.0, 6.0]).unwrap();
     assert_eq!(handle.target(), [4.0, 5.0, 6.0]);
     assert!(handle.stop().is_ok(), "no thread to join is a regular end");
+}
+
+#[test]
+fn a_restart_between_cycles_is_where_the_next_step_starts() {
+    let (mut runner, shared, _first) = runner(Settle::default());
+    let state = RobotState::default();
+    let mut step = runner.cycle(&state, [0.0; 3], false, false);
+    shared.slot.publish([0.2, 0.0, 0.0]);
+    for _ in 0..400 {
+        step = runner.cycle(&state, step.position, false, false);
+    }
+    let echo = step.position;
+    // At full acceleration toward 0.3 m/s: cut to 0.03, as a capped goal would be. The step
+    // starts from rest in acceleration: one cycle of jerk, not of acceleration, on top.
+    let cut = [0.03, 0.0, 0.0];
+    runner.restart(cut, braking(&cut, &step.acceleration));
+    let step = runner.cycle(&state, echo, false, false);
+    let jerk = LIMITS.max_jerk * DELTA_T;
+    let most = 0.03 + 0.5 * jerk * DELTA_T;
+    assert!(
+        step.velocity[0] > 0.03 && step.velocity[0] <= most + 1e-12,
+        "{:?}",
+        step.velocity
+    );
+    assert!(
+        step.acceleration[0].abs() <= jerk + 1e-12,
+        "{:?}",
+        step.acceleration
+    );
+    assert!(step.position[0] - echo[0] <= most * DELTA_T + 1e-12);
+}
+
+#[test]
+fn a_restart_keeps_a_braking_acceleration() {
+    let (mut runner, shared, _first) = runner(Settle::default());
+    let state = RobotState::default();
+    let mut echo = [0.0; 3];
+    runner.cycle(&state, echo, false, false);
+    shared.slot.publish([0.2, 0.0, 0.0]);
+    for _ in 0..400 {
+        echo = runner.cycle(&state, echo, false, false).position;
+    }
+    // Reversed: 60 ms later the generator brakes at its full acceleration, still moving on.
+    shared.slot.publish([0.0; 3]);
+    let mut step = runner.cycle(&state, echo, false, false);
+    for _ in 0..60 {
+        echo = step.position;
+        step = runner.cycle(&state, echo, false, false);
+    }
+    assert!(
+        step.velocity[0] > 0.1 && step.acceleration[0] < -0.49,
+        "{:?}",
+        step.acceleration
+    );
+    runner.restart(step.velocity, braking(&step.velocity, &step.acceleration));
+    let next = runner.cycle(&state, step.position, false, false);
+    assert!(next.acceleration[0] < -0.49, "{:?}", next.acceleration);
+    assert!(next.velocity[0] < step.velocity[0] - 0.49 * DELTA_T);
 }

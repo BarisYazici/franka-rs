@@ -1,19 +1,27 @@
 [package]
 name = "franka-rerun"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 # `rerun` 0.37 needs a newer compiler than the workspace's MSRV; CI builds on stable.
 rust-version = "1.96"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["robotics", "franka", "rerun", "visualization", "flight-recorder"]
+categories = ["science::robotics", "visualization", "command-line-utilities"]
 description = "Replays franka-rs logs (nonrealtime_commander CSVs, control logs) as Rerun recordings and records a robot live"
 
+[features]
+default = ["builtin-meshes"]
+# The FR3 and FER link meshes built in (franka-description, about 1.2 MB), drawn by default.
+builtin-meshes = ["dep:franka-description"]
+
 [dependencies]
+franka-description = { workspace = true, optional = true }
 libc.workspace = true
 # `serde` so that a control log (`Vec<franka::Record>`) can be saved to and loaded from JSON.
-franka = { package = "franka-rs", path = "../franka-rs", default-features = false, features = ["serde"] }
+franka = { workspace = true, features = ["serde"] }
 rerun = { version = "=0.37.1", default-features = false, features = ["sdk", "rrd"] }
 # The contact estimator's 7x3 least squares.
 nalgebra.workspace = true

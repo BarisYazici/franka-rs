@@ -16,21 +16,18 @@ use std::process::ExitCode;
 
 use franka::Model;
 use franka_rerun::{
-    commander, demo, flight, CommanderLog, FlightOptions, Limits, Meshes, RobotKind,
+    commander, demo, flight, CommanderLog, FlightOptions, Layout, Limits, MeshChoice, Prefix,
+    RobotKind,
 };
 
-/// The FR3 URDF the crate's tests use, found relative to this crate inside the repository.
-const FR3_URDF: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../franka-rs/tests/data/fr3.urdf"
-);
-
 const USAGE: &str = "Usage: franka-rerun csv <log.csv> --robot fr3|fer [--urdf PATH] [-o out.rrd] \
-                     [--every N] [--meshes DIR] [--layout default|demo] [--budget V,A,J]\n       \
+                     [--every N] [--meshes DIR | --no-meshes] [--layout default|demo] \
+                     [--budget V,A,J]\n       \
                      franka-rerun log \
                      <records.json> --robot \
-                     fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR] \
-                     [--force-scale M] [--noise-floor NM]\n\n  csv           replay a \
+                     fr3|fer [--urdf PATH] [-o out.rrd] [--every N] [--meshes DIR | --no-meshes] \
+                     [--force-scale M] [--noise-floor NM] [--prefix NAME]\n\n  csv           \
+                     replay a \
                      nonrealtime_commander --log CSV\n  log           replay a control log \
                      saved with franka_rerun::save_records (JSON)\n  --robot fr3   FR3 limits, \
                      model from --urdf (default: the repository's tests/data/fr3.urdf)\n  \
@@ -38,7 +35,8 @@ const USAGE: &str = "Usage: franka-rerun csv <log.csv> --robot fr3|fer [--urdf P
                      output recording (default: the input with .rrd)\n  --every N     log every \
                      N-th row to the 3D scene (default 1)\n  --meshes DIR  draw the arm with \
                      the link meshes in DIR (link0..7, hand, finger as .glb; see \
-                     tools/franka-meshes)\n  --layout demo  csv only: the screen-capture \
+                     tools/franka-meshes) instead of the built-in ones\n  --no-meshes   the \
+                     skeleton alone\n  --layout demo  csv only: the screen-capture \
                      layout (the arm at full height, the velocity per axis and the speed on \
                      the right, no event log)\n  --budget V,A,J  csv only: the commander's \
                      own velocity, acceleration and jerk budget (m/s, m/s^2, m/s^3), the \
@@ -46,7 +44,9 @@ const USAGE: &str = "Usage: franka-rerun csv <log.csv> --robot fr3|fer [--urdf P
                      log only: metres of arrow per \
                      newton of external force (default 0.01)\n  --noise-floor NM  log only: \
                      external joint torques below NM count as zero for the contact estimate \
-                     (default 1)";
+                     (default 1)\n  --prefix NAME  log only: put every entity under NAME, \
+                     as the node does with an arm's name, so that two replays can be merged \
+                     into one recording";
 
 struct Args {
     input: PathBuf,
@@ -54,11 +54,22 @@ struct Args {
     urdf: Option<PathBuf>,
     out: PathBuf,
     every: usize,
-    meshes: Option<PathBuf>,
+    meshes: MeshChoice,
     force_scale: f64,
     noise_floor: f64,
     demo: bool,
     budget: Option<Limits>,
+    prefix: Prefix,
+}
+
+/// A name that can be one entity path part, as an arm's name is: anything else would split the
+/// path or escape it.
+fn key_safe(flag: &str, name: &str) -> Result<String, String> {
+    let ok = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    if name.is_empty() || !name.chars().all(ok) {
+        return Err(format!("{flag} {name:?}: want [A-Za-z0-9_-]+"));
+    }
+    Ok(name.to_string())
 }
 
 /// A positive, finite number after `flag`.
@@ -70,12 +81,14 @@ fn positive(flag: &str, text: &str) -> Result<f64, String> {
 }
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
-    let (mut input, mut robot, mut urdf, mut out, mut meshes) = (None, None, None, None, None);
+    let (mut input, mut robot, mut urdf, mut out) = (None, None, None, None);
+    let mut meshes = MeshChoice::default();
     let defaults = FlightOptions::default();
     let (mut every, mut force_scale) = (1, defaults.force_scale);
     let mut noise_floor = defaults.contact.noise_floor;
     let mut demo = false;
     let mut budget = None;
+    let mut prefix = Prefix::none();
     let mut i = 0;
     let value = |i: &mut usize, flag: &str| {
         *i += 1;
@@ -94,7 +107,9 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
             }
             "--urdf" => urdf = Some(PathBuf::from(value(&mut i, "--urdf")?)),
             "-o" | "--out" => out = Some(PathBuf::from(value(&mut i, "-o")?)),
-            "--meshes" => meshes = Some(PathBuf::from(value(&mut i, "--meshes")?)),
+            "--meshes" => meshes = MeshChoice::Dir(PathBuf::from(value(&mut i, "--meshes")?)),
+            "--no-meshes" => meshes = MeshChoice::Off,
+            "--prefix" => prefix = Prefix::new(key_safe("--prefix", &value(&mut i, "--prefix")?)?),
             "--every" => {
                 let text = value(&mut i, "--every")?;
                 every = text
@@ -158,6 +173,7 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         noise_floor,
         demo,
         budget,
+        prefix,
     })
 }
 
@@ -165,9 +181,11 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
 fn model(args: &Args) -> Result<Model, Box<dyn std::error::Error>> {
     Ok(match args.robot {
         RobotKind::Fr3 => {
-            let path = args.urdf.clone().unwrap_or_else(|| PathBuf::from(FR3_URDF));
-            let urdf = std::fs::read_to_string(&path)
-                .map_err(|e| format!("--urdf {}: {e}", path.display()))?;
+            let urdf = match &args.urdf {
+                Some(path) => std::fs::read_to_string(path)
+                    .map_err(|e| format!("--urdf {}: {e}", path.display()))?,
+                None => franka::model::FR3_URDF.to_owned(),
+            };
             Model::from_urdf(&urdf)?
         }
         RobotKind::Fer => Model::native_fer(),
@@ -180,8 +198,8 @@ fn replay_csv(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let model = model(&args)?;
     let limits = args.robot.limits();
     let budget = args.budget.unwrap_or(limits);
-    let meshes = args.meshes.as_deref().map(Meshes::find).transpose()?;
-    let rec = rerun::RecordingStreamBuilder::new("franka_rs").save(&args.out)?;
+    let meshes = args.meshes.resolve(args.robot)?;
+    let rec = rerun::RecordingStreamBuilder::new(franka_rerun::APPLICATION_ID).save(&args.out)?;
     let summary = log.record(&rec, &model, &limits, &budget, args.every, meshes.as_ref())?;
     if args.demo {
         demo::send_blueprint(&rec, &budget)?;
@@ -246,6 +264,7 @@ fn replay_log(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let records = flight::load_records(&args.input)?;
     let model = model(&args)?;
     let options = FlightOptions {
+        prefix: args.prefix.clone(),
         force_scale: args.force_scale,
         every: args.every,
         meshes: args.meshes.clone(),
@@ -257,17 +276,13 @@ fn replay_log(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // The log's own `last_motion_errors` of its last state is the reflex reason when the log
     // came from a `ControlException`; a log saved from a healthy run has none set.
     let last = records[records.len() - 1].state.last_motion_errors;
-    let rec = rerun::RecordingStreamBuilder::new("franka_rs").save(&args.out)?;
+    let rec = rerun::RecordingStreamBuilder::new(franka_rerun::APPLICATION_ID).save(&args.out)?;
     let summary = flight::log_records(&rec, &records, &model, args.robot, &options, Some(&last))?;
-    flight::send_blueprint(&rec)?;
+    flight::send_blueprint(&rec, &Layout::single(args.prefix.clone()))?;
     rec.flush_blocking()?;
     println!("{} -> {}", args.input.display(), args.out.display());
-    if let Some(dir) = &args.meshes {
-        println!(
-            "meshes: {} from {}",
-            Meshes::find(dir)?.describe(),
-            dir.display()
-        );
+    if let Some(meshes) = args.meshes.resolve(args.robot)? {
+        println!("meshes: {}", meshes.describe());
     }
     println!("{summary}");
     Ok(())

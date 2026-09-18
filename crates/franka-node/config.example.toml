@@ -1,0 +1,74 @@
+name = "node1"
+
+[zenoh]
+mode = "peer"                        # or "client": dial the routers in connect, listen on nothing
+listen = ["tcp/0.0.0.0:7447#iface=eth0"]
+connect = []
+scouting_interface = "eth0"          # optional; "auto" when absent
+lease_ms = 1000                      # transport.link.tx.lease, keepalive is lease/4
+# zenoh_config = "/etc/franka/zenoh.json5"   # a Zenoh file to start from: TLS material, auth, ACLs
+
+[[arm]]
+name = "fr3"
+host = "172.16.0.2"
+realtime = "enforce"                 # or "ignore"
+state_hz = 100
+hold_after_ms = 200
+stop_after_ms = 2000
+collision_force = 40.0               # set_collision_behavior_simple(torque, force)
+collision_torque = 40.0
+budget = [0.3, 0.5, 20.0]            # OtgLimits for translation (norm)
+rotation_budget = [0.5, 1.0, 20.0]
+cartesian_stiffness = 750.0          # ImpedanceGains, N/m; rotational = stiffness/50
+max_deviation = 0.3                  # m the measured pose may stray from its start before the loop ends
+max_angular_deviation = 0.5          # rad, the same guard on the orientation
+leash = { translation = 0.025, rotation = 0.15 }   # m, rad the desired pose may run ahead of the measured
+max_step = 0.05                      # m per target from the previous accepted one
+max_step_rotation = 0.26             # rad per target
+max_step_joint = 0.2                 # rad per joint per target in a joints session
+max_lead = 0.05                      # m a target may lead the measured pose; 0 disables,
+                                     # otherwise must exceed leash.translation
+max_lead_rotation = 0.26             # rad, the same on the orientation; 0 disables
+joint_budget_fraction = 0.2          # of the arm's joint limits, (0, 1]; a joints session's budget
+joint_max_deviation = 1.0            # rad a joint may stray from its start in a joints session
+joint_velocity_fraction = 0.7        # of the arm's joint velocity limits the goal may move at, (0, 1]
+velocity_barrier_fraction = 0.85     # a joint measured faster meets a damping barrier, [the above, 1];
+                                     # the law's push along a joint's motion fades out from the lower
+                                     # of the above and this less 0.15 to this
+joint_position_margin = 0.05         # rad the joint goal keeps from the joint position limits, [0.035, 0.5];
+                                     # joint targets inside it are refused
+# The Cartesian backend's impedance law and its inverse kinematics. The defaults are the
+# library's; a teleoperated arm usually wants firmer joint gains than the Cartesian preset's,
+# which are soft on purpose because the Cartesian spring does the work.
+# ik_damping = 0.05                  # lambda of the damped least squares; the damped pseudo-inverse's
+                                     # gain is bounded by 1 / 2*lambda, so a smaller lambda buys
+                                     # accuracy near a singular pose with more amplification
+# ik_nullspace_gain = 1.0            # 1/s, the elbow's pull toward the posture (the configuration the
+                                     # session started in); 0 switches the bias off
+# joint_stiffness = [40.0, 30.0, 50.0, 25.0, 35.0, 25.0, 10.0]   # Nm/rad; None keeps the preset's
+# joint_damping = [4.0, 6.0, 5.0, 5.0, 3.0, 2.0, 1.0]            # Nm s/rad; raise with sqrt(stiffness)
+# velocity_feedforward = true        # damping on the velocity error dq_goal - dq. With it off the
+                                     # damping acts on -dq alone and holding speed v costs a standing
+                                     # error of (Kqd/Kq) v, which a leash then caps into a speed limit
+# velocity_feedforward_gain = 1.0    # weight of dq_goal in that term, [0, 1]
+                                     # velocity_feedforward = false makes this gain inert: the
+                                     # node starts with live weight 0 even when this says 1.0.
+                                     # Setting a positive live weight enables feedforward for
+                                     # this session; live changes do not rewrite this file.
+# velocity_feedforward_cutoff = 1000.0   # Hz, first-order low-pass on dq_goal before it is fed
+                                     # forward; 1000 switches it off, and it is floored at 1. Bounding
+                                     # it keeps the lead while leaving the reference's ripple behind.
+                                     # Cartesian sessions only
+# cutoff_frequency = 100.0           # Hz, the low-pass on the commanded torque; 1000 switches it off
+
+# workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+                                     # the box a target must lie in, m, base frame,
+                                     # inclusive. Off unless set: a cell's shape is
+                                     # not something this crate can guess
+rate_hz = 250.0                      # targets per second per client, bucket of twice that
+realtime_priority = 80               # optional
+# gripper = "hand"                   # optional: the Franka Hand at host, FCI port 1338
+gripper_speed = 0.1                  # m/s of every gripper move and grasp
+# cpu = 2                            # optional: pin the loop thread to this core (isolcpus)
+# record_dir = "/var/lib/franka-node"   # optional, needs --features record: one .rrd per session
+# record_meshes = "/opt/franka-meshes"  # optional: meshes other than the built-in, or "none"

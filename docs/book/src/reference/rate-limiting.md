@@ -47,8 +47,8 @@ bind; see [Online trajectory generation](./otg.md).
 
 Which table the loop uses is decided by the negotiated version, not by you. The FR3's live at
 the crate root (`franka::MAX_JOINT_JERK` and neighbours, mirroring libfranka's `franka::`
-namespace); the FER's only at `franka::rate_limiting::fer::*`, so the two envelopes cannot be
-confused at a glance. Nominal values, from `crates/franka-rs/src/rate_limiting/`:
+namespace); the FER's only at `franka::rate_limiting::fer::*`, so the two constant tables cannot
+be confused at a glance. Nominal values, from `crates/franka-rs/src/rate_limiting/`:
 
 | constant | FR3, `franka::*` | FER, `rate_limiting::fer::*` |
 |---|---|---|
@@ -75,6 +75,11 @@ instance. `DELTA_T` is 1e-3, `NORM_EPS` is `f64::EPSILON`, and
 `FACTOR_CARTESIAN_ROTATION_POSE_INTERFACE` (0.99) multiplies the three rotational limits
 inside `limit_rate_cartesian_pose`, on both versions.
 
+Two rows follow libfranka's rate limiter rather than Franka's published specifications: the
+FR3's `MAX_ELBOW_VELOCITY` is 1.5 rad/s where the specification gives 2.620, and the FER's
+`MAX_TRANSLATIONAL_VELOCITY` is 2.0 m/s where the specification gives 1.7. The table is what
+the limiting functions apply, and these functions are a port of libfranka's.
+
 ### The FR3's joint velocity envelope
 
 On an FR3 the joint velocity limit depends on the joint position: it shrinks towards a joint
@@ -91,7 +96,14 @@ robot serves (`joint_velocity_limits` module: `JointVelocityLimitsConfig::from_u
 `lower_joint_velocity_limits(&q)` return the envelope of the connected robot; on an FER they
 return the flat `fer::MAX_JOINT_VELOCITY` / `MIN_JOINT_VELOCITY` and ignore `q`.
 `franka::compute_upper_limits_joint_velocity` / `compute_lower_limits_joint_velocity` are the
-deprecated libfranka versions with the FR3 parameters hardcoded.
+deprecated libfranka versions with the FR3 parameters hardcoded; their offsets and position limits
+are not those of Franka's FR3 specifications (joint 1: 0.30 and 2.7501 against 0.6599 and
+2.9007), and the recorded FR3 faults follow the specifications'. Franka publishes no such
+envelope for the FER — no rows on the specifications page, nothing in libfranka or
+franka_description — and recorded FER sessions ran well above an assumed one without a reflex,
+so the flat limit is what that arm checks. Target control's torque backend follows the FR3's
+envelope and brakes toward the position limits on both arms, see
+[the joint position limit guard](impedance.md#the-joint-position-limit-guard).
 
 ### The torque-rate margin on FCI v10
 

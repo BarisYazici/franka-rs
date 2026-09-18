@@ -295,9 +295,9 @@ fn commands_and_model_against_the_fer_simulator() {
 ///
 /// The `franka-sim:panda-v5` image is an older snapshot of franka-sim than `franka-sim:dev`
 /// and has neither the `--gripper-object-width` flag nor the
-/// `FRANKA_SIM_GRIPPER_OBJECT_WIDTH` environment variable (verified by grepping
-/// `run_server.py` inside both images), so [`SimConfig::with_gripper_object`] cannot be used
-/// with it -- `docker run` would fail with `unrecognized arguments`. A successful grasp is
+/// `FRANKA_SIM_GRIPPER_OBJECT_WIDTH` environment variable, so
+/// [`SimConfig::with_gripper_object`] cannot be used with it -- `docker run` would fail with
+/// `unrecognized arguments`. A successful grasp is
 /// therefore only covered by `sim_gripper.rs` on the FR3 image; see `docs/book/src/reference/simulator-gaps.md`.
 #[test]
 fn gripper_against_the_fer_simulator() {

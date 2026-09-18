@@ -1,3 +1,5 @@
+mod set_limits;
+
 use super::*;
 
 const LIMITS: OtgLimits = OtgLimits {
@@ -6,6 +8,35 @@ const LIMITS: OtgLimits = OtgLimits {
     max_jerk: 20.0,
 };
 const DT: f64 = 1e-3;
+
+/// Limit triples a generator refuses, one per way of not being finite and positive.
+const REFUSED: [OtgLimits; 5] = [
+    OtgLimits {
+        max_velocity: f64::NAN,
+        max_acceleration: 0.5,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: -0.5,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: 0.5,
+        max_jerk: 0.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: f64::INFINITY,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: -0.3,
+        max_acceleration: 0.5,
+        max_jerk: 20.0,
+    },
+];
 
 /// Checks the limits, the continuity of the acceleration and the consistency of the
 /// derivatives across consecutive steps.
@@ -137,18 +168,8 @@ fn rejects_bad_limits_positions_and_targets() {
             Err(FrankaError::InvalidArgument(_))
         ));
     };
-    for (v, a, j) in [
-        (f64::NAN, 0.5, 20.0),
-        (0.3, -0.5, 20.0),
-        (0.3, 0.5, 0.0),
-        (0.3, f64::INFINITY, 20.0),
-        (-0.3, 0.5, 20.0),
-    ] {
-        bad(OtgLimits {
-            max_velocity: v,
-            max_acceleration: a,
-            max_jerk: j,
-        });
+    for limits in REFUSED {
+        bad(limits);
     }
     assert!(Otg::new(f64::NAN, LIMITS).is_err());
     let mut otg = Otg::new(1.0, LIMITS).unwrap();
@@ -320,10 +341,10 @@ fn synchronised_axes_arrive_together() {
     }
 }
 
-/// The target sequence of the commander example's first run with this generator on a real FER
-/// (2026-09-08), relative to the start position in metres at the logged times, and the cycles
-/// of that run that were longer than 1 ms (cycle index, seconds). The generator itself stayed
-/// on its targets; the rate limiter behind it did not (see the module documentation).
+/// A target sequence recorded from the commander example on a FER, relative to the start
+/// position in metres at the logged times, and the cycles of that recording that were longer
+/// than 1 ms (cycle index, seconds). Behind an open-loop bridge the rate limiter falls off
+/// these targets (see the module documentation).
 #[rustfmt::skip]
 const FLIGHT_EVENTS: &[(f64, [f64; 3])] = &[
     (0.498, [0.05, 0.0, 0.0]), (1.298, [0.05, 0.05, 0.0]), (1.599, [0.05, 0.05, 0.05]),
@@ -506,7 +527,7 @@ fn replay_flight(limits: OtgLimits, synchronize: bool, backstop: Option<[f64; 6]
                 // A binding backstop shapes a slower path than the plan, and its vector-norm
                 // clamp distorts one axis's corrections while another saturates, so the loop
                 // does not land exactly; what re-anchoring guarantees is that the lag stays
-                // bounded -- millimetres, where the open-loop bridge orbited by a decimetre.
+                // bounded -- millimetres, where an open-loop bridge orbits by a decimetre.
                 let tolerance = match backstop.as_ref().map(|b| b.worst_bind > 1e-9) {
                     Some(true) => 2e-2,
                     _ => 1e-6,

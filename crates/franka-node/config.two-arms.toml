@@ -1,0 +1,48 @@
+# One node process, two independent arms. Start with:
+#   franka-node config.two-arms.toml
+# This example retains the shipped control defaults; see config.example.toml
+# for every option. Configure each robot and its wired network before starting.
+name = "two-arms"
+
+[zenoh]
+mode = "peer"
+listen = ["tcp/0.0.0.0:7447"]        # clients connect to this machine's reachable address
+connect = []
+multicast_scouting = false          # clients must supply an explicit endpoint
+
+[[arm]]
+name = "left"                      # Python and Zenoh arm name, independent of robot model
+host = "172.16.0.2"                 # Franka's documented default robot address
+realtime = "enforce"
+state_hz = 100                      # published state rate; control still runs at 1 kHz
+budget = [0.3, 0.5, 20.0]          # translation norm: m/s, m/s^2, m/s^3
+rotation_budget = [0.5, 1.0, 20.0]  # rotation norm: rad/s, rad/s^2, rad/s^3
+cartesian_stiffness = 750.0         # N/m
+max_deviation = 0.3                 # m from the session's starting measured pose
+max_angular_deviation = 0.5         # rad from the session's starting orientation
+collision_force = 40.0             # N; shipped threshold, assess for your application
+collision_torque = 40.0            # Nm
+# cpu = 2                          # optional: only if core 2 exists and is isolated for this arm
+# gripper = "hand"                 # optional: Franka Hand at this arm's host, port 1338
+
+[[arm]]
+name = "right"
+# Example second subnet, NOT a second default robot address. First configure
+# this robot as 172.16.1.2 and a separate host interface, e.g. 172.16.1.1/24.
+host = "172.16.1.2"
+realtime = "enforce"
+state_hz = 100
+budget = [0.3, 0.5, 20.0]
+rotation_budget = [0.5, 1.0, 20.0]
+cartesian_stiffness = 750.0
+max_deviation = 0.3
+max_angular_deviation = 0.5
+collision_force = 40.0
+collision_torque = 40.0
+# cpu = 3                          # optional: only if core 3 exists and is isolated for this arm
+# gripper = "hand"                 # optional: this arm's own Franka Hand
+
+# Omitted settings use independent defaults for each arm; the second table
+# does not inherit values from the first. CPU pinning needs a distinct core
+# per arm. With cpu omitted, the OS scheduler chooses the cores.
+# Live tuning changes only the selected arm and does not persist to this file.

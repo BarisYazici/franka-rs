@@ -4,7 +4,8 @@
 use franka::RobotState;
 use rerun::{Color, RecordingStream, SeriesLines};
 
-use crate::Result;
+use super::{COMMANDED_ORIENTATION, ORIENTATION};
+use crate::{Prefix, Result};
 
 /// `0xRRGGBBAA`: amber for a contact, red for a collision, grey for neither.
 pub const CONTACT: u32 = 0xf5a6_23ff;
@@ -22,6 +23,17 @@ const JOINTS: [u32; 7] = [
     0x9467_bdff,
     0x8c56_4bff,
     0xe377_c2ff,
+];
+/// Measured `qx`, `qy`, `qz`, `qw` and, paler, the commanded ones.
+const QUATERNION: [u32; 8] = [
+    0xd627_28ff,
+    0x2ca0_2cff,
+    0x1f77_b4ff,
+    0x9467_bdff,
+    0xff98_96ff,
+    0x98df_8aff,
+    0xaec7_e8ff,
+    0xc5b0_d5ff,
 ];
 /// Measured `x`, `y`, `z` and, paler, the commanded ones.
 const POSITION: [u32; 6] = [
@@ -41,6 +53,16 @@ const WRENCH_NAMES: [&str; 6] = [
 ];
 pub(super) const AXES: [&str; 6] = ["Fx", "Fy", "Fz", "Tx", "Ty", "Tz"];
 const POSITION_NAMES: [&str; 6] = ["x", "y", "z", "x_c", "y_c", "z_c"];
+const ORIENTATION_NAMES: [&str; 8] = ["qx", "qy", "qz", "qw", "qx_c", "qy_c", "qz_c", "qw_c"];
+const COMMANDED_ORIENTATION_NAMES: [&str; 4] = ["qx", "qy", "qz", "qw"];
+const TWIST_NAMES: [&str; 6] = [
+    "vx [m/s]",
+    "vy [m/s]",
+    "vz [m/s]",
+    "wx [rad/s]",
+    "wy [rad/s]",
+    "wz [rad/s]",
+];
 
 /// The four flag arrays of a state as booleans (the robot sends 0.0 / 1.0).
 #[derive(Debug, Clone, Copy)]
@@ -111,29 +133,65 @@ fn palette(colors: &[u32]) -> Vec<Color> {
 }
 
 /// The `SeriesLines` style -- legend names, colours, widths -- of every series entity.
-pub(super) fn log_styles(rec: &RecordingStream) -> Result<()> {
+pub(super) fn log_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
     let joints = palette(&JOINTS);
-    let styles: [(&str, &[&str], Vec<Color>); 13] = [
+    let styles: [(&str, &[&str], Vec<Color>); 29] = [
         ("joints/q", &JOINT_NAMES, joints.clone()),
         ("joints/q_d", &JOINT_NAMES, joints.clone()),
         ("joints/dq", &JOINT_NAMES, joints.clone()),
         ("joints/tau_J", &JOINT_NAMES, joints.clone()),
         ("joints/tau_J_d", &JOINT_NAMES, joints.clone()),
+        ("joints/q_goal", &JOINT_NAMES, joints.clone()),
+        ("joints/dq_goal", &JOINT_NAMES, joints.clone()),
+        ("joints/tau_envelope", &JOINT_NAMES, joints.clone()),
+        ("joints/tau_position", &JOINT_NAMES, joints.clone()),
+        ("joints/pinned", &JOINT_NAMES, joints.clone()),
         ("joints/tau_ext", &JOINT_NAMES, joints),
         ("ee/F_ext", &WRENCH_NAMES, palette(&POSITION)),
         ("ee/position", &POSITION_NAMES, palette(&POSITION)),
+        (ORIENTATION, &ORIENTATION_NAMES, palette(&QUATERNION)),
         ("flags/joint_contact", &JOINT_NAMES, shades(CONTACT, 7)),
         ("flags/joint_collision", &JOINT_NAMES, shades(COLLISION, 7)),
         ("flags/cartesian_contact", &AXES, shades(CONTACT, 6)),
         ("flags/cartesian_collision", &AXES, shades(COLLISION, 6)),
         ("contact/link", &["link"], palette(&[FORCE])),
+        ("joints/cap_scale", &["cap scale"], palette(&[FORCE])),
+        (
+            "ik/stall",
+            &["pressure [m/cycle]", "stalled"],
+            palette(&[FORCE, COLLISION]),
+        ),
+        ("ik/passes", &["passes"], palette(&[FORCE])),
+        (
+            COMMANDED_ORIENTATION,
+            &COMMANDED_ORIENTATION_NAMES,
+            palette(&QUATERNION[4..]),
+        ),
+        ("ee/velocity", &TWIST_NAMES, palette(&POSITION)),
+        (
+            "ik/step",
+            &["step [rad]", "clipped [rad]"],
+            palette(&[FORCE, COLLISION]),
+        ),
+        ("ik/blend", &["blend"], palette(&[FORCE])),
+        (
+            "ik/held",
+            &["held", "wall age t [cycles]", "wall age r [cycles]"],
+            palette(&[COLLISION, FORCE, CONTACT]),
+        ),
+        ("ik/error", &["residual [m]"], palette(&[FORCE])),
+        (
+            "ee/leash",
+            &["translation [m]", "rotation [rad]"],
+            palette(&[FORCE, COLLISION]),
+        ),
     ];
     for (entity, names, colors) in styles {
         let style = SeriesLines::new()
             .with_names(names.iter().copied())
             .with_colors(colors)
             .with_widths(std::iter::repeat_n(1.5, names.len()));
-        rec.log_static(entity, &style)?;
+        rec.log_static(prefix.path(entity), &style)?;
     }
     Ok(())
 }

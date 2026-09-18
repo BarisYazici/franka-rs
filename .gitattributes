@@ -1,0 +1,5 @@
+# Preserve downloadable CAD and its recorded hashes across platforms.
+docs/book/src/assets/pi5/* -text
+docs/book/src/assets/pi5/*.step binary
+# Keep the upstream notice byte-for-byte, including its CRLF line endings.
+docs/book/src/assets/pi5/RASPBERRY-PI-LICENSE.txt whitespace=cr-at-eol

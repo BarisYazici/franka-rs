@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 970" role="img" aria-labelledby="title desc">
+  <title id="title">Live tuning: two inputs, one local control loop</title>
+  <desc id="desc">The motion client owns the session and sends goals over Zenoh. The optional browser panel and its bridge send parameter updates to franka-node and receive accepted settings and robot state. On the Pi or realtime Linux PC, the node validates both inputs. The Rust controller generates motion and smoothly applies parameter changes locally at 1 kHz, exchanging torque commands and measured state with the robot over wired FCI. The panel does not start motion.</desc>
+  <defs>
+    <marker id="blue-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#285f89"/></marker>
+    <marker id="teal-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#266b62"/></marker>
+    <marker id="gray-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#536471"/></marker>
+    <style>
+      text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; fill: #202d38; }
+      .heading { font-size: 27px; font-weight: 700; }
+      .title { font-size: 23px; font-weight: 700; }
+      .body { font-size: 19px; }
+      .small { font-size: 17px; fill: #4b5c69; }
+      .blue { fill: #285f89; }
+      .teal { fill: #266b62; }
+      .white { fill: #fff; }
+      .label { font-size: 18px; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="800" height="970" rx="18" fill="#f6f5f1"/>
+  <text x="36" y="48" class="heading">Two inputs. One local control loop.</text>
+  <text x="36" y="79" class="body">The client sets the goal. The panel adjusts how it is followed.</text>
+
+  <rect x="40" y="114" width="316" height="157" rx="14" fill="#eaf1f8" stroke="#b3cadb"/>
+  <text x="62" y="147" class="label blue">WHERE TO MOVE</text>
+  <text x="62" y="181" class="title">Motion client</text>
+  <text x="62" y="212" class="body">Owns the motion session.</text>
+  <text x="62" y="240" class="body">Enables control; sends goals.</text>
+
+  <rect x="402" y="114" width="316" height="157" rx="14" fill="#e7f2ee" stroke="#a7c9bf"/>
+  <text x="424" y="147" class="label teal">HOW TO FOLLOW IT</text>
+  <text x="424" y="181" class="title">Tuning panel + bridge</text>
+  <text x="424" y="212" class="body">Adjusts gains and budgets.</text>
+  <text x="424" y="240" class="body">Does not start motion.</text>
+
+  <rect x="40" y="344" width="678" height="403" rx="16" fill="#fff" stroke="#bac6ca" stroke-dasharray="6 5"/>
+
+  <path d="M198 272V373" fill="none" stroke="#285f89" stroke-width="3" marker-end="url(#blue-arrow)"/>
+  <rect x="125" y="296" width="146" height="29" rx="5" fill="#f6f5f1"/>
+  <text x="198" y="317" text-anchor="middle" class="label blue">Goals via Zenoh</text>
+  <path d="M558 272V373" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#teal-arrow)"/>
+  <rect x="455" y="296" width="207" height="29" rx="5" fill="#f6f5f1"/>
+  <text x="558" y="317" text-anchor="middle" class="label teal">Parameters via Zenoh</text>
+
+  <rect x="66" y="375" width="628" height="135" rx="12" fill="#f6f5f1" stroke="#cbd3d6"/>
+  <text x="88" y="411" class="title">franka-node</text>
+  <text x="88" y="444" class="body">Checks motion targets and session ownership.</text>
+  <text x="88" y="473" class="body">Validates parameter updates; returns accepted values.</text>
+
+  <path d="M380 511V558" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#teal-arrow)"/>
+  <rect x="66" y="567" width="628" height="130" rx="12" fill="#266b62"/>
+  <text x="88" y="603" class="title white">franka-rs · local 1 kHz control loop</text>
+  <text x="88" y="636" class="body white">Generates motion and calculates joint torques.</text>
+  <text x="88" y="666" class="body white">Applies parameter changes with slew and budget gates.</text>
+  <text x="380" y="727" text-anchor="middle" class="label">Pi 5 or realtime Linux PC · one node process</text>
+
+  <path d="M695 404H748V190H720" fill="none" stroke="#266b62" stroke-width="2.5" stroke-dasharray="6 5" marker-end="url(#teal-arrow)"/>
+  <text transform="translate(779 391) rotate(-90)" class="small teal">Accepted settings + robot state</text>
+
+  <path d="M278 748V828" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#teal-arrow)"/>
+  <path d="M502 829V750" fill="none" stroke="#536471" stroke-width="3" marker-end="url(#gray-arrow)"/>
+  <rect x="211" y="773" width="133" height="27" rx="4" fill="#f6f5f1"/>
+  <text x="278" y="792" text-anchor="middle" class="label teal">Joint torques</text>
+  <rect x="440" y="773" width="125" height="27" rx="4" fill="#f6f5f1"/>
+  <text x="502" y="792" text-anchor="middle" class="label">Robot state</text>
+
+  <rect x="166" y="839" width="428" height="62" rx="12" fill="#fff" stroke="#bac6ca"/>
+  <text x="380" y="878" text-anchor="middle" class="title">Panda / FR3 · wired FCI</text>
+  <text x="36" y="937" class="small">Live tuning needs a Cartesian impedance session. Changes last for that session.</text>
+</svg>

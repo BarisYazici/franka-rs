@@ -27,7 +27,7 @@ selects the FER / FCI v5 image and `--protocol v5 --robot panda`.
 | variable | default | meaning |
 |---|---|---|
 | `FRANKA_SIM_IMAGE` | `ghcr.io/barisyazici/franka-sim:latest` | The FR3 / FCI v10 image. |
-| `FRANKA_SIM_FER_IMAGE` | `franka-sim:panda-v5` | The FER / FCI v5 image, a local build whose recipe is kept outside this repository; the v5 tests fail rather than skip without it. A separate variable on purpose: `FRANKA_SIM_IMAGE` is not consulted for v5, or every v5 test would talk to a v10 server. |
+| `FRANKA_SIM_FER_IMAGE` | `franka-sim:panda-v5` | The FER / FCI v5 image, a local build (no FER image is published); the v5 tests fail rather than skip without it. A separate variable on purpose: `FRANKA_SIM_IMAGE` is not consulted for v5, or every v5 test would talk to a v10 server. |
 | `FRANKA_SIM_ADDR` | unset | Attach to a server already running at this address instead of starting a container. The harness then never touches Docker, and the `SimConfig` a test passes is informational only: the caller is responsible for the running server matching it. |
 | `FRANKA_SIM_KEEP` | unset | `=1` leaves the container up after the test for inspection. |
 
@@ -95,8 +95,8 @@ checks abort the motion.
 `sim_stop_and_reflex`, request `--enforce-motion-limits` through the `SimConfig` they build;
 when attaching to a server through `FRANKA_SIM_ADDR` that server must have the flag. Since
 1.1.5 the FR3 image's `--enforce-motion-limits` also runs the robot's joint-side continuity
-check on every commanded Cartesian pose; its 10 rad/s² acceleration table was confirmed on a
-real FR3 on 2026-09-09 ([Benchmarks and hardware validation](../reference/benchmarks.md)).
+check on every commanded Cartesian pose, against the FR3's published 10 rad/s² acceleration
+limit.
 
 ## The FER suite
 

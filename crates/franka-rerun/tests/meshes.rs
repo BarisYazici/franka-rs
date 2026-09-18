@@ -1,14 +1,14 @@
 //! The mesh placement: the URDF the FER model is built from against franka_description's joint
-//! origins, the link and hand frames, and -- with `FRANKA_MESHES=<dir>` pointing at the output
-//! of `tools/franka-meshes/convert.py` for one robot -- the converted meshes' extents against
-//! the flange and against each other.
+//! origins, the link and hand frames, and the built-in meshes' extents against the flange and
+//! against each other -- also those of `FRANKA_MESHES=<dir>`, the output of
+//! `tools/franka-meshes/convert.py` for one robot, when it is set.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use franka::robot_state::IDENTITY_TRANSFORM;
 use franka::{Frame, Model};
-use franka_rerun::meshes::{hand_pose, link_pose, yawed, FINGER_Z, HAND_YAW};
-use franka_rerun::Meshes;
+use franka_rerun::meshes::{hand_pose, link_pose, yawed, MeshSource, FINGER_Z, HAND_YAW};
+use franka_rerun::{MeshChoice, Meshes, RobotKind};
 
 const PI: f64 = std::f64::consts::PI;
 
@@ -96,15 +96,18 @@ fn the_hand_frame_puts_the_franka_hands_end_effector_0_1034_m_along_its_z() {
 
 /// `[min, max]` of every `POSITION` accessor of a `.glb`, united; asserts every node is the
 /// identity so that the accessor bounds are the mesh's extent in the link frame.
-fn glb_bounds(path: &Path) -> ([f64; 3], [f64; 3]) {
-    let bytes = std::fs::read(path).unwrap();
-    assert_eq!(&bytes[0..4], b"glTF", "{}", path.display());
+fn glb_bounds(source: &MeshSource) -> ([f64; 3], [f64; 3]) {
+    let bytes = match source {
+        MeshSource::File(path) => std::fs::read(path).unwrap(),
+        MeshSource::Glb(bytes) => bytes.to_vec(),
+    };
+    assert_eq!(&bytes[0..4], b"glTF", "{source:?}");
     let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
     assert_eq!(&bytes[16..20], b"JSON");
     let json: serde_json::Value = serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
     for node in json["nodes"].as_array().unwrap() {
         for key in ["matrix", "rotation", "translation", "scale"] {
-            assert!(node.get(key).is_none(), "{}: node {key}", path.display());
+            assert!(node.get(key).is_none(), "{source:?}: node {key}");
         }
     }
     let accessors = json["accessors"].as_array().unwrap();
@@ -122,20 +125,27 @@ fn glb_bounds(path: &Path) -> ([f64; 3], [f64; 3]) {
     (lo, hi)
 }
 
-fn meshes_dir() -> Option<PathBuf> {
-    match std::env::var_os("FRANKA_MESHES") {
-        Some(dir) => Some(PathBuf::from(dir)),
-        None => {
-            eprintln!("FRANKA_MESHES not set: skipping the converted-mesh checks");
-            None
-        }
+/// The built-in sets, and the directory `FRANKA_MESHES` names.
+fn mesh_sets() -> Vec<Meshes> {
+    let mut sets = Vec::new();
+    for kind in [RobotKind::Fr3, RobotKind::Fer] {
+        sets.extend(MeshChoice::Builtin.resolve(kind).ok().flatten());
     }
+    match std::env::var_os("FRANKA_MESHES") {
+        Some(dir) => sets.push(Meshes::find(&PathBuf::from(dir)).unwrap()),
+        None => eprintln!("FRANKA_MESHES not set: checking the built-in meshes only"),
+    }
+    sets
 }
 
 #[test]
-fn converted_meshes_end_at_the_flange_and_meet_each_other() {
-    let Some(dir) = meshes_dir() else { return };
-    let meshes = Meshes::find(&dir).unwrap();
+fn meshes_end_at_the_flange_and_meet_each_other() {
+    for meshes in mesh_sets() {
+        check_extents(&meshes);
+    }
+}
+
+fn check_extents(meshes: &Meshes) {
     assert!(
         meshes.links.iter().all(Option::is_some),
         "{}",
@@ -193,13 +203,35 @@ fn converted_meshes_end_at_the_flange_and_meet_each_other() {
 
 #[test]
 fn meshes_are_logged_once_and_their_poses_per_record() {
-    let Some(dir) = meshes_dir() else { return };
-    let meshes = Meshes::find(&dir).unwrap();
+    for meshes in mesh_sets() {
+        check_logging(&meshes);
+    }
+}
+
+#[cfg(feature = "builtin-meshes")]
+#[test]
+fn the_builtin_meshes_are_the_default_and_complete() {
+    assert_eq!(MeshChoice::default(), MeshChoice::Builtin);
+    let meshes = MeshChoice::default()
+        .resolve(RobotKind::Fr3)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        meshes.describe(),
+        "8 link mesh(es), hand, fingers from builtin fr3 (15 %, franka_description 7aeeddc)"
+    );
+    assert_eq!(MeshChoice::Off.resolve(RobotKind::Fer).unwrap(), None);
+}
+
+fn check_logging(meshes: &Meshes) {
     let (rec, storage) = rerun::RecordingStreamBuilder::new("test").memory().unwrap();
-    meshes.log_static(&rec).unwrap();
+    let prefix = franka_rerun::Prefix::none();
+    meshes.log_static(&rec, &prefix).unwrap();
     let before = storage.num_msgs();
     assert!(before >= 8, "{before} static messages");
-    meshes.log_poses(&rec, &Model::native_fer(), &Q).unwrap();
+    meshes
+        .log_poses(&rec, &prefix, &Model::native_fer(), &Q)
+        .unwrap();
     rec.flush_blocking().unwrap();
     assert!(storage.num_msgs() > before);
 }

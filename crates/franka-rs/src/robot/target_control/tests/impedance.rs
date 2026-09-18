@@ -6,6 +6,7 @@ use nalgebra::{SMatrix, SVector};
 
 use super::super::ik::IkOptions;
 use super::super::impedance::*;
+use super::is_invalid_argument;
 
 const Q: [f64; 7] = [0.1, -0.6, 0.2, -2.1, 0.0, 1.7, 0.9];
 const DELTA: [f64; 7] = [0.01, -0.02, 0.03, 0.005, -0.01, 0.02, -0.03];
@@ -156,6 +157,66 @@ fn the_damping_acts_on_the_velocity_error_unless_feedforward_is_off() {
 }
 
 #[test]
+fn the_feedforward_gain_interpolates_between_riding_the_goal_and_damping_on_measurement() {
+    let gains = ImpedanceGains::CARTESIAN;
+    let jacobian = random_jacobian();
+    let dq_goal = [0.3, -0.2, 0.1, 0.4, -0.1, 0.2, -0.3];
+    let at = |g: f64| {
+        let options = unclamped(gains).with_velocity_feedforward_gain(g);
+        impedance_torques(&options, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO)
+    };
+    // Gain 1 is the velocity error, gain 0 is `-dq` alone -- i.e. the same law the boolean
+    // switches off -- so the gain subsumes it rather than adding a second way to say it.
+    let full = impedance_torques(
+        &unclamped(gains),
+        &jacobian,
+        &goal(),
+        &dq_goal,
+        &Q,
+        &DQ,
+        &ZERO,
+    );
+    assert_close(&at(1.0), &full, 1e-12);
+    let off = unclamped(gains).with_velocity_feedforward(false);
+    let none = impedance_torques(&off, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO);
+    assert_close(&at(0.0), &none, 1e-12);
+    // And it is linear in between: half the feedforward is half way between the two.
+    let half: [f64; 7] = std::array::from_fn(|i| 0.5 * (full[i] + none[i]));
+    assert_close(&at(0.5), &half, 1e-9);
+}
+
+#[test]
+fn the_feedforward_cutoff_is_off_at_the_maximum_and_refused_outside_it() {
+    let options = ImpedanceOptions::cartesian();
+    assert_eq!(
+        options.velocity_feedforward_cutoff,
+        crate::lowpass_filter::MAX_CUTOFF_FREQUENCY
+    );
+    assert_eq!(options.velocity_feedforward_gain, 1.0);
+    options.validate().unwrap();
+    for bad in [0.0, -1.0, f64::NAN] {
+        let why = format!(
+            "{:?}",
+            options
+                .with_velocity_feedforward_cutoff(bad)
+                .validate()
+                .unwrap_err()
+        );
+        assert!(why.contains("velocity_feedforward_cutoff"), "{bad}: {why}");
+    }
+    for bad in [-0.1, 1.1, f64::NAN] {
+        let why = format!(
+            "{:?}",
+            options
+                .with_velocity_feedforward_gain(bad)
+                .validate()
+                .unwrap_err()
+        );
+        assert!(why.contains("velocity_feedforward_gain"), "{bad}: {why}");
+    }
+}
+
+#[test]
 fn projected_joint_gains_act_in_the_nullspace_only() {
     let gains = ImpedanceGains::CARTESIAN;
     let jacobian = random_jacobian();
@@ -296,6 +357,11 @@ fn defaults_validate() {
         },
         ImpedanceGains::DROID
     );
+    // The joint velocity cap and the barrier are on by default, on both interfaces.
+    for options in [cartesian, ImpedanceOptions::joint()] {
+        assert_eq!(options.joint_velocity_fraction, 0.7);
+        assert_eq!(options.velocity_barrier_fraction, 0.85);
+    }
 }
 
 #[test]
@@ -351,4 +417,41 @@ fn validate_rejects_bad_fields() {
             joint: 0.1
         }
     );
+    for bad in [0.0, -0.1, 1.01, f64::NAN, f64::INFINITY] {
+        let result = options.with_joint_velocity_fraction(bad).validate();
+        assert!(
+            is_invalid_argument(result, "joint_velocity_fraction"),
+            "{bad}"
+        );
+    }
+    // The barrier sits at or above the cap and at most at the limit.
+    for bad in [0.69, 1.01, f64::NAN] {
+        let result = options.with_velocity_barrier_fraction(bad).validate();
+        assert!(
+            is_invalid_argument(result, "velocity_barrier_fraction"),
+            "{bad}"
+        );
+    }
+    assert!(options.with_joint_velocity_fraction(0.8).validate().is_ok());
+    assert!(options
+        .with_velocity_barrier_fraction(0.8)
+        .validate()
+        .is_ok());
+    let full = options
+        .with_joint_velocity_fraction(1.0)
+        .with_velocity_barrier_fraction(1.0);
+    assert!(full.validate().is_ok());
+    // The margin: 0.05 by default, from over the tracking overshoot and the FR3's envelope to half
+    // a radian.
+    assert_eq!(options.joint_position_margin, 0.05);
+    for good in [0.035, 0.5] {
+        assert!(options.with_joint_position_margin(good).validate().is_ok());
+    }
+    for bad in [0.034, 0.51, f64::NAN, f64::INFINITY] {
+        let result = options.with_joint_position_margin(bad).validate();
+        assert!(
+            is_invalid_argument(result, "joint_position_margin"),
+            "{bad}"
+        );
+    }
 }

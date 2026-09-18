@@ -16,7 +16,8 @@ use rerun::{RecordingStream, TextLog, TextLogLevel};
 
 use crate::series::{Limits, Peaks, PositionSeries};
 use crate::{
-    distance, norm, scene, series, Meshes, Result, BUDGET, COMMANDED, MEASURED, TARGET, TIMELINE,
+    distance, norm, scene, series, Meshes, Prefix, Result, BUDGET, COMMANDED, MEASURED, TARGET,
+    TIMELINE,
 };
 
 /// A gap between two target changes longer than this is a stall, s.
@@ -256,9 +257,12 @@ impl CommanderLog {
             self.measured.as_slice(),
             MEASURED & 0xffff_ff40,
         );
-        scene::log_static(rec, Some(trail))?;
+        // The commander replay is one robot's and keeps the unprefixed paths its own layout
+        // (and the demo one) name.
+        let prefix = Prefix::none();
+        scene::log_static(rec, &prefix, Some(trail))?;
         if let Some(meshes) = meshes {
-            meshes.log_static(rec)?;
+            meshes.log_static(rec, &prefix)?;
         }
         let f_t_ee = match self.q.as_ref() {
             Some(q) => scene::tool_offset(model, &q[0], &self.measured[0]),
@@ -357,7 +361,7 @@ impl CommanderLog {
                 })
                 .collect();
             rec.set_duration_secs(TIMELINE, now);
-            scene::log_strips(rec, "trail", &strips)?;
+            scene::log_strips(rec, &Prefix::none(), "trail", &strips)?;
         }
         Ok(())
     }
@@ -372,19 +376,27 @@ impl CommanderLog {
         meshes: Option<&Meshes>,
     ) -> Result<Option<f64>> {
         let mut fk_gap = None;
+        let prefix = Prefix::none();
         for i in (0..self.rows()).step_by(every.max(1)) {
             rec.set_duration_secs(TIMELINE, self.t[i]);
             if let Some(q) = self.q.as_ref().map(|rows| &rows[i]) {
-                let ee = scene::log_arm(rec, model, q, f_t_ee)?;
+                let ee = scene::log_arm(rec, &prefix, model, q, f_t_ee)?;
                 if let Some(meshes) = meshes {
-                    meshes.log_poses(rec, model, q)?;
+                    meshes.log_poses(rec, &prefix, model, q)?;
                 }
                 let gap = distance(&ee, &self.measured[i]);
                 fk_gap = Some(fk_gap.map_or(gap, |g: f64| g.max(gap)));
             }
-            scene::log_point(rec, "target", &self.target[i], 0.015, TARGET)?;
-            scene::log_point(rec, "commanded", &self.commanded[i], 0.008, COMMANDED)?;
-            scene::log_point(rec, "measured", &self.measured[i], 0.006, MEASURED)?;
+            scene::log_point(rec, &prefix, "target", &self.target[i], 0.015, TARGET)?;
+            scene::log_point(
+                rec,
+                &prefix,
+                "commanded",
+                &self.commanded[i],
+                0.008,
+                COMMANDED,
+            )?;
+            scene::log_point(rec, &prefix, "measured", &self.measured[i], 0.006, MEASURED)?;
         }
         Ok(fk_gap)
     }

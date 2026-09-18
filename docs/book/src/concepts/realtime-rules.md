@@ -34,8 +34,8 @@ motion.
 
 `Robot::new` raises the calling thread to the highest `SCHED_FIFO` priority; target control
 raises its own loop thread the same way, or to `realtime_priority` when set. Leave the rest
-of the process at normal priority. Running the whole process under `chrt -f` while it also
-had Rerun threads starved the control loop; do not do that to a process with other threads.
+of the process at normal priority. Running the whole process under `chrt -f` starves the
+control loop once the process has other busy threads, a Rerun recorder for instance.
 
 ## 5. Seed a motion from the commanded values, not the measured ones
 
@@ -52,11 +52,8 @@ echo for you. Details in [FER / Panda specifics](../reference/fer.md).
 `RobotState::time` is the robot's millisecond counter, not a host clock. Two consecutive
 states whose `time` differs by more than 1 ms mean states were lost or discarded in between;
 the `Duration` a callback receives is that difference, so integrate against it rather than
-assuming 1 ms. Not every gap is yours: on an FER the control box's own transmit path stalls
-for a few milliseconds a few times per second. Packet captures at the network card show
-every state present and arriving in a burst after the stall; the client keeps the newest and
-discards the rest, and that is the gap it sees. Measured in one campaign, not a
-specification; see [Benchmarks and hardware validation](../reference/benchmarks.md).
+assuming 1 ms. When several states arrive together, the client keeps the newest and
+discards the rest, and that is a gap too.
 
 ## 7. `RealtimeConfig::Ignore` is for the simulator
 
@@ -71,6 +68,5 @@ priority it got, and rule 1 decides how long the motion lasts.
 It bounds the time between a datagram arriving and your `SCHED_FIFO` thread running, and it
 lets that thread pre-empt almost everything else on the machine. It does not make a slow
 callback fast, it does not shorten a `println!`, and it does not repair a bad network path:
-in the FER benchmark a USB Ethernet adapter with 15 ms of interrupt coalescing lost about
-three times as many cycles as the onboard card, for both clients. The benchmarks themselves
-ran on a non-realtime kernel, which is why their tails are in the milliseconds.
+an adapter that coalesces interrupts for milliseconds loses cycles with either client. The
+benchmarks ran on a non-realtime kernel, which is why their tails are in the milliseconds.

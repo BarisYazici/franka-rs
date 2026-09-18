@@ -3,13 +3,15 @@
 //!
 //! ```text
 //! Kp  = Jᵀ Kx J + diag(Kq)        Kd = Jᵀ Kxd J + diag(Kqd)
-//! tau = Kp (q_goal - q) + Kd (dq_goal - dq) + coriolis        clamped to torque_limits
+//! tau = Kp (q_goal - q) + Kd (g dq_goal - dq) + coriolis      clamped to torque_limits
 //! ```
 //!
 //! `J` is the zero Jacobian at the end-effector frame in the *measured* configuration, so the
 //! Cartesian spring acts at the frame `O_T_EE` targets are given in; gravity is the robot's.
-//! Without [`ImpedanceOptions::velocity_feedforward`] `dq_goal` is zero and the damping acts on
-//! the absolute velocity, which lags a moving goal by `Kd v / Kp` (DROID parity). The joint
+//! `g` is [`ImpedanceOptions::velocity_feedforward_gain`], and zero when
+//! [`ImpedanceOptions::velocity_feedforward`] is off: the damping then acts on the absolute
+//! velocity, which lags a moving goal by `Kd v / Kp` (DROID parity). That lag is what a leash on
+//! the command turns into a speed limit, so lowering `g` costs speed as well as ripple. The joint
 //! gains act unprojected, so the end effector feels `Kx` plus the joint springs reflected
 //! through `J` (30-60 % stiffer than `Kx` in translation at the ready pose, two to three
 //! times in rotation); with [`ImpedanceOptions::project_joint_gains`] they are confined to
@@ -18,6 +20,7 @@
 use nalgebra::{SMatrix, SVector};
 
 use super::ik::IkOptions;
+use super::position::DEFAULT_JOINT_POSITION_MARGIN;
 use crate::error::{FrankaError, FrankaResult};
 
 /// The stiffness and damping of the law, all finite and non-negative.
@@ -64,6 +67,24 @@ impl ImpedanceGains {
         joint_damping: [50.0, 50.0, 50.0, 50.0, 30.0, 25.0, 15.0],
     };
 
+    /// [`CARTESIAN`](Self::CARTESIAN) rescaled to a translational stiffness of `stiffness`
+    /// N/m: the six stiffnesses in proportion, the six dampings with the square root of the
+    /// same ratio, so every axis keeps the preset's damping ratio. The joint gains are the
+    /// preset's, untouched.
+    ///
+    /// This is the one place the rule lives. A Cartesian stiffness an operator can move is a
+    /// single number, and the law needs twelve; anything that turns the one into the twelve —
+    /// a node's configuration, a live retune — calls this rather than restating it.
+    pub fn scaled_cartesian(stiffness: f64) -> ImpedanceGains {
+        let preset = ImpedanceGains::CARTESIAN;
+        let ratio = stiffness / preset.cartesian_stiffness[0];
+        ImpedanceGains {
+            cartesian_stiffness: preset.cartesian_stiffness.map(|k| k * ratio),
+            cartesian_damping: preset.cartesian_damping.map(|d| d * ratio.sqrt()),
+            ..preset
+        }
+    }
+
     /// # Errors
     /// [`FrankaError::InvalidArgument`] if a gain is not finite or negative.
     pub fn validate(&self) -> FrankaResult<()> {
@@ -93,11 +114,13 @@ impl ImpedanceGains {
 /// off as `leash_alteration`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leash {
-    /// Cartesian interface, translation, m. Default 0.025. The force at the leash is about
-    /// the *felt* stiffness times the leash: at the default gains at the ready pose roughly
-    /// 25-30 N (the unprojected joint springs add to `Kx`), 18.75 N with
-    /// [`project_joint_gains`](ImpedanceOptions::project_joint_gains). Set the collision
-    /// thresholds accordingly.
+    /// Cartesian interface, translation, m. Default 0.025. The leash bounds the spring, so
+    /// the force on whoever holds the arm plateaus: roughly 40-50 N at the default gains in an
+    /// FER's `O_F_ext_hat_K` estimate (750 N/m × 0.025 m = 18.75 N is the translational
+    /// spring alone with [`project_joint_gains`](ImpedanceOptions::project_joint_gains), not
+    /// what the robot's estimate shows). Gentle pushes read well under 30 N; a hard, fast
+    /// push briefly exceeds 60 N. Choose a collision force of 40 N for unattended runs and
+    /// 60 N or more where people push.
     pub translation: f64,
     /// Cartesian interface, rotation, rad. Default 0.15.
     pub rotation: f64,
@@ -143,6 +166,17 @@ pub struct ImpedanceOptions {
     /// difference on the Cartesian one); `false` damps the absolute velocity, DROID parity,
     /// and a goal moving at `v` is then tracked `Kd v / Kp` behind. Default `true`.
     pub velocity_feedforward: bool,
+    /// Weight of the goal velocity in the damping term when `velocity_feedforward` is on, in
+    /// [0, 1]. At 1 the damping acts on the velocity *error* `dq_goal - dq`, so a joint at steady
+    /// speed needs no lag; at 0 it acts on `-dq` alone and holding speed `v` costs a standing
+    /// error of `(Kqd / Kq) v`, which a leash then caps into a speed limit. Values between trade
+    /// that lag against how much of the goal's own ripple the law forwards. Default 1.
+    pub velocity_feedforward_gain: f64,
+    /// Cutoff, Hz, of a first-order low-pass on `dq_goal` before it is fed forward;
+    /// [`MAX_CUTOFF_FREQUENCY`](crate::lowpass_filter::MAX_CUTOFF_FREQUENCY) switches it off.
+    /// The feedforward carries the joint reference's ripple into the torque, so bounding its
+    /// bandwidth keeps the lead without the ripple. Default off.
+    pub velocity_feedforward_cutoff: f64,
     /// How far the desired state may run ahead of the measured one; see [`Leash`].
     pub leash: Leash,
     /// Whether the joint gains are projected into the nullspace of the Jacobian (`N Kq N`,
@@ -152,13 +186,40 @@ pub struct ImpedanceOptions {
     /// nullspace only, so with zero Cartesian gains the end effector would be free. Default
     /// `false`.
     pub project_joint_gains: bool,
+    /// The fraction of the arm's joint velocity limits
+    /// ([`max_joint_velocity`](super::max_joint_velocity), which narrows toward the position
+    /// limits on the FR3 and is flat on the FER) the joint goal may move at: a goal
+    /// step that would move any joint faster is scaled down as a whole, keeping its direction.
+    /// A joint measured faster, or faster than [`FADE_BAND`](super::FADE_BAND) under
+    /// [`velocity_barrier_fraction`](Self::velocity_barrier_fraction) if that is lower, keeps
+    /// less of the law's torque along its motion. In (0, 1]. Default 0.7.
+    pub joint_velocity_fraction: f64,
+    /// The fraction of the joint velocity limits above which a *measured* joint velocity meets
+    /// the velocity barrier, [`VELOCITY_BARRIER_GAIN`](super::VELOCITY_BARRIER_GAIN) Nm per
+    /// rad/s of the excess opposing it, at most the joint's torque limit, and none of the law's
+    /// torque along it. In [`joint_velocity_fraction`, 1]. Default 0.85.
+    pub velocity_barrier_fraction: f64,
+    /// How far, rad, the joint goal keeps from the joint position limits. Toward a limit the goal
+    /// brakes to stop here along a braking profile built on half the FER's joint acceleration
+    /// limit, the FR3's published `ddq_dec` on the FR3, under its velocity limit; a joint
+    /// *measured* inside keeps less and less of the law's torque toward the limit over
+    /// [`POSITION_FADE_BAND`](super::POSITION_FADE_BAND), and beyond that meets a spring of
+    /// [`POSITION_BARRIER_STIFFNESS`](super::POSITION_BARRIER_STIFFNESS) and the velocity barrier
+    /// with its onset brought down to the same envelope. Joint targets and postures inside it
+    /// are refused. In [0.035, 0.5]. Default 0.05.
+    pub joint_position_margin: f64,
 }
 
 /// The DROID clamp, a Nm and a half under the rated torques.
-const TORQUE_LIMITS: [f64; 7] = [86.0, 86.0, 86.0, 86.0, 11.5, 11.5, 11.5];
+pub(super) const TORQUE_LIMITS: [f64; 7] = [86.0, 86.0, 86.0, 86.0, 11.5, 11.5, 11.5];
 
 /// The FR3's and FER's rated joint torques, Nm, the most `torque_limits` may allow.
 pub const RATED_TORQUES: [f64; 7] = [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0];
+
+/// The lowest cutoff, Hz, [`ImpedanceOptions::velocity_feedforward_cutoff`] accepts. A first-order
+/// low-pass at 1 Hz still settles inside a second; below it the filter is a near-integrator
+/// holding a velocity the goal no longer has for longer than a session runs.
+pub const MIN_FEEDFORWARD_CUTOFF: f64 = 1.0;
 
 impl ImpedanceOptions {
     /// The defaults of the Cartesian interface: [`ImpedanceGains::CARTESIAN`].
@@ -179,8 +240,13 @@ impl ImpedanceOptions {
             posture: None,
             ik: IkOptions::default(),
             velocity_feedforward: true,
+            velocity_feedforward_gain: 1.0,
+            velocity_feedforward_cutoff: crate::lowpass_filter::MAX_CUTOFF_FREQUENCY,
             leash: Leash::default(),
             project_joint_gains: false,
+            joint_velocity_fraction: 0.7,
+            velocity_barrier_fraction: 0.85,
+            joint_position_margin: DEFAULT_JOINT_POSITION_MARGIN,
         }
     }
 
@@ -220,6 +286,18 @@ impl ImpedanceOptions {
         self
     }
 
+    /// Sets [`velocity_feedforward_gain`](Self::velocity_feedforward_gain).
+    pub fn with_velocity_feedforward_gain(mut self, gain: f64) -> Self {
+        self.velocity_feedforward_gain = gain;
+        self
+    }
+
+    /// Sets [`velocity_feedforward_cutoff`](Self::velocity_feedforward_cutoff).
+    pub fn with_velocity_feedforward_cutoff(mut self, hertz: f64) -> Self {
+        self.velocity_feedforward_cutoff = hertz;
+        self
+    }
+
     /// Sets the leash.
     pub fn with_leash(mut self, leash: Leash) -> Self {
         self.leash = leash;
@@ -232,12 +310,32 @@ impl ImpedanceOptions {
         self
     }
 
+    /// Sets the fraction of the joint velocity limits the goal may move at.
+    pub fn with_joint_velocity_fraction(mut self, fraction: f64) -> Self {
+        self.joint_velocity_fraction = fraction;
+        self
+    }
+
+    /// Sets the fraction of the joint velocity limits the velocity barrier starts at.
+    pub fn with_velocity_barrier_fraction(mut self, fraction: f64) -> Self {
+        self.velocity_barrier_fraction = fraction;
+        self
+    }
+
+    /// Sets the distance, rad, the joint goal keeps from the joint position limits.
+    pub fn with_joint_position_margin(mut self, margin: f64) -> Self {
+        self.joint_position_margin = margin;
+        self
+    }
+
     /// Checks the options without starting anything.
     ///
     /// # Errors
     /// [`FrankaError::InvalidArgument`] naming the field: a gain that is not finite or
     /// negative, a torque limit, cutoff frequency or leash that is not finite and positive, a
-    /// posture that is not finite, or invalid [`IkOptions`].
+    /// posture that is not finite, a `joint_velocity_fraction` outside (0, 1] or a
+    /// `velocity_barrier_fraction` outside [`joint_velocity_fraction`, 1], a
+    /// `joint_position_margin` outside [0.035, 0.5], or invalid [`IkOptions`].
     pub fn validate(&self) -> FrankaResult<()> {
         self.gains.validate()?;
         let positive = |x: f64| x.is_finite() && x > 0.0;
@@ -253,6 +351,25 @@ impl ImpedanceOptions {
             return Err(FrankaError::InvalidArgument(format!(
                 "target control: cutoff_frequency must be finite and positive, got {}",
                 self.cutoff_frequency
+            )));
+        }
+        // Floored, not merely positive: below a hertz the filter is a near-integrator that holds
+        // a velocity the goal no longer has, for longer than any session lasts.
+        if !positive(self.velocity_feedforward_cutoff)
+            || self.velocity_feedforward_cutoff < MIN_FEEDFORWARD_CUTOFF
+        {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: velocity_feedforward_cutoff must be at least \
+                 {MIN_FEEDFORWARD_CUTOFF} Hz, got {}",
+                self.velocity_feedforward_cutoff
+            )));
+        }
+        if !self.velocity_feedforward_gain.is_finite()
+            || !(0.0..=1.0).contains(&self.velocity_feedforward_gain)
+        {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: velocity_feedforward_gain must be within [0, 1], got {}",
+                self.velocity_feedforward_gain
             )));
         }
         let Leash {
@@ -273,6 +390,25 @@ impl ImpedanceOptions {
                 )));
             }
         }
+        let (cap, barrier) = (self.joint_velocity_fraction, self.velocity_barrier_fraction);
+        let fraction = |x: f64| x > 0.0 && x <= 1.0;
+        if !fraction(cap) {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: joint_velocity_fraction must be in (0, 1], got {cap}"
+            )));
+        }
+        if !(cap..=1.0).contains(&barrier) {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: velocity_barrier_fraction must be in \
+                 [joint_velocity_fraction, 1] = [{cap}, 1], got {barrier}"
+            )));
+        }
+        let margin = self.joint_position_margin;
+        if !(0.035..=0.5).contains(&margin) {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: joint_position_margin must be in [0.035, 0.5] rad, got {margin}"
+            )));
+        }
         self.ik.validate()
     }
 }
@@ -291,7 +427,9 @@ pub enum Backend {
 ///
 /// ```text
 /// Kp  = Jᵀ Kx J + diag(Kq)        Kd = Jᵀ Kxd J + diag(Kqd)
-/// tau = Kp (q_goal - q) + Kd (dq_goal - dq) + coriolis        clamped to torque_limits
+/// tau = Kp (q_goal - q) + Kd (g dq_goal - dq) + coriolis      clamped to torque_limits
+///
+/// g = velocity_feedforward_gain, 0 when velocity_feedforward is off
 /// ```
 ///
 /// with the gains of `options`; `dq_goal` is taken as zero without
@@ -300,6 +438,11 @@ pub enum Backend {
 /// [`project_joint_gains`](ImpedanceOptions::project_joint_gains). `jacobian` is the zero
 /// Jacobian at the end effector in the measured configuration, column-major 6x7 as
 /// [`Model::zero_jacobian`](crate::Model::zero_jacobian) returns it.
+///
+/// The torque loop fades out this torque along a joint's motion as the joint speeds from the
+/// fade's start ([`FADE_BAND`](super::FADE_BAND)) to the barrier's onset, adds the velocity barrier
+/// ([`VELOCITY_BARRIER_GAIN`](super::VELOCITY_BARRIER_GAIN)) and clamps the sum to
+/// `torque_limits` again.
 pub fn impedance_torques(
     options: &ImpedanceOptions,
     jacobian: &[f64; 42],
@@ -318,7 +461,7 @@ pub fn impedance_torques(
     let error = SVector::<f64, 7>::from(*q_goal) - SVector::<f64, 7>::from(*q);
     let mut velocity_error = -SVector::<f64, 7>::from(*dq);
     if options.velocity_feedforward {
-        velocity_error += SVector::<f64, 7>::from(*dq_goal);
+        velocity_error += SVector::<f64, 7>::from(*dq_goal) * options.velocity_feedforward_gain;
     }
     // Jᵀ Kx J e as Jᵀ (Kx ∘ J e): the diagonal gains never form a 7x7.
     let mut tau = j.transpose()

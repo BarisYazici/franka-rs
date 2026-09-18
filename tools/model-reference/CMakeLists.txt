@@ -6,10 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Root of the libfranka 0.20.4 source tree whose build directory holds
-# libfranka.so.0.20.4. Override with -DLIBFRANKA_DIR=... if it moved.
-set(LIBFRANKA_DIR "$ENV{HOME}/libfranka"
+# libfranka.so.0.20.4; defaults to the git-ignored reference/libfranka checkout.
+set(LIBFRANKA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../reference/libfranka"
     CACHE PATH "libfranka 0.20.4 source root")
-set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_DIR}/build-rt-ignore"
+set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_DIR}/build"
     CACHE PATH "libfranka 0.20.4 build directory containing libfranka.so")
 
 # Pinocchio 4.1 / Eigen include paths, taken verbatim from

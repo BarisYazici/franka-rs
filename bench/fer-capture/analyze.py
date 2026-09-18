@@ -51,7 +51,7 @@ def main(argv=None):
                          "millisecond clock (message_id) and prints the slope and "
                          "residual RMS. Needed for `tcpdump -j adapter_unsynced` "
                          "captures, whose free-running NIC clock is not disciplined "
-                         "to anything (this box's i219 runs ~1.6x fast).")
+                         "to anything (on some hosts it runs ~1.6x fast).")
     ap.add_argument("--max-rows", type=int, default=200,
                     help="maximum table rows to print (default 200)")
     ap.add_argument("--self-test", action="store_true",

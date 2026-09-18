@@ -1,10 +1,13 @@
 //! The arm drawn with Franka's own link meshes instead of (as well as) the skeleton.
 //!
-//! [`Meshes::find`] looks in a directory for `link0 .. link7`, `hand` and `finger` with any
-//! extension the viewer loads (`glb`, `gltf`, `obj`, `stl`, or the original Collada `dae`;
-//! `tools/franka-meshes/convert.py` makes the `glb`s from franka_description). Each is logged
-//! once, statically, as an [`Asset3D`] at `world/links/<name>/mesh`, and every record gets a
-//! [`Transform3D`] on `world/links/<name>`: the pose of that link's frame in the base frame.
+//! [`Meshes::builtin`] takes the decimated FR3 or FER set of `franka-description` (feature
+//! `builtin-meshes`, on by default); [`Meshes::find`] looks in a directory for `link0 ..
+//! link7`, `hand` and `finger` with any extension the viewer loads (`glb`, `gltf`, `obj`,
+//! `stl`, or the original Collada `dae`; `tools/franka-meshes/convert.py` makes the `glb`s from
+//! franka_description). [`MeshChoice`] picks between them. Each is logged
+//! once, statically, as an [`Asset3D`] at `world/links/<name>/mesh` (under a [`Prefix`] when
+//! there is one), and every record gets a [`Transform3D`] on `world/links/<name>`: the pose of
+//! that link's frame in the base frame.
 //!
 //! # Frames
 //!
@@ -24,9 +27,9 @@ use std::path::{Path, PathBuf};
 
 use franka::robot_state::IDENTITY_TRANSFORM;
 use franka::{Frame, Model};
-use rerun::{Asset3D, Mat3x3, RecordingStream, Transform3D};
+use rerun::{Asset3D, Mat3x3, MediaType, RecordingStream, Transform3D};
 
-use crate::Result;
+use crate::{Prefix, Result, RobotKind};
 
 /// Where the meshes live in the entity tree.
 pub const ENTITY: &str = "world/links";
@@ -37,26 +40,106 @@ pub const HAND_YAW: f64 = -std::f64::consts::FRAC_PI_4;
 /// The finger frames' offset along the hand's `z`, m (`finger_joint1`'s origin).
 pub const FINGER_Z: f64 = 0.0584;
 
-/// The mesh files found for one robot.
+/// Which meshes a replay or a recording draws the arm with.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Meshes {
-    /// `link0.glb` .. `link7.glb` (or another extension), where present.
-    pub links: [Option<PathBuf>; 8],
-    pub hand: Option<PathBuf>,
-    pub finger: Option<PathBuf>,
+pub enum MeshChoice {
+    /// None: the skeleton alone.
+    Off,
+    /// [`Meshes::builtin`] for the robot; the default with the `builtin-meshes` feature.
+    Builtin,
+    /// [`Meshes::find`] in the directory.
+    Dir(PathBuf),
 }
 
-fn find_one(dir: &Path, name: &str) -> Option<PathBuf> {
+impl Default for MeshChoice {
+    fn default() -> Self {
+        if cfg!(feature = "builtin-meshes") {
+            MeshChoice::Builtin
+        } else {
+            MeshChoice::Off
+        }
+    }
+}
+
+impl MeshChoice {
+    /// The meshes for `kind`: none for [`MeshChoice::Off`], an error for a directory without a
+    /// link mesh or for [`MeshChoice::Builtin`] without the `builtin-meshes` feature.
+    pub fn resolve(&self, kind: RobotKind) -> Result<Option<Meshes>> {
+        match self {
+            MeshChoice::Off => Ok(None),
+            MeshChoice::Dir(dir) => Meshes::find(dir).map(Some),
+            #[cfg(feature = "builtin-meshes")]
+            MeshChoice::Builtin => Ok(Some(Meshes::builtin(kind))),
+            #[cfg(not(feature = "builtin-meshes"))]
+            MeshChoice::Builtin => {
+                let _ = kind;
+                Err("built-in meshes: built without the builtin-meshes feature".into())
+            }
+        }
+    }
+}
+
+/// Where one mesh comes from.
+#[derive(Clone, PartialEq, Eq)]
+pub enum MeshSource {
+    /// A file, loaded by its extension.
+    File(PathBuf),
+    /// A glTF binary built in.
+    Glb(&'static [u8]),
+}
+
+impl std::fmt::Debug for MeshSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MeshSource::File(path) => f.debug_tuple("File").field(path).finish(),
+            MeshSource::Glb(bytes) => write!(f, "Glb({} bytes)", bytes.len()),
+        }
+    }
+}
+
+/// The meshes of one robot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Meshes {
+    /// `link0` .. `link7`, where present.
+    pub links: [Option<MeshSource>; 8],
+    pub hand: Option<MeshSource>,
+    pub finger: Option<MeshSource>,
+    /// Where they are from, for printing: the directory, or the built-in set.
+    pub origin: String,
+}
+
+fn find_one(dir: &Path, name: &str) -> Option<MeshSource> {
     EXTENSIONS
         .iter()
         .map(|ext| dir.join(format!("{name}.{ext}")))
         .find(|path| path.is_file())
+        .map(MeshSource::File)
 }
 
 impl Meshes {
+    /// `franka-description`'s decimated set for `kind`, hand and finger included.
+    #[cfg(feature = "builtin-meshes")]
+    pub fn builtin(kind: RobotKind) -> Meshes {
+        use franka_description::{MeshSet, Robot, SOURCE_COMMIT, TRIANGLE_RATIO};
+        let (robot, name) = match kind {
+            RobotKind::Fr3 => (Robot::Fr3, "fr3"),
+            RobotKind::Fer => (Robot::Fer, "fer"),
+        };
+        let set = MeshSet::for_robot(robot);
+        Meshes {
+            links: set.links.map(|glb| Some(MeshSource::Glb(glb))),
+            hand: Some(MeshSource::Glb(set.hand)),
+            finger: Some(MeshSource::Glb(set.finger)),
+            origin: format!(
+                "builtin {name} ({:.0} %, franka_description {SOURCE_COMMIT})",
+                TRIANGLE_RATIO * 100.0
+            ),
+        }
+    }
+
     /// The meshes in `dir`; an error when it holds no link mesh at all.
     pub fn find(dir: &Path) -> Result<Meshes> {
-        let links: [Option<PathBuf>; 8] =
+        let links: [Option<MeshSource>; 8] =
             std::array::from_fn(|k| find_one(dir, &format!("link{k}")));
         if links.iter().all(Option::is_none) {
             return Err(format!(
@@ -69,10 +152,11 @@ impl Meshes {
             links,
             hand: find_one(dir, "hand"),
             finger: find_one(dir, "finger"),
+            origin: dir.display().to_string(),
         })
     }
 
-    /// What was found, for printing: `8 link meshes, hand, fingers`.
+    /// What there is and where from, for printing: `8 link mesh(es), hand, fingers from DIR`.
     pub fn describe(&self) -> String {
         let links = self.links.iter().flatten().count();
         let mut text = format!("{links} link mesh(es)");
@@ -82,53 +166,66 @@ impl Meshes {
         if self.finger.is_some() {
             text.push_str(", fingers");
         }
-        text
+        format!("{text} from {}", self.origin)
     }
 
     /// The assets, the base link's identity pose and the fingers' fixed offsets, all static.
-    pub fn log_static(&self, rec: &RecordingStream) -> Result<()> {
-        for (k, path) in self.links.iter().enumerate() {
-            if let Some(path) = path {
-                let entity = format!("{ENTITY}/link{k}");
-                log_asset(rec, &entity, path)?;
+    pub fn log_static(&self, rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
+        for (k, source) in self.links.iter().enumerate() {
+            if let Some(source) = source {
+                let entity = prefix.path(&format!("{ENTITY}/link{k}"));
+                log_asset(rec, &entity, source)?;
                 if k == 0 {
                     rec.log_static(entity.as_str(), &transform(&IDENTITY_TRANSFORM))?;
                 }
             }
         }
-        if let Some(path) = &self.hand {
-            log_asset(rec, &format!("{ENTITY}/hand"), path)?;
+        if let Some(source) = &self.hand {
+            log_asset(rec, &prefix.path(&format!("{ENTITY}/hand")), source)?;
         }
-        if let Some(path) = &self.finger {
+        if let Some(source) = &self.finger {
             for (name, yaw) in [("finger_left", 0.0), ("finger_right", std::f64::consts::PI)] {
-                let entity = format!("{ENTITY}/hand/{name}");
+                let entity = prefix.path(&format!("{ENTITY}/hand/{name}"));
                 let mut pose = IDENTITY_TRANSFORM;
                 pose[14] = FINGER_Z;
                 rec.log_static(entity.as_str(), &transform(&yawed(&pose, yaw)))?;
-                log_asset(rec, &entity, path)?;
+                log_asset(rec, &entity, source)?;
             }
         }
         Ok(())
     }
 
     /// At the stream's current time: the pose of every moving link and of the hand for `q`.
-    pub fn log_poses(&self, rec: &RecordingStream, model: &Model, q: &[f64; 7]) -> Result<()> {
+    pub fn log_poses(
+        &self,
+        rec: &RecordingStream,
+        prefix: &Prefix,
+        model: &Model,
+        q: &[f64; 7],
+    ) -> Result<()> {
         for k in 1..8 {
             if self.links[k].is_some() {
                 let pose = link_pose(model, q, k);
-                rec.log(format!("{ENTITY}/link{k}").as_str(), &transform(&pose))?;
+                rec.log(prefix.path(&format!("{ENTITY}/link{k}")), &transform(&pose))?;
             }
         }
         if self.hand.is_some() {
             let pose = hand_pose(model, q);
-            rec.log(format!("{ENTITY}/hand").as_str(), &transform(&pose))?;
+            rec.log(prefix.path(&format!("{ENTITY}/hand")), &transform(&pose))?;
         }
         Ok(())
     }
 }
 
-fn log_asset(rec: &RecordingStream, entity: &str, path: &Path) -> Result<()> {
-    let asset = Asset3D::from_file_path(path).map_err(|e| format!("{}: {e}", path.display()))?;
+fn log_asset(rec: &RecordingStream, entity: &str, source: &MeshSource) -> Result<()> {
+    let asset = match source {
+        MeshSource::File(path) => {
+            Asset3D::from_file_path(path).map_err(|e| format!("{}: {e}", path.display()))?
+        }
+        MeshSource::Glb(bytes) => {
+            Asset3D::from_file_contents(bytes.to_vec(), Some(MediaType::glb()))
+        }
+    };
     rec.log_static(format!("{entity}/mesh").as_str(), &asset)?;
     Ok(())
 }

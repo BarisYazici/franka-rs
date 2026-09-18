@@ -1,0 +1,54 @@
+[package]
+name = "franka-cam"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["robotics", "franka", "zenoh", "v4l2", "camera"]
+categories = ["science::robotics", "multimedia::video", "command-line-utilities"]
+description = "Zenoh camera node next to franka-node: V4L2 frames with their capture timestamps"
+
+# `cargo binstall franka-cam`: the tarballs release.yml attaches to the `v*` GitHub release.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[features]
+# The frames of an arm's episode into a Rerun `.rrd` beside the arm node's own, through
+# `franka-rerun` (Rust 1.96 for `rerun` 0.37).
+record = ["dep:franka-rerun"]
+# A `FrameSource` that needs no camera, for the tests and for a node on a host without one.
+fake = []
+
+[dependencies]
+franka-rerun = { workspace = true, optional = true }
+libc.workspace = true
+zerocopy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml = "1"
+log = "0.4"
+env_logger = "0.11"
+zenoh = { version = "1.10", default-features = false, features = [
+    "transport_tcp",
+    "transport_udp",
+    # A link that leaves the local segment must be able to be `tls/`; without the
+    # transport compiled in, such an endpoint cannot be established at all.
+    "transport_tls",
+] }
+ctrlc = { version = "3", features = ["termination"] }
+
+[dev-dependencies]
+# For one test: that the head this crate reads of `franka/<arm>/state` is the arm node's own
+# `StateMsg`, layout and version. A dev-dependency, so a camera host's binary carries none of it,
+# and a path-only dev-dependency is dropped from the published manifest.
+franka-node = { path = "../franka-node" }
+
+[[test]]
+name = "cam_node"
+required-features = ["fake"]

@@ -1,55 +1,80 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BarisYazici/franka-rs/main/docs/book/src/assets/logo.png" width="160" alt="">
+  <img src="https://raw.githubusercontent.com/BarisYazici/franka-rs/main/docs/book/src/assets/logo.png" width="120" alt="">
 </p>
 
 <h1 align="center">franka-rs</h1>
+<p align="center">Send targets. Let Rust handle the realtime control.</p>
 
-<p align="center">
-  A Rust client for the Franka Control Interface: one binary for the FR3 and the Panda, no C++,
-  the 1 kHz loop as a library.
-</p>
+Control a Franka FR3 or Panda from Rust or Python. `franka-rs` connects directly to the
+robot, generates smooth motion from your targets, and runs the 1 kHz control loop.
+It implements the Franka Control Interface in Rust, without libfranka or C++.
 
-<p align="center">
-  <a href="https://github.com/BarisYazici/franka-rs/actions/workflows/ci.yml"><img src="https://github.com/BarisYazici/franka-rs/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/BarisYazici/franka-rs/actions/workflows/docs.yml"><img src="https://github.com/BarisYazici/franka-rs/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
-  <a href="https://crates.io/crates/franka-rs"><img src="https://img.shields.io/crates/v/franka-rs.svg" alt="crates.io"></a>
-  <a href="https://pypi.org/project/franka-rs/"><img src="https://img.shields.io/pypi/v/franka-rs.svg" alt="PyPI"></a>
-  <a href="https://docs.rs/franka-rs"><img src="https://img.shields.io/docsrs/franka-rs" alt="docs.rs"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-</p>
+**[Choose your setup](docs/book/src/getting-started/choose-your-setup.md)** ·
+[Documentation](https://barisyazici.github.io/franka-rs/introduction.html) ·
+[API](https://docs.rs/franka-rs) · [Changelog](CHANGELOG.md)
 
-`franka-rs` speaks the protocol a Franka Research 3 or a Franka Emika Robot (Panda) is
-controlled through: a TCP channel for commands and the 1 kHz UDP loop for state and
-commands, with the robot's kinematics and dynamics evaluated in the crate. There is no
-libfranka and no C++ underneath, so `cargo add franka-rs` or `pip install franka-rs` is the
-whole installation, and one program drives both robot generations because the protocol
-version is negotiated when it connects.
+## Two ways to use it
 
-Your program does not have to be a 1 kHz program. A policy at 10 Hz, a teleoperation
-device, a script or a notebook cell sends targets at its own rate; the crate's realtime
-thread turns them into a continuous command within a velocity, acceleration and jerk
-budget, and the robot follows. It tracks that command with torques from the crate's
-impedance law by default, so the arm stays compliant, with stiffness and damping as
-options, or with the robot's own controller on request (`Backend::RobotController`).
+| Your setup | What to install | Where control runs |
+|---|---|---|
+| A Rust or Python program connected directly to the arm | `franka-rs` | Your Linux realtime machine |
+| A laptop or GPU workstation commanding an arm through a Raspberry Pi 5 | `franka-node` on the Pi, `franka-node-client` on the laptop (from source until released) | The Pi, running `franka-rs` |
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/BarisYazici/franka-rs/main/docs/book/src/assets/bridge.png" width="800" alt="Stepped targets from a commander at 5 to 30 Hz enter franka-rs; a continuous, jerk-limited command leaves for the robot.">
-</p>
-<p align="center"><sub>Stepped, bursty, stalling targets in; one continuous command out. Illustration of the generator's profile for a scripted target sequence under a 0.25 m/s, 0.5 m/s², 20 m/s³ budget.</sub></p>
-
-## Install
+For direct control, install the published library in your project:
 
 ```sh
-cargo add franka-rs        # Rust: `use franka::Robot;`, Rust 1.85 or newer
-pip install franka-rs      # Python: `import franka`
+cargo add franka-rs                  # Rust: use franka::Robot
+python -m pip install franka-rs      # Python: import franka
 ```
 
-The realtime prerequisites (a `PREEMPT_RT` kernel, `ulimit -r`, a wired link to the robot)
-are on [The realtime machine](https://barisyazici.github.io/franka-rs/getting-started/realtime-machine.html).
-Without a robot, a simulated FR3 is
-[one `docker run` away](https://barisyazici.github.io/franka-rs/getting-started/simulator.html).
+The machine wired to a real arm needs a `PREEMPT_RT` kernel, realtime scheduling
+permissions, and FCI enabled on the robot. Follow
+[the realtime setup](docs/book/src/getting-started/realtime-machine.md) before motion.
+No robot yet? [Start with the simulator](docs/book/src/getting-started/simulator.md),
+or [open its desktop viewer](docs/book/src/getting-started/simulator.md#start-with-visualization)
+to watch the arm move.
+
+## Keep the control loop on the Pi
+
+```text
+Your laptop / GPU workstation    Raspberry Pi 5              Franka arm
+Python targets ── Zenoh ───────▶ franka-node ── wired FCI ──▶ FR3 or Panda
+                                franka-rs at 1 kHz
+```
+
+Your script, policy, or teleoperation application sends goals at its own rate. On the
+Pi, `franka-node` uses the library to generate a continuous trajectory and calculate
+impedance-control torques every millisecond. Zenoh carries targets and state between
+machines; the realtime loop stays on the Pi. A direct client connection needs no
+separate Zenoh router.
+
+**[Set up a Raspberry Pi 5](docs/book/src/getting-started/raspberry-pi.md)** has the
+installation, configuration, first state read, and a short Python motion example.
+The node and its peripherals are development features at this repository revision; that guide
+includes source installation instead of assuming that release packages are available.
+
+## Add only what you need
+
+| Optional part | What it adds |
+|---|---|
+| Franka Hand | Gripper commands through the library or node |
+| `franka-cam` | USB camera streams over Zenoh, in a separate process |
+| `franka-rerun` / the node's `record` feature | Record arm state and commands, then inspect them in Rerun |
+| `franka-description` | Robot meshes used by the visualizer; usually pulled in for you |
+
+[Peripherals and recording](docs/book/src/getting-started/peripherals.md) explains how
+these fit together, including current hardware-validation limits. Cameras and Zenoh
+are optional when using the core library directly.
+
+Use the pieces to build a policy loop, a teleoperation application, or recorded experiments.
+You supply the policy or input-device integration; this repository supplies robot control,
+transport, and recording. Detailed configuration lives in the
+[node guide](docs/book/src/howto/franka-node.md).
 
 ## Quick example
+
+<details>
+<summary>Rust: drive the 1 kHz loop yourself, or send targets from a slower program</summary>
 
 ```rust
     let realtime = match env::var("FRANKA_REALTIME").as_deref() {
@@ -99,28 +124,17 @@ with robot.cartesian_targets() as arm:
     arm.move_by([0.0, 0.0, 0.05])   # 5 cm up, relative to the current target
 ```
 
-## Start here
+</details>
 
-| You want to… | Where to look |
-|---|---|
-| install it and move the arm for the first time | [Install](https://barisyazici.github.io/franka-rs/getting-started/install.html), [The realtime machine](https://barisyazici.github.io/franka-rs/getting-started/realtime-machine.html), [First program](https://barisyazici.github.io/franka-rs/getting-started/first-program.html) |
-| drive it from Python or a notebook | [From Python](https://barisyazici.github.io/franka-rs/getting-started/python.html) |
-| know what can stop you before it does | [Things to keep in mind](https://barisyazici.github.io/franka-rs/concepts/fci.html) |
-| do one specific thing | [Command from a low-rate program](https://barisyazici.github.io/franka-rs/howto/target-control.html), [Write a 1 kHz callback](https://barisyazici.github.io/franka-rs/howto/callback-control.html), [Use the model](https://barisyazici.github.io/franka-rs/howto/model.html), [Record and replay a run](https://barisyazici.github.io/franka-rs/howto/flight-recorder.html), [Run the examples](https://barisyazici.github.io/franka-rs/howto/examples.html) |
-| see the protocol, the constants and the measurements | [Compared with libfranka](https://barisyazici.github.io/franka-rs/reference/libfranka.html), [Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html) |
-| read the rustdoc | [API reference](https://barisyazici.github.io/franka-rs/api/franka/index.html) |
-| contribute or run the tests | [Contributing](https://barisyazici.github.io/franka-rs/contributing.html) |
+## Project status
 
-## Status
-
-Version 0.3. Both protocol versions, every control interface, target control from Rust and
-Python, the gripper and the flight recorder have run on real FR3 and FER arms; measured side
-by side with libfranka, loop timing is the same and the model agrees to 1e-14. Target
-control's impedance backend, new in 0.3.0 and the default, has run on the simulator and on
-two real FERs, not yet on an FR3. Not there yet: a `ros2_control` hardware interface, the
-vacuum gripper, a published simulator image for the FER. The dates and figures are in
-[Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html),
-what changed in [`CHANGELOG.md`](CHANGELOG.md).
+See [the changelog](CHANGELOG.md) for the distinction between released and development
+features. The core supports FR3 / FCI v10 and Panda / FCI v5. The node documentation
+reports Raspberry Pi 5 runs with one or two arms. Validation depends on the controller
+and peripheral: the node's gripper path and camera recording still have simulator-only
+or synthetic-test coverage, and the core docs retain an FR3 impedance-validation caveat.
+There is no `ros2_control` hardware interface, vacuum-gripper support, or published Panda
+simulator image yet.
 
 ## Credit and license
 
