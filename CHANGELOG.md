@@ -16,6 +16,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The `model-library` feature is now off by default. Both robots use the native Rust
+  model through `Robot::load_model()`. Applications that explicitly download the Panda's
+  shared library must enable `model-library`; the optional comparison path remains available.
+
 - **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
   is now an `Option<Workspace>` defaulting to `None`, and `ArmConfig::workspace` is optional in
   the TOML. The retired default -- x 0.2..0.8, y -0.5..0.5, z 0..0.8 in the base frame --

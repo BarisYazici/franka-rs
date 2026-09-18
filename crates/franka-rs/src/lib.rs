@@ -28,8 +28,9 @@
 //! # Model and gripper
 //! [`Model`] answers forward kinematics, both Jacobians, the mass matrix, Coriolis and gravity.
 //! It runs on a native URDF-based backend by default and can also load the robot's own
-//! `libfcimodels` shared object ([`Robot::load_model_from_robot`]). [`Gripper`] is the separate
-//! Franka Hand client, on its own TCP/UDP session.
+//! `libfcimodels` shared object with the opt-in `model-library` feature
+//! ([`Robot::load_model_from_robot`]). [`Gripper`] is the separate Franka Hand client, on its
+//! own TCP/UDP session.
 //!
 //! # Realtime requirements
 //! A control loop must complete within 1 ms. [`RealtimeConfig::Enforce`] (libfranka's default)

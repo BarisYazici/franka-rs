@@ -14,10 +14,9 @@ The library is named `franka`, so you write `use franka::Robot;`. Rust 1.89 or n
 cycles. To follow `main` instead of a release, depend on the git repository:
 `franka-rs = { git = "https://github.com/BarisYazici/franka-rs" }`.
 
-| feature | default | what it does |
-|---|---|---|
-| `model-library` | on | Compiles `Robot::load_model_from_robot`, the `dlopen` path for the model library an FER serves (pulls in `libloading`). Turn it off for a static musl build or to keep `dlopen` out of your process; `Robot::load_model()` works either way, on both robots. |
-| `serde` | off | `Serialize` / `Deserialize` on `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a control log can be saved as JSON and replayed; see [Record and replay a run](../howto/flight-recorder.md). |
+Both robots use the Rust model implementation; no separate Panda model library is needed.
+For JSON serialization, enable the optional `serde` feature; see
+[Record and replay a run](../howto/flight-recorder.md).
 
 ## A Raspberry Pi or another remote control host
 

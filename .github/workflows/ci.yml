@@ -39,7 +39,8 @@ jobs:
   # `SKIP:` line straight to the process's stderr (past libtest's output capture) and
   # returns, and `model_library_fixture_present_or_skipped_loudly` makes that visible in one
   # place. Set `FRANKA_FER_MODEL_SO` to a captured library to run it for real. It is in this
-  # job so that it keeps compiling and so that the skip is on the record.
+  # job with `--features model-library` so that it keeps compiling and so that the skip
+  # is on the record.
   #
   # Everything else under crates/franka-rs/tests/ is a `sim_*.rs` binary that connects to a
   # running franka-sim server; those run in the three simulator jobs below instead. This job
@@ -68,13 +69,16 @@ jobs:
       - name: cargo clippy (--no-default-features)
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
-      # `-p franka-rs` alone: with `--workspace` the other crates' default features unify
-      # `model-library` back on.
+      # `-p franka-rs` alone: with `--workspace` fer-model-fit's explicit opt-in unifies
+      # `model-library` back on, even though franka-rs disables it by default.
       - name: cargo clippy (franka-rs, --no-default-features)
         run: cargo clippy -p franka-rs --all-targets --no-default-features -- -D warnings
 
       - name: cargo clippy (franka-rs, --features serde)
         run: cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
+
+      - name: cargo clippy (franka-rs, --features model-library)
+        run: cargo clippy -p franka-rs --all-targets --features model-library -- -D warnings
 
       # The node's episode recording pulls franka-rerun; off by default. The camera crate's
       # integration test is gated on its `fake` source, so --all-targets alone never builds it.
@@ -90,16 +94,24 @@ jobs:
       - name: unit tests (franka-rs, --features serde)
         run: cargo test -p franka-rs --lib --features serde
 
+      - name: unit tests (franka-rs, --features model-library)
+        run: cargo test -p franka-rs --lib --features model-library
+
       - name: wire_sizes + model_conformance (FCI v10 and v5)
         run: |
           cargo test -p franka-rs \
             --test wire_sizes --test model_conformance \
             --test wire_sizes_v5 --test fer_native_conformance \
-            --test fer_model_conformance \
             --test example_motion_generator
+
+      - name: FER model-library conformance (opt-in)
+        run: cargo test -p franka-rs --features model-library --test fer_model_conformance
 
       - name: doctests
         run: cargo test --workspace --doc
+
+      - name: doctests (franka-rs, default features)
+        run: cargo test -p franka-rs --doc
 
       # The flight recorder on synthetic logs, plus the recorder's 1 kHz producer test.
       - name: franka-rerun tests and example build
@@ -124,6 +136,11 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps
+
+      - name: cargo doc (franka-rs, default features)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc -p franka-rs --no-deps
 
   # Build-only: confirms the crate and its examples cross-compile for aarch64
   # (aarch64-unknown-linux-gnu). Uses the distro cross-gcc as the
@@ -298,10 +315,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Simulator tests (FER / FCI v5)
+      - name: Simulator tests (FER / FCI v5, native and model-library)
         env:
           FRANKA_SIM_FER_IMAGE: ${{ vars.FRANKA_SIM_FER_IMAGE }}
         run: |
-          cargo test --release -p franka-rs \
+          cargo test --release -p franka-rs --features model-library \
             --test sim_v5_handshake --test sim_v5_commands --test sim_v5_motions \
             --test sim_v5_stop_and_reflex -- --test-threads=1
