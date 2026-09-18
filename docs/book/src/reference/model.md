@@ -115,7 +115,8 @@ physics simulation.
 
 ## `load_model_from_robot`: the opt-in download path
 
-The v5 download path is still there and still supported:
+The v5 download path is available with the opt-in `model-library` feature. Enable it with
+`cargo add franka-rs --features model-library` only when you need this comparison path:
 
 ```rust,no_run
 # extern crate franka;
@@ -142,9 +143,9 @@ blob:
   a *safe* `fn` here for the same reason: the FCI peer is already fully trusted, because it
   is the thing that commands the arm. Give the FCI its own isolated link, as Franka's setup
   guide requires.
-- **Opt out entirely** by building without the default `model-library` feature:
-  `load_model_from_robot()` then returns a `FrankaError::Model`, `libloading` is not linked
-  at all, and `load_model()` is unaffected. The offline entry points
+- **Off by default.** Without `model-library`, the FER path of `load_model_from_robot()`
+  returns a `FrankaError::Model`; this crate does not pull in `libloading`, and
+  `load_model()` is unaffected. The offline entry points
   `Model::from_model_library_bytes` and `Model::from_model_library_path`, which take the
   bytes from the caller, are `unsafe fn` and carry the corresponding `# Safety` contract.
 - **The library needs libm in the loading process.** `libfcimodels_x64.so` imports `sin`,

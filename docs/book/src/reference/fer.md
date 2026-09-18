@@ -56,21 +56,16 @@ acceleration and jerk checks. The client-side rate limiter, the crate's with
 (`rate_limiting::fer::MAX_TRANSLATIONAL_ACCELERATION` = 13 m/s², jerk 6500 m/s³) are what the
 robot accepts there, not what the joint-side check accepts.
 
-Near the ready pose of an FER, a translational ramp at 2.5 m/s² with 500 m/s³ of jerk is
-refused within a few cycles as `cartesian_motion_generator_joint_velocity_discontinuity`; a
-ramp at libfranka's own Cartesian limits trips both that and
-`cartesian_motion_generator_joint_acceleration_discontinuity`; 1.5 m/s² with 200 m/s³ passes.
-The criterion is the per-joint acceleration limit
-(`rate_limiting::fer::MAX_JOINT_ACCELERATION`, 7.5 rad/s² on joint 2) applied to the joint
-motion the poses imply. At the ready pose a metre of end-effector travel in x costs about
-3.2 rad on joint 2, so 2.5 m/s² is 8 rad/s² there, over its limit, while 1.5 m/s² is
-4.8 rad/s². The same budget at a more extended pose, where that lever is larger, can still
-trip. libfranka behaves identically, and its Cartesian examples pass because their
-trajectories start with near-zero acceleration.
+A Cartesian pose stream can therefore trigger
+`cartesian_motion_generator_joint_velocity_discontinuity` or
+`cartesian_motion_generator_joint_acceleration_discontinuity` even when its Cartesian
+velocity, acceleration and jerk are within their limits. The criterion includes the
+per-joint acceleration limits (`rate_limiting::fer::MAX_JOINT_ACCELERATION`, including
+7.5 rad/s² on joint 2), applied to the joint motion implied by the poses. The mapping
+varies with configuration, so a Cartesian budget that works at one pose may fail at
+another.
 
-The check is not v5-specific. Both error names are in libfranka's error list for the FR3
-too, and an FR3 applies its published limit as is: a stream is refused with
-`cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crosses
+These checks also apply to the FR3, whose nominal joint acceleration limit is
 10 rad/s² (`franka::MAX_JOINT_ACCELERATION`).
 
 A stream of stepped targets therefore needs its own, smaller budget with the loop's limiter

@@ -90,18 +90,11 @@ eighth sequence also runs, that an axis at rest whose target did not change stay
 
 ## The three rules
 
-Without the rules below, with `limit_rate_cartesian_pose` behind it, the generator stays on
-its targets, but the limiter clamps it on the first move of the commander example's
-sequence that brakes one axis while another starts, and from then on the command orbits at
-the velocity cap until the robot refuses it. The per-cycle log of such a run is a fixture in
-the module's tests. Replayed
-through the generator alone, it ends exactly on the last target with every per-axis limit
-respected. Replayed through the generator *and* the limiter, the limiter clamps the command
-by nanometres at 1.601 s (`y` braking at −0.5 m/s² while `z` starts at +0.5 m/s² is a norm
-of 0.71 m/s² and 28 m/s³ of jerk), and 300 ms later the command is millimetres behind the
-generator's own state, which never hears of it. libfranka's limiter has no braking logic:
-tracking a pose it has fallen behind, it saturates at the budget, passes the pose, and
-reverses, and the replay reproduces the ±10 cm orbit in the log. Three rules follow.
+The generator and the rate limiter must use compatible budgets and state. Otherwise the
+limiter can alter the command while the generator continues planning from an unsent
+position. The resulting lag can produce oscillation: the limiter bounds derivatives but
+does not plan braking to a target. The module's regression tests cover this interaction.
+Three rules keep the two in sync.
 
 1. **The limits are per axis.** Two axes at full acceleration have a vector norm √2 above it,
    and a Cartesian budget is a norm (that is what `limit_rate_cartesian_pose` bounds). So the
@@ -109,8 +102,7 @@ reverses, and the replay reproduces the ±10 cm orbit in the log. Three rules fo
    what keeps a synchronised diagonal move inside the budget.
 2. **Step one nominal cycle per command** (`DELTA_T`, 1 ms), not the measured period. The
    robot and the rate limiter check every packet against a 1 ms budget, so a 2 ms step after
-   a lost packet is a doubled velocity to them; the 52 cycles of 2–4 ms in that log each
-   doubled an increment.
+   a lost packet is a doubled velocity to them.
 3. **Re-anchor on the robot's echo of the position every cycle** with `set_position(O_T_EE_c)`
    (or `q_d`), so that whatever runs behind the generator can shape one command but never
    accumulate a lag it plans against. The position only: the echoed twist is a mean over the
@@ -129,11 +121,10 @@ than the `max_acceleration` in force, `max_acceleration` no faster than `max_jer
 is then at most one cycle of the next order, which is the generator's own bound rather than an
 impulse. `max_jerk` is not stored in the state and clamps nothing, so it may step either way.
 
-With the first two rules the replayed backstop never touches a command (worst alteration
-below 1e-9 m) and every target is met exactly. With the third rule alone it binds by up to
-50 µm and the run stays bounded, millimetres from the targets and no orbit, but does not
-land exactly, because a vector-norm clamp distorts one axis's corrections while another
-saturates. Both replays are regression tests in the module.
+Per-axis budgets and nominal stepping prevent the backstop from binding under normal
+conditions. Re-anchoring prevents any remaining alteration from accumulating as position
+error. Re-anchoring alone does not ensure exact landing: a vector-norm clamp can distort
+one axis's corrections while another saturates.
 
 ## Why the budget is smaller than the limiter's
 
@@ -141,19 +132,15 @@ The crate's rate limiter with `limit_rate = true` is a port of libfranka's, and 
 (13 m/s² and 6500 m/s³ on an FER, 9 m/s² and 4500 m/s³ on an FR3) are what the robot accepts
 *in Cartesian space*. The robot also runs inverse kinematics on every commanded pose and
 checks the continuity of the result in **joint space**, and that is the check a stepped target
-stream trips. Near the ready pose of an FER a ramp at 2.5 m/s² is refused as
-`cartesian_motion_generator_joint_velocity_discontinuity` and 1.5 m/s² passes; the cause is
-the ordinary per-joint acceleration limit: joint 2 moves about 3.2 rad per metre of x travel
-there, so 2.5 m/s² is 8 rad/s² against its 7.5 rad/s² limit. On an FR3 the same refusal
-comes in the cycle a joint crosses its 10 rad/s². The full account is on [FER / Panda
-specifics](./fer.md).
+stream can trip. A Cartesian acceleration within the limiter's budget can still exceed a
+joint's acceleration limit, depending on the pose and the inverse-kinematics mapping. See
+[FER / Panda specifics](./fer.md).
 
-A second limit binds on an FER above roughly 1 m/s² of commanded acceleration: the robot's
-external-force estimate `O_F_ext_hat_K` crosses 20 N at about 0.25 m/s and raises
-`cartesian_reflex`, so for fast target steps the collision thresholds, not the kinematic
-limits, are the binding constraint (the examples' 10 N nominal thresholds are crossed at
-0.25 m/s, which is why the commander example sets libfranka's example thresholds
-explicitly). Both figures are approximate, not a specification.
+Collision thresholds also apply independently of the kinematic limits. The external-force
+estimate `O_F_ext_hat_K` can cross a configured threshold during motion and raise
+`cartesian_reflex`, even when the commanded derivatives remain within their budgets.
+Configure thresholds for the task; the commander example sets libfranka's example
+thresholds explicitly.
 
 Hence the defaults: a translational budget of **0.3 m/s, 0.5 m/s², 20 m/s³**, under which a
 5 cm step along one axis becomes an S-curve that peaks at about 0.12 m/s and lands after
@@ -205,11 +192,8 @@ on and the low-pass filter off. Every cycle, on that thread:
 6. **Land, hold, finish.** After `stop()` the generator runs on until every axis has landed:
    within `Settle::tolerance` of the target (1e-3: 1 mm or 1 mrad), slower than
    `REST_VELOCITY` (1e-4 m/s or rad/s) and accelerating less than `REST_ACCELERATION` (0.05).
-   The hold freezes a velocity step of at most `REST_VELOCITY` in one cycle, a jerk of
-   100 per second cubed, which the joint side of a Cartesian command amplifies about
-   threefold (1 mm/s freezes as about 3840 rad/s³ on joint 2 in the simulator, over its 3750); not
-   smaller, because the `float32` echo of an FR3 keeps a landed generator in micro-profiles
-   that peak at about 2e-5 per second and 0.01 per second squared. Then the loop stops
+   The rest thresholds limit the discontinuity when entering the hold while allowing for
+   the small residual motion caused by the FR3's `float32` command echo. Then the loop stops
    stepping the generator and sends the robot's echo of the last command, bit for bit and
    past the backstop, for `Settle::cycles` cycles (250), and sets `motion_finished` on one
    more of it. A motion never finishes on a moving command: the robot refuses exactly that

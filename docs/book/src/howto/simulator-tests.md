@@ -57,22 +57,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 cargo clippy -p franka-rs --all-targets --no-default-features -- -D warnings
 cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
+cargo clippy -p franka-rs --all-targets --features model-library -- -D warnings
 cargo test --workspace --lib
 cargo test -p franka-rs --lib --features serde
+cargo test -p franka-rs --lib --features model-library
 cargo test -p franka-rs \
   --test wire_sizes --test model_conformance \
   --test wire_sizes_v5 --test fer_native_conformance \
-  --test fer_model_conformance \
   --test example_motion_generator
+cargo test -p franka-rs --features model-library --test fer_model_conformance
 cargo test --workspace --doc
+cargo test -p franka-rs --doc
 cargo test -p franka-rerun
 cargo build -p franka-rerun --examples
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc -p franka-rs --no-deps
 ```
 
-The `--no-default-features` invocations keep the crate building without `model-library`, as
-it [cross-compiles to static musl](./cross-compile.md); the `-p franka-rs` one is needed
-because `--workspace` unifies the other crates' default features back on. The `--lib` tests
+Standalone `-p franka-rs` checks exercise the native-model default, including the path
+used by [static musl builds](./cross-compile.md). Workspace builds can enable the optional
+`model-library` feature through `fer-model-fit`; CI checks that opt-in separately. The `--lib` tests
 include the README-sync test (the README's quick example must stay byte-identical to `main`
 in `examples/readme_joint_move.rs`). `fer_model_conformance` drives an FER's shared object,
 which is not committed; without `FRANKA_FER_MODEL_SO` it prints `SKIP:` lines and passes.
@@ -105,6 +109,9 @@ flock .sim.lock env FRANKA_SIM_FER_IMAGE=franka-sim:panda-v5 cargo test --releas
   --test sim_v5_handshake --test sim_v5_commands --test sim_v5_motions \
   --test sim_v5_stop_and_reflex -- --test-threads=1
 ```
+
+The default command checks the native Panda model. Add `--features model-library` before
+`--test` to also exercise the optional shared-library download; the FER CI job enables it.
 
 The `panda-v5` image has no joint-side check ([FER / Panda specifics](../reference/fer.md)).
 A full `cargo test --release --workspace` needs both images, both variables set, and the lock.

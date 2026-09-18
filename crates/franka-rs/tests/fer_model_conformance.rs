@@ -22,8 +22,8 @@
 //! and prints the per-quantity max absolute differences. It reports; it does
 //! not assert.
 
-//! The whole suite needs the default-on `model-library` feature (the
-//! `libloading` backend); with `--no-default-features` it compiles to nothing.
+//! The whole suite needs the opt-in `model-library` feature (the
+//! `libloading` backend); without that feature it compiles to nothing.
 #![cfg(feature = "model-library")]
 
 use franka::model::{Frame, Model};

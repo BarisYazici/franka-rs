@@ -4,8 +4,10 @@
 //! Run under the machine-wide simulator lock:
 //!
 //! ```text
-//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_handshake
+//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_handshake -- --test-threads=1
 //! ```
+//!
+//! Add `--features model-library` before `--` to also check the downloaded shared object.
 //!
 //! The image comes from [`SimConfig::fer_v5`]: `$FRANKA_SIM_FER_IMAGE`, else
 //! `franka-sim:panda-v5`. `FRANKA_SIM_IMAGE` names the **FR3** image and is deliberately
@@ -117,40 +119,48 @@ fn v5_handshake_state_stream_and_commands() {
              behaviour changed"
         );
 
-        // (g) `LoadModelLibrary`: the `.so` tail arithmetic (`header.size - 13`) is only
-        // exercised against a real server here, so check that the downloaded library both
-        // loads and evaluates. `Frame::Flange` sits 0.107 m along the last joint's z axis
-        // (`franka_emika_panda` URDF, `panda_joint8`), which is the cheapest end-to-end proof
-        // that the bound symbols return the FER's kinematics and not garbage.
-        let model = robot
-            .load_model_from_robot()
-            .expect("load_model_from_robot failed on FCI v5");
+        // (g) The native FER model is available in every build.
+        let model = robot.load_model().expect("load_model failed on FCI v5");
         let state = robot.read_once().expect("read_once failed");
-        let joint7 = model.pose(franka::Frame::Joint7, &state);
-        let flange = model.pose(franka::Frame::Flange, &state);
-        assert!(
-            flange.iter().all(|value| value.is_finite()),
-            "Frame::Flange pose is not finite: {flange:?}"
-        );
+        check_flange_offset(&model, &state);
 
-        eprintln!("sim v5: Joint7 {joint7:?}\n        Flange {flange:?}");
-        let offset = [
-            flange[12] - joint7[12],
-            flange[13] - joint7[13],
-            flange[14] - joint7[14],
-        ];
-        let distance =
-            (offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]).sqrt();
-        assert!(
-            (distance - 0.107).abs() < 1e-4,
-            "Flange is {distance} m from Joint7, expected 0.107 m (offset {offset:?})"
-        );
-        // The offset is along joint 7's own z axis, i.e. the third column of its pose.
-        let z_axis = [joint7[8], joint7[9], joint7[10]];
-        let along_z = offset[0] * z_axis[0] + offset[1] * z_axis[1] + offset[2] * z_axis[2];
-        assert!(
-            (along_z - 0.107).abs() < 1e-4,
-            "the Flange offset is {along_z} m along Joint7's z axis, expected 0.107 m"
-        );
+        // The opt-in path also checks the `.so` tail arithmetic (`header.size - 13`)
+        // against the server and confirms that the bound symbols evaluate.
+        #[cfg(feature = "model-library")]
+        {
+            let model = robot
+                .load_model_from_robot()
+                .expect("load_model_from_robot failed on FCI v5");
+            check_flange_offset(&model, &state);
+        }
     }
+}
+
+// The flange sits 0.107 m along joint 7's z axis (`panda_joint8`).
+fn check_flange_offset(model: &franka::Model, state: &franka::RobotState) {
+    let joint7 = model.pose(franka::Frame::Joint7, state);
+    let flange = model.pose(franka::Frame::Flange, state);
+    assert!(
+        flange.iter().all(|value| value.is_finite()),
+        "Frame::Flange pose is not finite: {flange:?}"
+    );
+
+    eprintln!("sim v5: Joint7 {joint7:?}\n        Flange {flange:?}");
+    let offset = [
+        flange[12] - joint7[12],
+        flange[13] - joint7[13],
+        flange[14] - joint7[14],
+    ];
+    let distance = (offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]).sqrt();
+    assert!(
+        (distance - 0.107).abs() < 1e-4,
+        "Flange is {distance} m from Joint7, expected 0.107 m (offset {offset:?})"
+    );
+    // The offset is along joint 7's own z axis, i.e. the third column of its pose.
+    let z_axis = [joint7[8], joint7[9], joint7[10]];
+    let along_z = offset[0] * z_axis[0] + offset[1] * z_axis[1] + offset[2] * z_axis[2];
+    assert!(
+        (along_z - 0.107).abs() < 1e-4,
+        "the Flange offset is {along_z} m along Joint7's z axis, expected 0.107 m"
+    );
 }

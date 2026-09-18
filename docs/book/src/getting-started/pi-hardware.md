@@ -5,9 +5,8 @@ Build the electronics first. The enclosure and cameras can come later.
 ## Shopping list
 
 These are the parts used in the reference model. Product links identify the part; prices
-and availability vary. The original build notes did not conclusively identify the adapter
-from a photograph: **P02 is the modeled reference**, not a confirmed identification of every
-existing build. Check the board label before buying matching enclosure parts.
+and availability vary. **P02 is the modeled reference**; the enclosure is specific to that
+adapter. Check your board label before buying matching enclosure parts.
 
 | Part | Qty | What to look for / links |
 |---|---:|---|
@@ -61,9 +60,9 @@ interfaces in [step 2](./pi-system.md); do not assume port order from the name a
 <details>
 <summary>Optional cameras and input devices</summary>
 
-The original BOM lists two **ELP-USBGS1200P01 / AR0234** USB cameras, but sensor and lens
-identification were not confirmed; the models use generic camera housings. Check a camera's
-V4L2 formats before choosing it for `franka-cam`.
+The reference BOM lists two **ELP-USBGS1200P01 / AR0234** USB cameras. The CAD models use
+generic camera housings; the sensor and lens are not verified by these models. Check a
+camera's V4L2 formats before choosing it for `franka-cam`.
 [Manufacturer example](https://www.elpcctv.com/elp-2mp-ar0234-sensor-1200p-1080p-90fps-global-shutter-usb-camera-p-388.html).
 
 Neither cameras nor a VR headset are required for control. Your application provides

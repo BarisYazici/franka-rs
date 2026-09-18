@@ -23,8 +23,8 @@ repository = "https://github.com/BarisYazici/franka-rs"
 homepage = "https://barisyazici.github.io/franka-rs/"
 
 [workspace.dependencies]
-# Path for the workspace, version for the registry. `default-features = false` so that a member
-# can opt out of `model-library`; a member that wants it says `default-features = true`.
+# Path for the workspace, version for the registry. Members enable optional features
+# explicitly; loading the FER's shared object requires `features = ["model-library"]`.
 franka = { package = "franka-rs", path = "crates/franka-rs", version = "0.4", default-features = false }
 franka-description = { path = "crates/franka-description", version = "0.4" }
 franka-rerun = { path = "crates/franka-rerun", version = "0.4" }

@@ -38,7 +38,7 @@ pub mod native_backend;
 ///
 /// [`model_library::load_from_robot`] exists in every configuration so that
 /// callers need no `cfg` of their own; the `dlopen`-based backend behind it is
-/// the default-on `model-library` cargo feature, which pulls in `libloading`.
+/// the opt-in `model-library` Cargo feature, which pulls in `libloading`.
 /// Without that feature the crate builds with the URDF-based
 /// [`native_backend`] only and `load_from_robot` reports a
 /// [`crate::FrankaError::Model`].

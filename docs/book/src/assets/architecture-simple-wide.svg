@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="240" viewBox="0 0 900 240" role="img" aria-labelledby="title desc">
+  <title id="title">From your program to robot motion</title>
+  <desc id="desc">Your program chooses a goal and sends it to a Pi 5 or Linux PC. There, franka-rs turns the goal into smooth motion for the Franka robot. The robot moves and reports its state.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0 0 8 4 0 8Z" fill="#38796f"/>
+    </marker>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-anchor: middle; fill: #202b37; }
+      .heading { font-size: 26px; font-weight: 700; }
+      .body { font-size: 22px; }
+      .label { font-size: 22px; font-weight: 600; fill: #2e655c; }
+      .connection { fill: none; stroke: #38796f; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="900" height="240" rx="22" fill="#f7f6f2"/>
+
+  <rect x="20" y="24" width="220" height="192" rx="18" fill="#fff" stroke="#c7cfcd" stroke-width="1.5"/>
+  <text x="130" y="83" class="heading">Your program</text>
+  <text x="130" y="137" class="body">Choose a goal</text>
+
+  <path d="M250 133H310" class="connection"/>
+  <text x="280" y="113" class="label">Goal</text>
+
+  <rect x="320" y="24" width="250" height="192" rx="18" fill="#edf5f1" stroke="#94b5aa" stroke-width="1.5"/>
+  <text x="445" y="83" class="heading">Pi 5 or Linux PC</text>
+  <text x="445" y="137" class="body">franka-rs turns it into</text>
+  <text x="445" y="168" class="body">smooth motion</text>
+
+  <path d="M580 133H640" class="connection"/>
+  <text x="610" y="113" class="label">Motion</text>
+
+  <rect x="650" y="24" width="230" height="192" rx="18" fill="#fff" stroke="#c7cfcd" stroke-width="1.5"/>
+  <text x="765" y="83" class="heading">Franka robot</text>
+  <text x="765" y="137" class="body">Moves and reports</text>
+  <text x="765" y="168" class="body">its state</text>
+</svg>
