@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
-use super::{Settle, Shared, DEVIATION_MESSAGE, STOP_TIMEOUT_CYCLES};
+use super::{LiveTuning, Settle, Shared, TargetSlot, DEVIATION_MESSAGE, STOP_TIMEOUT_CYCLES};
 use crate::error::{ControlException, FrankaError, FrankaResult};
 use crate::otg::{MultiOtg, OtgLimits};
 use crate::rate_limiting::DELTA_T;
@@ -218,6 +218,36 @@ impl<const N: usize, const S: usize> Runner<N, S> {
             hold: false,
             finished: false,
         }
+    }
+
+    /// The generator's axes, for a test that watches what a retuned budget does to them.
+    #[cfg(test)]
+    pub(super) fn axes(&self) -> &[crate::otg::Otg; N] {
+        self.otg.axes()
+    }
+
+    /// The session's live-tuning slot, for the loop that owns this runner. Read-only from here:
+    /// the runner publishes the anchoring cycle's target into `slot`, never into this one.
+    pub(super) fn tuning(&self) -> &TargetSlot<{ LiveTuning::WORDS }> {
+        &self.shared.tuning
+    }
+
+    /// Hands the generator new per-axis limits, for a live retune of the budget. Every other
+    /// part of its state is kept, and the next [`cycle`](Self::cycle) plans under them.
+    ///
+    /// [`Otg::set_state`](crate::otg::Otg::set_state), which `cycle`'s `set_position` runs, and
+    /// the end of every step both clamp the stored velocity and acceleration into whatever
+    /// limits are in force. What holds that clamp to one cycle of the next order rather than an
+    /// impulse is that the caller walks a lowered limit down at that order's rate
+    /// ([`TuningPolicy::StepUpGateDown`](super::TuningPolicy::StepUpGateDown)) -- the rate, not
+    /// the moment this is called: a limit written a cycle later is clamped against a velocity
+    /// that is a cycle older, and the bound is the same one cycle on.
+    ///
+    /// A limit that is not finite and positive leaves the generator as it was, and none is:
+    /// the session's own budget was validated before the loop was built, and a tuned one is
+    /// between that and a target [`LiveTuning::BOUNDS`] holds positive.
+    pub(super) fn set_limits(&mut self, limits: [OtgLimits; N]) {
+        let _ = self.otg.set_limits(limits);
     }
 
     /// Restarts the generator at `velocity` and `acceleration`, keeping its position: the torque

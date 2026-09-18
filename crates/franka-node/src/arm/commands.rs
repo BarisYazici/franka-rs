@@ -267,6 +267,10 @@ impl<R: RobotSide> Machine<R> {
         guard.set_holder(client, monotonic_ns());
         self.guard = Some(guard);
         self.control = Some(control);
+        // The session seeded its tuning from the config, deliberately: an experiment nobody
+        // saved is not something a new session should inherit. So whatever a client set during
+        // the last one is no longer in force, and `params/current` says so at once.
+        self.params_reseeded();
         self.stats.set_recording(self.recording.file_name());
         self.begin_episode(episode);
         self.counts = Counts::default();
@@ -373,6 +377,8 @@ impl<R: RobotSide> Machine<R> {
         self.holding = false;
         self.guard = None;
         self.transition(phase, why);
+        // The values in force are the config's again: nothing holds a session's live tuning.
+        self.params_reseeded();
         if let Some(homing) = self.homing.take() {
             (homing.reply)(CmdReply::err(why));
         }

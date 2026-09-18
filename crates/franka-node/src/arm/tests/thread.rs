@@ -85,6 +85,7 @@ impl Thread {
             None,
             publish,
             episode,
+            |_: &crate::msg::params::ParamsMsg| {},
         )
         .unwrap();
         let (reply_tx, replies) = mpsc::channel();

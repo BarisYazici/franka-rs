@@ -57,7 +57,8 @@ pub(in super::super) fn cartesian_loop(
     let tracker = pose_tracker(rig, &options, impedance, restart);
     let model = Arc::clone(&rig.model);
     let observer = options.observer.take();
-    let torque = TorqueLoop::new(runner, model, impedance, tracker, observer);
+    // No live tuning: this harness replays a recorded session bit for bit.
+    let torque = TorqueLoop::new(runner, model, impedance, tracker, observer, None);
     (torque, shared)
 }
 

@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use franka::robot::target_control::LiveTuning;
 use franka::robot::target_control::{DEFAULT_LIMIT_FRACTION, JOINT_LIMIT_INSET};
 use franka::{
     Backend, IkOptions, ImpedanceGains, ImpedanceOptions, JointTargetControlOptions, Leash,
@@ -10,7 +11,7 @@ use franka::{
 };
 use serde::Deserialize;
 
-use crate::guard::GuardOptions;
+use crate::guard::{GuardOptions, Workspace};
 
 /// The whole file; [`FromStr`] parses and validates.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -115,24 +116,6 @@ pub enum Realtime {
     #[default]
     Enforce,
     Ignore,
-}
-
-/// `workspace` of an arm: the box in the base frame, m.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Workspace {
-    pub min: [f64; 3],
-    pub max: [f64; 3],
-}
-
-impl Default for Workspace {
-    fn default() -> Self {
-        let options = GuardOptions::default();
-        Workspace {
-            min: options.workspace_min,
-            max: options.workspace_max,
-        }
-    }
 }
 
 /// `leash` of an arm: how far the desired pose may run ahead of the measured one, m and rad;
@@ -277,8 +260,10 @@ pub struct ArmConfig {
     /// preset's. Raise with the square root of the stiffness to hold the damping ratio.
     #[serde(default)]
     pub joint_damping: Option<[f64; 7]>,
+    /// The box a target must lie in, m. Absent, the default, is no box: see
+    /// [`GuardOptions::workspace`].
     #[serde(default)]
-    pub workspace: Workspace,
+    pub workspace: Option<Workspace>,
     /// [`GuardOptions::rate_hz`]. Default 250.
     #[serde(default = "default_rate_hz")]
     pub rate_hz: f64,
@@ -573,9 +558,10 @@ impl ArmConfig {
                 return Err(invalid(format!("{field} must be positive")));
             }
         }
-        let Workspace { min, max } = self.workspace;
-        if !(0..3).all(|i| min[i].is_finite() && max[i].is_finite() && min[i] < max[i]) {
-            return Err(invalid("workspace min must be below max".into()));
+        if let Some(Workspace { min, max }) = self.workspace {
+            if !(0..3).all(|i| min[i].is_finite() && max[i].is_finite() && min[i] < max[i]) {
+                return Err(invalid("workspace min must be below max".into()));
+            }
         }
         #[cfg(not(feature = "record"))]
         for (key, set) in [
@@ -615,8 +601,7 @@ impl ArmConfig {
             max_step_joint: self.max_step_joint,
             max_lead: self.max_lead,
             max_lead_rotation: self.max_lead_rotation,
-            workspace_min: self.workspace.min,
-            workspace_max: self.workspace.max,
+            workspace: self.workspace,
             rate_hz: self.rate_hz,
             joint_limit_inset: JOINT_LIMIT_INSET.max(self.joint_position_margin),
         }
@@ -626,16 +611,7 @@ impl ArmConfig {
     /// at `cartesian_stiffness` with the leash and the joint envelopes, the
     /// deviation guards, the priority, the cpu.
     pub fn target_control_options(&self) -> TargetControlOptions {
-        let leash = Leash {
-            translation: self.leash.translation,
-            rotation: self.leash.rotation,
-            ..Leash::default()
-        };
-        let impedance = self.envelopes(
-            ImpedanceOptions::cartesian()
-                .with_gains(cartesian_gains(self.cartesian_stiffness))
-                .with_leash(leash),
-        );
+        let impedance = self.cartesian_impedance();
         TargetControlOptions::default()
             .with_limits(limits(self.budget))
             .with_rotation_limits(limits(self.rotation_budget))
@@ -657,6 +633,35 @@ impl ArmConfig {
             .with_max_deviation(self.joint_max_deviation)
             .with_realtime_priority(self.realtime_priority)
             .with_cpu(self.cpu)
+    }
+
+    /// The impedance backend of a Cartesian session: the preset scaled to `cartesian_stiffness`,
+    /// the leash, and the envelopes every session shares.
+    fn cartesian_impedance(&self) -> ImpedanceOptions {
+        let leash = Leash {
+            translation: self.leash.translation,
+            rotation: self.leash.rotation,
+            ..Leash::default()
+        };
+        self.envelopes(
+            ImpedanceOptions::cartesian()
+                .with_gains(cartesian_gains(self.cartesian_stiffness))
+                .with_leash(leash),
+        )
+    }
+
+    /// What a Cartesian session of this config starts tunable at: the same reading of the same
+    /// options the session itself seeds its slot from, so the node can answer `params/get`
+    /// before any session runs and say what a new one would start with.
+    ///
+    /// Deriving it here rather than storing a second copy is the point: move a key in the TOML
+    /// and this moves with it.
+    pub fn live_tuning(&self) -> LiveTuning {
+        LiveTuning::from_options(
+            &self.cartesian_impedance(),
+            limits(self.budget),
+            limits(self.rotation_budget),
+        )
     }
 
     /// `impedance` with the arm's joint velocity cap, barrier, position margin and IK damping.
@@ -694,16 +699,11 @@ fn limits([max_velocity, max_acceleration, max_jerk]: [f64; 3]) -> OtgLimits {
     }
 }
 
-/// [`ImpedanceGains::CARTESIAN`] rescaled to `stiffness` N/m: stiffness proportional, damping
-/// with its square root so every axis keeps the preset's damping ratio.
+/// [`ImpedanceGains::CARTESIAN`] rescaled to `stiffness` N/m. The rule lives in the library,
+/// with the preset it scales, because the live retune path needs it too; this is the config's
+/// name for it and must stay a delegation.
 pub fn cartesian_gains(stiffness: f64) -> ImpedanceGains {
-    let preset = ImpedanceGains::CARTESIAN;
-    let ratio = stiffness / preset.cartesian_stiffness[0];
-    ImpedanceGains {
-        cartesian_stiffness: preset.cartesian_stiffness.map(|k| k * ratio),
-        cartesian_damping: preset.cartesian_damping.map(|d| d * ratio.sqrt()),
-        ..preset
-    }
+    ImpedanceGains::scaled_cartesian(stiffness)
 }
 
 #[cfg(test)]

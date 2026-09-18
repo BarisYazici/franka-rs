@@ -208,16 +208,16 @@ In a joints session the bit does nothing, there being no Cartesian reference, an
 either lead limit to 0 turns the anchor off with it: without the lead bound the anchor would be
 the one way to command a jump of any size, `max_step` from a measured pose that may be anywhere.
 
-The guard's Cartesian rules are the translation and rotation step from the previous
-accepted target (or from the measured pose, with the anchor flag), the lead limits above, the
-workspace box and a unit quaternion; its joint rules are a per-joint step of at most
-`max_step_joint` and the arm's joint limits (the FER's or the FR3's, by the negotiated FCI
-version) inset by `joint_position_margin`. Both check the lease holder, the sequence, finite
-values and the rate; a target of the other kind is refused. A refusal spends no token and
-leaves the previous target and the sequence where they were. During `home`
-every target is refused (`"homing"`), `stop` ends it early (its reply is `"home stopped"`), a
-lost lease ends it and clears the holder. A joints session budgets `joint_budget_fraction` of
-the arm's joint limits and runs the library's joint impedance with a deviation guard of
+The guard's Cartesian rules are the translation and rotation step from the previous accepted
+target (or from the measured pose, with the anchor flag), the lead limits above, a unit
+quaternion and, when a config asks for one, the workspace box; its joint rules are a per-joint
+step of at most `max_step_joint` and the arm's joint limits (the FER's or the FR3's, by the
+negotiated FCI version) inset by `joint_position_margin`. Both check the lease holder, the
+sequence, finite values and the rate; a target of the other kind is refused. A refusal spends
+no token and leaves the previous target and the sequence where they were. During `home` every
+target is refused (`"homing"`), `stop` ends it early (its reply is `"home stopped"`), a lost
+lease ends it and clears the holder. A joints session budgets `joint_budget_fraction` of the
+arm's joint limits and runs the library's joint impedance with a deviation guard of
 `joint_max_deviation` from the start; `home` runs at its `speed` and widens that guard to
 `max(joint_max_deviation, travel + 0.5 rad)`.
 
@@ -263,7 +263,8 @@ velocity_barrier_fraction = 0.85     # a joint measured faster meets a damping b
                                      # of the above and this less 0.15 to this
 joint_position_margin = 0.05         # rad the joint goal keeps from the joint position limits, [0.035, 0.5];
                                      # joint targets inside it are refused
-workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+# workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+                                     # the box a target must lie in, m, base frame; off unless set
 rate_hz = 250.0                      # targets per second per client, bucket of twice that
 realtime_priority = 80               # optional
 # gripper = "hand"                   # optional: the Franka Hand at host, FCI port 1338
@@ -343,6 +344,22 @@ through `franka_node::run(config, factory)`: the binary is that call with a fact
 `gripper = "hand"` to `FrankaHand::connect`; a binary of your own may map other names to
 its own `Gripper` and reuse everything else.
 
+## Live tuning
+
+A running Cartesian impedance session accepts parameter updates over
+`franka/<arm>/params/{schema,get,set}` and publishes `params/current`. The node derives its
+schema from the library's bounds table; changes use the controller's slew and budget gates.
+The optional [browser panel](../../tools/tuning-panel/README.md) provides schema-driven controls.
+
+Read [Tune a running controller](../../docs/book/src/howto/live-tuning.md) for the workflow,
+feedforward settings and session lifetime; [Live parameter protocol](../../docs/book/src/reference/node-parameters.md)
+defines requests, replies, confirmations and versioning. Values reset to the TOML on session
+end or node restart; saving a panel preset does not persist the node configuration.
+
+[config.two-arms.toml](config.two-arms.toml) shows two arms with the shipped defaults and
+optional per-arm CPU pinning and Franka Hands. Use it as a deployment example, not a tuned
+controller profile.
+
 ## Recording
 
 With `cargo build --release -p franka-node --features record` (pulls `franka-rerun` and
@@ -421,6 +438,15 @@ the session. The start goes out once the loop is already running, so a frame cap
 few milliseconds before it arrives belongs to the episode but cannot be attributed to it.
 
 ## Install
+
+As of 18 September 2026, the node is not yet published on crates.io. From the repository
+root, install this checkout with:
+
+```sh
+cargo install --path crates/franka-node --locked
+```
+
+The following commands require a matching crates.io and GitHub release:
 
 ```sh
 cargo binstall franka-node             # prebuilt: aarch64 (gnu, static musl) and x86_64, with record

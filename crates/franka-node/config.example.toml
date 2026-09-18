@@ -50,14 +50,21 @@ joint_position_margin = 0.05         # rad the joint goal keeps from the joint p
 # velocity_feedforward = true        # damping on the velocity error dq_goal - dq. With it off the
                                      # damping acts on -dq alone and holding speed v costs a standing
                                      # error of (Kqd/Kq) v, which a leash then caps into a speed limit
-# velocity_feedforward_gain = 1.0    # weight of dq_goal in that term, [0, 1]; 0 is the line above
+# velocity_feedforward_gain = 1.0    # weight of dq_goal in that term, [0, 1]
+                                     # velocity_feedforward = false makes this gain inert: the
+                                     # node starts with live weight 0 even when this says 1.0.
+                                     # Setting a positive live weight enables feedforward for
+                                     # this session; live changes do not rewrite this file.
 # velocity_feedforward_cutoff = 1000.0   # Hz, first-order low-pass on dq_goal before it is fed
                                      # forward; 1000 switches it off, and it is floored at 1. Bounding
                                      # it keeps the lead while leaving the reference's ripple behind.
                                      # Cartesian sessions only
 # cutoff_frequency = 100.0           # Hz, the low-pass on the commanded torque; 1000 switches it off
 
-workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+# workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+                                     # the box a target must lie in, m, base frame,
+                                     # inclusive. Off unless set: a cell's shape is
+                                     # not something this crate can guess
 rate_hz = 250.0                      # targets per second per client, bucket of twice that
 realtime_priority = 80               # optional
 # gripper = "hand"                   # optional: the Franka Hand at host, FCI port 1338

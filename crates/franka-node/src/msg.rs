@@ -17,6 +17,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 mod episode;
 mod gripper;
+pub mod params;
 #[cfg(test)]
 mod wire_json;
 

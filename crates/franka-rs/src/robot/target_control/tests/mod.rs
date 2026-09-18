@@ -1,8 +1,12 @@
 //! The shared scaffolding: the mock arm, the recording observer. The generator runner in
 //! [`runner`], the pose path in [`pose`], the impedance law in [`impedance`], the joint
-//! velocity envelope in [`velocity`], the option validation in [`options`], the rotation
-//! arithmetic in [`rotation`], the torque loops in [`torque_cartesian`] and [`torque_joint`]
-//! on the helpers of [`torque`].
+//! velocity envelope in [`velocity`], the option validation in [`options`], the live-tuning
+//! bounds in [`tuning`], their gate in [`tuning_update`], the crossing to them in
+//! [`tuning_slew`], the slot they arrive through in [`tuning_slot`], the loop that applies
+//! them in [`tuning_loop`] and the generator's end of them in [`tuning_loop::budget`], the
+//! rotation arithmetic in
+//! [`rotation`], the torque loops in [`torque_cartesian`] and [`torque_joint`] on the helpers
+//! of [`torque`].
 
 mod active_set;
 mod bench_ik;
@@ -22,6 +26,11 @@ mod torque_cartesian;
 mod torque_joint;
 mod torque_position;
 mod torque_velocity;
+mod tuning;
+mod tuning_loop;
+mod tuning_slew;
+mod tuning_slot;
+mod tuning_update;
 mod velocity;
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};

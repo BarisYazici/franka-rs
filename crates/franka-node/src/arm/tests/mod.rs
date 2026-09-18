@@ -3,6 +3,7 @@
 
 mod gripper;
 mod home;
+mod params;
 #[cfg(feature = "record")]
 mod record;
 mod thread;
@@ -12,6 +13,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use franka::robot::target_control::{FieldBound, LiveTuning, TuningUpdate, NO_TUNING_MESSAGE};
 use franka::{
     FciVersion, FrankaError, FrankaResult, JointTargetControlOptions, RobotState,
     TargetControlOptions,
@@ -22,6 +24,7 @@ use super::{
     channel, spawn, ArmSender, Control, Event, GripperSide, RobotSide, Verb, CHANNEL_DEPTH, READY,
 };
 use crate::config::{ArmConfig, NodeConfig};
+use crate::msg::params::ParamsMsg;
 use crate::msg::{
     CmdReply, CmdRequest, EpisodeMsg, EpisodePhase, Kind, Phase, StateMsg, TargetMsg, FLAG_HOLDING,
 };
@@ -29,7 +32,7 @@ use crate::status::ArmStats;
 
 const CLIENT: u32 = 7;
 const OTHER: u32 = 9;
-/// What the fake Cartesian control starts at: inside the default workspace box.
+/// What the fake Cartesian control starts at: a pose well within the arm's reach.
 const START: [f64; 7] = [0.4, 0.0, 0.4, 0.0, 0.0, 0.0, 1.0];
 /// Where the fake arm stands: [`READY`] with joint 4 bent 0.3 rad further.
 const START_Q: [f64; 7] = [
@@ -61,6 +64,10 @@ struct Fake {
     moving_at_ready: AtomicBool,
     /// The observer of the running Cartesian control, as the loop would hold it.
     cartesian_observer: Mutex<Option<franka::robot::target_control::CartesianObserver>>,
+    /// The Cartesian session's live tuning, seeded at `start` from the options the node gave
+    /// it and moved only through the gate, as the library's own handle does it; `None` while
+    /// no Cartesian session runs.
+    tuning: Mutex<Option<LiveTuning>>,
 }
 
 impl Default for Fake {
@@ -78,6 +85,7 @@ impl Default for Fake {
             ready_after: AtomicUsize::new(usize::MAX),
             moving_at_ready: AtomicBool::new(false),
             cartesian_observer: Mutex::default(),
+            tuning: Mutex::default(),
         }
     }
 }
@@ -161,8 +169,26 @@ impl Control for FakeControl {
         self.0.running.load(Ordering::SeqCst)
     }
 
+    fn tuning(&self) -> FrankaResult<LiveTuning> {
+        self.0
+            .tuning
+            .lock()
+            .unwrap()
+            .ok_or_else(|| FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()))
+    }
+
+    fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        let mut slot = self.0.tuning.lock().unwrap();
+        let mut tuning =
+            slot.ok_or_else(|| FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()))?;
+        let clamped = tuning.apply_update(update)?;
+        *slot = Some(tuning);
+        Ok(clamped)
+    }
+
     fn stop(self: Box<Self>) -> FrankaResult<()> {
         *self.0.cartesian_observer.lock().unwrap() = None;
+        *self.0.tuning.lock().unwrap() = None;
         self.0.calls.lock().unwrap().push("stop");
         self.0.running.store(false, Ordering::SeqCst);
         if self.0.stop_fails.load(Ordering::SeqCst) {
@@ -207,11 +233,22 @@ impl RobotSide for FakeRobot {
     }
 
     fn start(&self, options: TargetControlOptions) -> FrankaResult<Box<dyn Control>> {
+        // What the library seeds the session's slot with, read the same way: the backend's
+        // impedance options and the two budgets the session plans under.
+        let seed = match &options.backend {
+            franka::Backend::Impedance(impedance) => {
+                LiveTuning::from_options(impedance, options.limits, options.rotation_limits)
+            }
+            other => panic!("the node's Cartesian session is not impedance: {other:?}"),
+        };
+        *self.0.tuning.lock().unwrap() = Some(seed);
         *self.0.cartesian_observer.lock().unwrap() = options.observer;
         self.start_control("start", false)
     }
 
     fn start_joints(&self, options: JointTargetControlOptions) -> FrankaResult<Box<dyn Control>> {
+        // A joints session has no live tuning, as the library's has none.
+        *self.0.tuning.lock().unwrap() = None;
         let limits = options
             .limits
             .expect("the node always sets the joint limits");
@@ -249,6 +286,7 @@ struct Rig {
     machine: Machine<FakeRobot>,
     published: Arc<Mutex<Vec<StateMsg>>>,
     episodes: Arc<Mutex<Vec<EpisodeMsg>>>,
+    params: Arc<Mutex<Vec<ParamsMsg>>>,
     stats: Arc<ArmStats>,
     sender: ArmSender,
     rx: Receiver<Event>,
@@ -275,10 +313,12 @@ fn rig_of(config: ArmConfig, arms: &[String], gripper: Option<GripperSide>) -> R
     let fake = Arc::new(Fake::default());
     let published = Arc::new(Mutex::new(Vec::new()));
     let episodes = Arc::new(Mutex::new(Vec::new()));
+    let params = Arc::new(Mutex::new(Vec::new()));
     let stats = Arc::new(ArmStats::default());
     let (sender, rx) = channel();
     let sink = Arc::clone(&published);
     let episode_sink = Arc::clone(&episodes);
+    let params_sink = Arc::clone(&params);
     let names: Vec<String> = if arms.is_empty() {
         vec![config.name.clone()]
     } else {
@@ -288,6 +328,9 @@ fn rig_of(config: ArmConfig, arms: &[String], gripper: Option<GripperSide>) -> R
         state: Box::new(move |state: &StateMsg| sink.lock().unwrap().push(*state)),
         episode: Box::new(move |episode: &EpisodeMsg| {
             episode_sink.lock().unwrap().push(episode.clone())
+        }),
+        params: Box::new(move |message: &ParamsMsg| {
+            params_sink.lock().unwrap().push(message.clone())
         }),
     };
     let machine = Machine::new(
@@ -304,6 +347,7 @@ fn rig_of(config: ArmConfig, arms: &[String], gripper: Option<GripperSide>) -> R
         machine,
         published,
         episodes,
+        params,
         stats,
         sender,
         rx,

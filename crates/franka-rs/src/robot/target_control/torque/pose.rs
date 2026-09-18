@@ -20,10 +20,11 @@ use super::super::ik::{Ik, IkOptions};
 use super::super::position::{JointLimits, VelocityLimit};
 use super::super::rotation::{exp, log, norm};
 use super::super::runner::Step;
-use super::super::{ImpedanceOptions, Leash, TargetControlOptions};
+use super::super::{ImpedanceOptions, Leash, LiveTuning, TargetControlOptions};
 use super::restart::{ahead, landed, landing_dwell, left, restart, Pressure, Walls};
 use super::{Command, Tracker};
 use crate::model::{Frame, Model};
+use crate::otg::OtgLimits;
 use crate::rate_limiting::DELTA_T;
 use crate::robot_state::RobotState;
 
@@ -57,6 +58,16 @@ pub(in super::super) struct PoseTracker {
     settle: f64,
     /// Cycles the goal must have stood still against a wall before a stop lands on it.
     dwell: u32,
+    /// The two norm jerks `dwell` was derived from, translational then rotational. A retune
+    /// that moves neither leaves `dwell` alone, and `landing_dwell`'s six cube roots off the
+    /// cycle.
+    dwell_jerks: [f64; 2],
+    /// How often `dwell` has been derived again. Only the tests read it: the guard above is a
+    /// cost, not a behaviour, so nothing else can tell whether it held, and without this a
+    /// dropped guard is an untestable one. It is here because the design record asks for the
+    /// guard, not because the six cube roots it saves are measurable.
+    #[cfg(test)]
+    dwells_derived: u32,
     anchored: Option<PoseAnchor>,
 }
 
@@ -106,7 +117,11 @@ impl PoseTracker {
         joint_limits: ([f64; 7], [f64; 7]),
         velocity: impl Into<VelocityLimit>,
     ) -> Self {
-        let jerks = axis_limits(options.limits, options.rotation_limits).map(|a| a.max_jerk);
+        let (dwell, dwell_jerks) = landing_dwell_of(
+            options.limits,
+            options.rotation_limits,
+            options.settle.tolerance,
+        );
         PoseTracker {
             model,
             ik: impedance.ik,
@@ -121,9 +136,37 @@ impl PoseTracker {
             max_deviation: options.max_deviation,
             max_angular_deviation: options.max_angular_deviation,
             settle: options.settle.tolerance,
-            dwell: landing_dwell(&jerks, options.settle.tolerance),
+            dwell,
+            dwell_jerks,
+            #[cfg(test)]
+            dwells_derived: 1,
             anchored: None,
         }
+    }
+}
+
+/// The landing dwell for a Cartesian budget, and the two norm jerks it was derived from, so
+/// that [`PoseTracker::new`] and [`Tracker::retune`] cannot derive it two different ways.
+fn landing_dwell_of(budget: OtgLimits, rotation: OtgLimits, tolerance: f64) -> (u32, [f64; 2]) {
+    let jerks = axis_limits(budget, rotation).map(|a| a.max_jerk);
+    (
+        landing_dwell(&jerks, tolerance),
+        [budget.max_jerk, rotation.max_jerk],
+    )
+}
+
+#[cfg(test)]
+impl PoseTracker {
+    /// The options the session's solver is running, `None` before the first cycle anchors it:
+    /// the copy [`retune`](Tracker::retune) writes and the cycle reads.
+    pub(super) fn solver_ik(&self) -> Option<IkOptions> {
+        self.anchored.as_ref().map(|a| a.ik.options())
+    }
+
+    /// The landing dwell in force, and how often it has been derived -- once at construction,
+    /// and once per retune that moved a jerk.
+    pub(super) fn dwell(&self) -> (u32, u32) {
+        (self.dwell, self.dwells_derived)
     }
 }
 
@@ -302,6 +345,58 @@ impl Tracker<6, 7> for PoseTracker {
             (a.still, a.closest) = (0, [f64::INFINITY; 6]);
         }
         (q_goal, dq_goal)
+    }
+
+    fn budget(&self, tuning: &LiveTuning) -> Option<[OtgLimits; 6]> {
+        let (budget, rotation) = tuning.budgets();
+        Some(axis_limits(budget, rotation))
+    }
+
+    /// The IK's two live options and the feedforward's cutoff, in both of the places each was
+    /// copied to at the start: this tracker's, which a session's first cycle hands to its
+    /// anchor, and that anchor's, which the cycle reads. The anchor exists from the first cycle
+    /// on, so on every cycle but that one both are written.
+    ///
+    /// Only the options: never the solver's configuration, its active set or its Jacobian,
+    /// which describe the goal it is holding and not how it is found.
+    ///
+    /// The one value here derived from the budget rather than copied is `dwell`, and it is
+    /// derived again only on the cycles a jerk actually moved. A jerk
+    /// [steps](super::super::TuningPolicy::Step), so that is one cycle of a retune that carries
+    /// one and none of the thousands a crossing of the law's gains runs for.
+    ///
+    /// `dwell` is the stop's landing criterion, so a jerk retune arriving inside a stop moves
+    /// that criterion in flight. Deliberate: the dwell is the time a generator takes to cover
+    /// twice a settle tolerance from rest at that jerk, so one derived from a jerk no longer in
+    /// force describes nothing, and a stop lengthened by a lowered jerk is bounded by
+    /// [`STOP_TIMEOUT_CYCLES`](super::super::STOP_TIMEOUT_CYCLES) anyway. The hold itself is out
+    /// of reach: [`Runner::cycle`](super::super::Runner) returns the frozen command before it
+    /// looks at the generator, so what a retune during a hold can move is the torque, never the
+    /// held command.
+    fn retune(&mut self, tuning: &LiveTuning) {
+        self.ik.damping = tuning.ik_damping;
+        self.ik.nullspace_gain = tuning.ik_nullspace_gain;
+        self.feedforward_cutoff = tuning.velocity_feedforward_cutoff;
+        let (budget, rotation) = tuning.budgets();
+        if [budget.max_jerk, rotation.max_jerk] != self.dwell_jerks {
+            (self.dwell, self.dwell_jerks) = landing_dwell_of(budget, rotation, self.settle);
+            #[cfg(test)]
+            {
+                self.dwells_derived += 1;
+            }
+        }
+        if let Some(a) = self.anchored.as_mut() {
+            a.ik.retune(tuning.ik_damping, tuning.ik_nullspace_gain);
+            a.feedforward_cutoff = tuning.velocity_feedforward_cutoff;
+        }
+        // Both copies of `λ` this tracker holds, from the one value. The law's projector reads a
+        // third, on the caller's `ImpedanceOptions`, which this cannot see: that the three agree
+        // cycle by cycle is what `tuning_loop::the_damping_the_projector_reads_is_the_damping_
+        // the_solver_runs` asserts.
+        debug_assert!(self
+            .anchored
+            .as_ref()
+            .is_none_or(|a| a.ik.damping() == self.ik.damping));
     }
 
     fn sent(&self, step: &Step<6, 7>, command: &Command) -> CartesianSent {

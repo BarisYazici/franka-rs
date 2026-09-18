@@ -42,7 +42,7 @@ fn count() {
     let _ = ALLOCATIONS.try_with(|c| c.set(c.get() + 1));
 }
 
-fn allocations() -> u64 {
+pub(super) fn allocations() -> u64 {
     ALLOCATIONS.with(Cell::get)
 }
 

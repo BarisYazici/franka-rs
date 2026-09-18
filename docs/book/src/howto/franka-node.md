@@ -17,11 +17,11 @@ runs; a host on the robot network that meets [The realtime machine](../getting-s
 `franka-node` is one process that owns one or more `franka::Robot`s and, per arm, runs
 `start_cartesian_target_control` or `start_joint_target_control` with the impedance backend.
 Clients publish 80-byte targets at any rate on a Zenoh key; the node gates each one (lease
-holder, order, kind, finite values, step from the previous accepted target, workspace box,
-joint limits, rate) and hands it to the library's generator, which does the 1 kHz work on the
-realtime thread the library owns. The arm's state goes back out at 100 Hz as a fixed-layout
-message, and `acquire`, `enable`, `stop`, `release`, `recover` and `home` are request/reply
-queryables with JSON payloads.
+holder, order, kind, finite values, step from the previous accepted target, joint limits, rate,
+and a workspace box if the config names one) and hands it to the library's generator, which
+does the 1 kHz work on the realtime thread the library owns. The arm's state goes back out at
+100 Hz as a fixed-layout message, and `acquire`, `enable`, `stop`, `release`, `recover` and
+`home` are request/reply queryables with JSON payloads.
 
 A client holds an arm through a *lease*: a Zenoh liveliness token it declares while it
 lives. The token going away, because the client exited, was killed or lost the link, stops
@@ -86,7 +86,7 @@ collision_torque = 40.0              # Nm
 budget = [0.3, 0.5, 20.0]            # translation limits, a norm: m/s, m/s², m/s³
 max_step = 0.05                      # m per target from the previous accepted one
 max_lead = 0.05                      # m a target may lead the measured pose; 0 disables
-workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+# workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }   # off unless set
 # cpu = 2                            # pin the loop thread to this core (isolcpus)
 ```
 
@@ -185,10 +185,11 @@ with node.arm("fr3") as arm:
 
 A target is refused, counted and logged rather than executed when it steps more than `max_step`
 from the previous accepted one, leads the measured pose by more than `max_lead`, leaves the
-workspace box, or comes from a client that does not hold the lease. The client's defaults stay
-inside the node's: 2 mm per message against `max_step` 0.05 and under the 0.173 m/s per-axis
-budget, `lead` 0.03 m under `max_lead` 0.05, and in a joints session at most 0.15 rad per message
-against `max_step_joint` 0.2; raise `max_velocity` or `lead` only with the node's limits.
+workspace box a config asked for, or comes from a client that does not hold the lease. The
+client's defaults stay inside the node's: 2 mm per message against `max_step` 0.05 and under
+the 0.173 m/s per-axis budget, `lead` 0.03 m under `max_lead` 0.05, and in a joints session at
+most 0.15 rad per message against `max_step_joint` 0.2; raise `max_velocity` or `lead` only
+with the node's limits.
 
 `max_step` is a distance per message, not a speed, so a commander faster than the arm would
 otherwise walk the target ahead of it without limit and the arm would coast the whole lead when

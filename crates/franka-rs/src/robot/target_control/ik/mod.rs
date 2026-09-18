@@ -185,6 +185,27 @@ impl Ik {
         ik
     }
 
+    /// The two options a running session may move; see
+    /// [`LiveTuning`](super::tuning::LiveTuning). Nothing else is touched: `q`, the active sets
+    /// and the Jacobian are the goal this solver is holding, not how it finds one, and the box
+    /// the next step is bounded in is derived from `q` on the cycle it is used.
+    pub(super) fn retune(&mut self, damping: f64, nullspace_gain: f64) {
+        self.options.damping = damping;
+        self.options.nullspace_gain = nullspace_gain;
+    }
+
+    /// The `λ` this solver is running, which the torque law's nullspace projector has to agree
+    /// with cycle by cycle.
+    pub(super) fn damping(&self) -> f64 {
+        self.options.damping
+    }
+
+    /// All of the options it is running, for a test that checks what a retune reached.
+    #[cfg(test)]
+    pub(super) fn options(&self) -> IkOptions {
+        self.options
+    }
+
     /// One cycle toward `pose` (column-major, as `O_T_EE`); returns the solution and its
     /// weighted residual. The first step always runs and carries the posture bias (a rate,
     /// integrated over `dt` once per call); the remaining steps refine the pose until the

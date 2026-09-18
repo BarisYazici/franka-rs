@@ -8,6 +8,7 @@
 //! second on one message, which is how a commander whose stream has jumped gets back in; with
 //! the lead limits off the swap would be unbounded, so the flag is then ignored.
 
+use serde::Deserialize;
 use std::fmt;
 
 use franka::robot::target_control::JOINT_LIMIT_INSET;
@@ -54,9 +55,13 @@ pub struct GuardOptions {
     /// fingers -- and because the backend's leash bounds rotation too. 0.26 equals
     /// `max_step_rotation` for the same coherence as above.
     pub max_lead_rotation: f64,
-    /// Workspace box in the base frame, m, inclusive. Default x 0.2..0.8, y -0.5..0.5, z 0..0.8.
-    pub workspace_min: [f64; 3],
-    pub workspace_max: [f64; 3],
+    /// Workspace box in the base frame, m, inclusive. `None`, the default, is no box at all:
+    /// the check is off unless a caller asks for one, in the same spirit as `max_lead` and
+    /// `max_lead_rotation`, which a zero disables. A box is a deployment's statement about its
+    /// cell, not something this crate can guess -- the one that used to be the default
+    /// (x 0.2..0.8, y -0.5..0.5, z 0..0.8) assumed a forward-facing bench and refused
+    /// perfectly good poses anywhere else.
+    pub workspace: Option<Workspace>,
     /// Sustained target rate per client; the token bucket holds twice this. Default 250.
     pub rate_hz: f64,
     /// How far inside the joint position limits a joint target must lie, rad: what the
@@ -73,13 +78,20 @@ impl Default for GuardOptions {
             max_step_joint: 0.2,
             max_lead: 0.05,
             max_lead_rotation: 0.26,
-            workspace_min: [0.2, -0.5, 0.0],
-            workspace_max: [0.8, 0.5, 0.8],
+            workspace: None,
             rate_hz: 250.0,
             joint_limit_inset: JOINT_LIMIT_INSET
                 .max(ImpedanceOptions::joint().joint_position_margin),
         }
     }
+}
+
+/// A workspace box in the base frame, m, inclusive at both ends.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Workspace {
+    pub min: [f64; 3],
+    pub max: [f64; 3],
 }
 
 /// An axis of the base frame.
@@ -373,10 +385,11 @@ impl Guard {
                 return Err(Reason::LeadRotation(lead));
             }
         }
-        for (i, axis) in Axis::ALL.into_iter().enumerate() {
-            let (lo, hi) = (self.options.workspace_min[i], self.options.workspace_max[i]);
-            if data[i] < lo || data[i] > hi {
-                return Err(Reason::Workspace(axis));
+        if let Some(Workspace { min, max }) = self.options.workspace {
+            for (i, axis) in Axis::ALL.into_iter().enumerate() {
+                if data[i] < min[i] || data[i] > max[i] {
+                    return Err(Reason::Workspace(axis));
+                }
             }
         }
         Ok(())
