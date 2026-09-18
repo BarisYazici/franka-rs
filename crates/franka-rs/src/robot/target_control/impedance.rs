@@ -67,6 +67,24 @@ impl ImpedanceGains {
         joint_damping: [50.0, 50.0, 50.0, 50.0, 30.0, 25.0, 15.0],
     };
 
+    /// [`CARTESIAN`](Self::CARTESIAN) rescaled to a translational stiffness of `stiffness`
+    /// N/m: the six stiffnesses in proportion, the six dampings with the square root of the
+    /// same ratio, so every axis keeps the preset's damping ratio. The joint gains are the
+    /// preset's, untouched.
+    ///
+    /// This is the one place the rule lives. A Cartesian stiffness an operator can move is a
+    /// single number, and the law needs twelve; anything that turns the one into the twelve —
+    /// a node's configuration, a live retune — calls this rather than restating it.
+    pub fn scaled_cartesian(stiffness: f64) -> ImpedanceGains {
+        let preset = ImpedanceGains::CARTESIAN;
+        let ratio = stiffness / preset.cartesian_stiffness[0];
+        ImpedanceGains {
+            cartesian_stiffness: preset.cartesian_stiffness.map(|k| k * ratio),
+            cartesian_damping: preset.cartesian_damping.map(|d| d * ratio.sqrt()),
+            ..preset
+        }
+    }
+
     /// # Errors
     /// [`FrankaError::InvalidArgument`] if a gain is not finite or negative.
     pub fn validate(&self) -> FrankaResult<()> {

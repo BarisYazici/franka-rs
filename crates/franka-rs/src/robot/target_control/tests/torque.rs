@@ -115,8 +115,9 @@ pub(super) fn cartesian_loop_on(
         rig.limits,
         velocity,
     );
+    let tuning = cartesian::seed(&options, &impedance).ok();
     let observer = options.observer;
-    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer);
+    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer, tuning);
     (torque, shared)
 }
 
@@ -145,7 +146,7 @@ pub(super) fn joint_loop_on(
     };
     let tracker = JointTracker::new(&options, limits);
     let (model, observer) = (Arc::clone(&rig.model), options.observer);
-    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer);
+    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer, None);
     (torque, shared)
 }
 

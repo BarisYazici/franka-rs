@@ -16,15 +16,15 @@ pub use arm::{
     GRIPPER_STATE_HZ, HOME_SETTLE_TICKS, HOME_SPEED, HOME_TIMEOUT, HOME_TOLERANCE, READY,
 };
 pub use config::{
-    cartesian_gains, ArmConfig, ConfigError, LeashConfig, NodeConfig, Realtime, Workspace,
-    ZenohConfig, ZenohMode, RESERVED_ARM_NAMES,
+    cartesian_gains, ArmConfig, ConfigError, LeashConfig, NodeConfig, Realtime, ZenohConfig,
+    ZenohMode, RESERVED_ARM_NAMES,
 };
 /// The library this node drives, so a [`GripperFactory`] outside this crate names
 /// [`franka::Robot`] at the same version.
 pub use franka;
 pub use gripper::{FrankaHand, Gripper, GripperState};
 pub use guard::{
-    Axis, Guard, GuardOptions, JointLimits, Reason, Verdict, UNIT_QUATERNION_TOLERANCE,
+    Axis, Guard, GuardOptions, JointLimits, Reason, Verdict, Workspace, UNIT_QUATERNION_TOLERANCE,
 };
 pub use msg::{
     robot_mode_code, CmdReply, CmdRequest, DecodeError, EpisodeMsg, EpisodePhase, GripperKind,
@@ -50,6 +50,23 @@ use zenoh::Wait;
 /// exchanging anything. Across hosts it means nothing until the clocks are aligned.
 pub fn monotonic_ns() -> u64 {
     franka::realtime::monotonic_ns()
+}
+
+/// This process's boot id: a hex string, fresh per start, the same for every arm of the node.
+///
+/// It is how a panel learns that the node restarted under it. `version` alone cannot say so --
+/// a restart puts it back to 0, which is also where it sits before anyone has tuned anything --
+/// so the pair is what identifies a set of values. Built from the wall clock and the pid rather
+/// than from a uuid dependency; two nodes started in the same nanosecond on one host would need
+/// the same pid to collide.
+pub fn boot_id() -> &'static str {
+    static BOOT_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BOOT_ID.get_or_init(|| {
+        let since_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        format!("{since_epoch:x}-{:x}", std::process::id())
+    })
 }
 
 /// Builds an arm's gripper from its config (`ArmConfig::gripper`, `gripper_speed`) and its

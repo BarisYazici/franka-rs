@@ -1,3 +1,5 @@
+mod set_limits;
+
 use super::*;
 
 const LIMITS: OtgLimits = OtgLimits {
@@ -6,6 +8,35 @@ const LIMITS: OtgLimits = OtgLimits {
     max_jerk: 20.0,
 };
 const DT: f64 = 1e-3;
+
+/// Limit triples a generator refuses, one per way of not being finite and positive.
+const REFUSED: [OtgLimits; 5] = [
+    OtgLimits {
+        max_velocity: f64::NAN,
+        max_acceleration: 0.5,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: -0.5,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: 0.5,
+        max_jerk: 0.0,
+    },
+    OtgLimits {
+        max_velocity: 0.3,
+        max_acceleration: f64::INFINITY,
+        max_jerk: 20.0,
+    },
+    OtgLimits {
+        max_velocity: -0.3,
+        max_acceleration: 0.5,
+        max_jerk: 20.0,
+    },
+];
 
 /// Checks the limits, the continuity of the acceleration and the consistency of the
 /// derivatives across consecutive steps.
@@ -137,18 +168,8 @@ fn rejects_bad_limits_positions_and_targets() {
             Err(FrankaError::InvalidArgument(_))
         ));
     };
-    for (v, a, j) in [
-        (f64::NAN, 0.5, 20.0),
-        (0.3, -0.5, 20.0),
-        (0.3, 0.5, 0.0),
-        (0.3, f64::INFINITY, 20.0),
-        (-0.3, 0.5, 20.0),
-    ] {
-        bad(OtgLimits {
-            max_velocity: v,
-            max_acceleration: a,
-            max_jerk: j,
-        });
+    for limits in REFUSED {
+        bad(limits);
     }
     assert!(Otg::new(f64::NAN, LIMITS).is_err());
     let mut otg = Otg::new(1.0, LIMITS).unwrap();

@@ -312,10 +312,41 @@ fn refuses_a_rotation_step_beyond_max_step_rotation() {
     assert!(matches!(reason, Reason::RotationStep(_)), "{reason:?}");
 }
 
+/// The box is off by default, and this is the behaviour rather than the plumbing: with no box
+/// the gate accepts a position the retired default (x 0.2..0.8) refused, and a config that
+/// names that box still refuses the same position, on the axis it left.
+#[test]
+fn no_workspace_accepts_what_the_old_default_refused() {
+    let start = [0.22, 0.0, 0.4, 0.0, 0.0, 0.0, 1.0];
+    let mut outside = start;
+    outside[0] = 0.18; // a 0.04 m step, inside max_step, but under the retired floor of 0.2
+    let verdict = |options| {
+        let mut guard = Guard::new(options, start).unwrap();
+        guard.set_holder(HOLDER, 0);
+        guard.check(&target(1, outside), 0, None)
+    };
+    let boxed = GuardOptions {
+        workspace: Some(Workspace {
+            min: [0.2, -0.5, 0.0],
+            max: [0.8, 0.5, 0.8],
+        }),
+        ..GuardOptions::default()
+    };
+    assert_eq!(verdict(boxed), Verdict::Refuse(Reason::Workspace(Axis::X)));
+    assert_eq!(verdict(GuardOptions::default()), Verdict::Accept);
+}
+
 #[test]
 fn workspace_box_is_inclusive() {
     let edge = [0.78, 0.0, 0.02, 0.0, 0.0, 0.0, 1.0];
-    let mut guard = Guard::new(GuardOptions::default(), edge).unwrap();
+    let options = GuardOptions {
+        workspace: Some(Workspace {
+            min: [0.2, -0.5, 0.0],
+            max: [0.8, 0.5, 0.8],
+        }),
+        ..GuardOptions::default()
+    };
+    let mut guard = Guard::new(options, edge).unwrap();
     guard.set_holder(HOLDER, 0);
     let mut on_x = edge;
     on_x[0] = 0.8;

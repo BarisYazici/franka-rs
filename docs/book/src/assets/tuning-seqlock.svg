@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1100" role="img" aria-labelledby="title desc">
+  <title id="title">How live tuning reaches the realtime loop through a seqlock</title>
+  <desc id="desc">One writer marks the sequence odd, writes all 25 scalar targets, then marks it even. The 1 kHz reader accepts a copy only when its sequence is unchanged and even. It tries at most three times, otherwise retains its previous complete target. The loop keeps running and applies the transition policy locally. The slot stores the latest target, not a queue.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#285f89"/></marker>
+    <style>
+      text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; fill: #202d38; font-size: 18px; }
+      .heading { font-size: 28px; font-weight: 700; }
+      .section { font-size: 21px; font-weight: 700; }
+      .label { font-size: 20px; font-weight: 650; }
+      .teal { fill: #266b62; }
+      .blue { fill: #285f89; }
+      .box { fill: #fff; stroke: #b8c5c3; stroke-width: 1.5; }
+      .line { fill: none; stroke: #285f89; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="800" height="1100" rx="18" fill="#f6f5f1"/>
+  <text x="32" y="48" class="heading">A complete update, without waiting</text>
+  <text x="32" y="82">The control loop must never use half old, half new parameters.</text>
+
+  <text x="32" y="137" class="section teal">1. Writer · outside the realtime loop</text>
+  <text x="32" y="166">Callers are serialized here; one writes the slot at a time.</text>
+  <rect x="32" y="189" width="224" height="120" rx="12" class="box"/>
+  <text x="48" y="221" class="label">Mark odd</text>
+  <text x="48" y="253">Example: 10 → 11</text>
+  <text x="48" y="280">“Write in progress”</text>
+  <path d="M256 250 H285" class="line"/>
+  <rect x="288" y="189" width="224" height="120" rx="12" class="box"/>
+  <text x="304" y="221" class="label">Write 25 values</text>
+  <text x="304" y="253">Complete accepted</text>
+  <text x="304" y="280">tuning targets</text>
+  <path d="M512 250 H541" class="line"/>
+  <rect x="544" y="189" width="224" height="120" rx="12" class="box"/>
+  <text x="560" y="221" class="label">Mark even</text>
+  <text x="560" y="253">Example: 11 → 12</text>
+  <text x="560" y="280">“Write complete”</text>
+
+  <rect x="32" y="332" width="736" height="76" rx="12" fill="#e5eeea"/>
+  <text x="52" y="363" class="label teal">One shared slot · latest target wins</text>
+  <text x="52" y="391">Updates can overwrite earlier targets before the loop reads them.</text>
+
+  <text x="32" y="460" class="section blue">2. Reader · at the start of each 1 kHz cycle</text>
+  <text x="32" y="489">No new sequence? Keep the cached target and continue below.</text>
+  <text x="32" y="518">Sequence changed? Attempt a consistent copy:</text>
+  <rect x="32" y="541" width="224" height="120" rx="12" class="box"/>
+  <text x="48" y="574" class="label">Read sequence</text>
+  <text x="48" y="606">Must be nonzero</text>
+  <text x="48" y="633">and even to copy</text>
+  <path d="M256 602 H285" class="line"/>
+  <rect x="288" y="541" width="224" height="120" rx="12" class="box"/>
+  <text x="304" y="574" class="label">Copy 25 values</text>
+  <text x="304" y="606">A candidate, not yet</text>
+  <text x="304" y="633">the loop’s target</text>
+  <path d="M512 602 H541" class="line"/>
+  <rect x="544" y="541" width="224" height="120" rx="12" class="box"/>
+  <text x="560" y="574" class="label">Check sequence</text>
+  <text x="560" y="606">Same even number?</text>
+  <text x="560" y="633">Copy is consistent.</text>
+
+  <path d="M656 661 V691 H212 V719" class="line"/>
+  <path d="M588 691 V719" class="line"/>
+  <rect x="32" y="722" width="360" height="134" rx="12" fill="#e5eeea" stroke="#266b62" stroke-width="1.5"/>
+  <text x="52" y="755" class="label teal">Consistent copy</text>
+  <text x="52" y="789">Adopt the complete new target.</text>
+  <text x="52" y="822">Never accept a mixed snapshot.</text>
+  <rect x="408" y="722" width="360" height="134" rx="12" fill="#e8eef3" stroke="#285f89" stroke-width="1.5"/>
+  <text x="428" y="755" class="label blue">No consistent copy</text>
+  <text x="428" y="789">At most 3 attempts this cycle.</text>
+  <text x="428" y="822">If all fail, keep cached target.</text>
+  <path d="M212 856 V886 H400 V912" class="line"/>
+  <path d="M588 856 V886 H400" fill="none" stroke="#285f89" stroke-width="2"/>
+  <rect x="32" y="916" width="736" height="119" rx="12" fill="#fff" stroke="#266b62" stroke-width="1.5"/>
+  <text x="52" y="950" class="section teal">3. Continue this control cycle</text>
+  <text x="52" y="982">Apply slew / budget ramp / step policies toward the cached target.</text>
+  <text x="52" y="1011">Then run the controller. Check the slot again next cycle.</text>
+  <text x="32" y="1071">The slot’s sequence is internal; it is not the protocol’s version number.</text>
+</svg>

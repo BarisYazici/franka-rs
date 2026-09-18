@@ -18,10 +18,11 @@ use zenoh::sample::{Sample, SampleKind};
 use zenoh::{Config, Session, Wait};
 use zerocopy::IntoBytes;
 
-use crate::arm::{self, ArmHandle, ArmSender, Event, GripperSide, RobotSide, Verb};
+use crate::arm::{self, ArmHandle, ArmSender, Event, GripperSide, ParamsVerb, RobotSide, Verb};
 use crate::config::{ArmConfig, ZenohConfig};
 use crate::gripper::Gripper;
 use crate::monotonic_ns;
+use crate::msg::params::{to_json, ParamsMsg};
 use crate::msg::{
     CmdReply, CmdRequest, EpisodeMsg, GripperMsg, GripperStateMsg, StateMsg, TargetMsg,
 };
@@ -67,6 +68,7 @@ pub struct Attached {
     _target: Subscriber<()>,
     _gripper_target: Subscriber<()>,
     _commands: Vec<Queryable<()>>,
+    _params: Vec<Queryable<()>>,
     _leases: Subscriber<()>,
     handle: ArmHandle,
 }
@@ -88,11 +90,12 @@ impl Attached {
             _target,
             _gripper_target,
             _commands,
+            _params,
             _leases,
             handle,
             ..
         } = self;
-        drop((_target, _gripper_target, _commands, _leases));
+        drop((_target, _gripper_target, _commands, _params, _leases));
         handle.shutdown();
     }
 }
@@ -132,6 +135,12 @@ pub fn attach(
         .declare_publisher(key("episode")?)
         .congestion_control(CongestionControl::Drop)
         .wait()?;
+    // Dropped under congestion like the other streams: `current` is republished every second,
+    // so a lost sample costs a moment of a stale panel and never blocks the arm thread.
+    let params = session
+        .declare_publisher(key("params/current")?)
+        .congestion_control(CongestionControl::Drop)
+        .wait()?;
     let handle = arm::spawn(
         config,
         arms,
@@ -145,6 +154,11 @@ pub fn attach(
         move |episode: &EpisodeMsg| {
             if let Err(e) = episodes.put(episode.to_json()).wait() {
                 debug!("episode publish: {e}");
+            }
+        },
+        move |message: &ParamsMsg| {
+            if let Err(e) = params.put(to_json(message)).wait() {
+                debug!("params publish: {e}");
             }
         },
     )?;
@@ -186,6 +200,15 @@ pub fn attach(
             .wait()?;
         commands.push(queryable);
     }
+    let mut params_queries = Vec::with_capacity(ParamsVerb::ALL.len());
+    for verb in ParamsVerb::ALL {
+        let (sender, key) = (handle.sender(), key(&format!("params/{}", verb.key()))?);
+        let queryable = session
+            .declare_queryable(key.clone())
+            .callback(move |query: Query| params_query(&sender, verb, &key, query))
+            .wait()?;
+        params_queries.push(queryable);
+    }
     let leases = {
         let sender = handle.sender();
         session
@@ -195,11 +218,12 @@ pub fn attach(
             .callback(move |sample: Sample| lease(&sender, &sample))
             .wait()?
     };
-    info!("arm {arm}: serving franka/{arm}/{{target,state,episode,gripper/target,gripper/state,cmd/*,lease/*}}");
+    info!("arm {arm}: serving franka/{arm}/{{target,state,episode,gripper/target,gripper/state,cmd/*,params/*,lease/*}}");
     Ok(Attached {
         _target: target,
         _gripper_target: gripper_target,
         _commands: commands,
+        _params: params_queries,
         _leases: leases,
         handle,
     })
@@ -288,6 +312,29 @@ fn command(sender: &ArmSender, verb: Verb, key: &KeyExpr<'static>, query: Query)
         }
         Err(why) => answer(&query, key, &CmdReply::err(why)),
     }
+}
+
+/// A `params/*` query: the payload goes to the arm thread undecoded, because the values it
+/// would change and the version it is checked against are that thread's.
+///
+/// `key` is the queryable's own key expression, and the reply goes out on it: a panel discovers
+/// the arms with a wildcard `z_get` on `franka/*/params/schema` and reads the arm's name off
+/// the key each reply comes back on.
+fn params_query(sender: &ArmSender, verb: ParamsVerb, key: &KeyExpr<'static>, query: Query) {
+    let payload = query
+        .payload()
+        .map(|payload| payload.to_bytes().to_vec())
+        .unwrap_or_default();
+    let key = key.clone();
+    sender.send(Event::Params(
+        verb,
+        payload,
+        Box::new(move |json| {
+            if let Err(e) = query.reply(key.clone(), json).wait() {
+                warn!("reply on {key}: {e}");
+            }
+        }),
+    ));
 }
 
 fn answer(query: &Query, key: &KeyExpr<'static>, reply: &CmdReply) {

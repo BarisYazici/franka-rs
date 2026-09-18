@@ -22,6 +22,7 @@
 
 - [Command from a low-rate program](./howto/target-control.md)
 - [Serve arms over Zenoh: franka-node](./howto/franka-node.md)
+- [Tune a running controller](./howto/live-tuning.md)
 - [Write a 1 kHz callback](./howto/callback-control.md)
 - [Drive the loop yourself](./howto/active-control.md)
 - [Use the model](./howto/model.md)
@@ -39,6 +40,7 @@
 - [Rate limiting and filtering](./reference/rate-limiting.md)
 - [Online trajectory generation](./reference/otg.md)
 - [The impedance backend](./reference/impedance.md)
+- [Live parameter protocol](./reference/node-parameters.md)
 - [Model parameters and conformance](./reference/model.md)
 - [Benchmarks](./reference/benchmarks.md)
 - [Simulator gaps](./reference/simulator-gaps.md)

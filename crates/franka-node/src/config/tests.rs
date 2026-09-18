@@ -29,7 +29,7 @@ fn parses_the_example_file() {
     assert_eq!(arm.state_hz, 100);
     assert_eq!((arm.hold_after_ms, arm.stop_after_ms), (200, 2000));
     assert_eq!((arm.collision_force, arm.collision_torque), (40.0, 40.0));
-    assert_eq!(arm.workspace.min, [0.2, -0.5, 0.0]);
+    assert_eq!(arm.workspace, None);
     assert_eq!(arm.realtime_priority, Some(80));
     assert_eq!(arm.cpu, None);
     let options = arm.target_control_options();
@@ -52,6 +52,29 @@ fn parses_the_example_file() {
     options.validate().unwrap();
     assert_eq!(arm.rate_hz, 250.0);
     assert_eq!(arm.guard_options(), GuardOptions::default());
+}
+
+#[test]
+fn two_arm_example_keeps_independent_default_controls() {
+    let config: NodeConfig = include_str!("../../config.two-arms.toml").parse().unwrap();
+    assert_eq!(config.arms.len(), 2);
+    assert_eq!(config.zenoh.listen, ["tcp/0.0.0.0:7447"]);
+    assert!(!config.zenoh.multicast_enabled());
+    assert!(config.zenoh.connect.is_empty());
+
+    for (arm, (name, host)) in config
+        .arms
+        .iter()
+        .zip([("left", "172.16.0.2"), ("right", "172.16.1.2")])
+    {
+        let mut defaults = minimal("").unwrap().arms.remove(0);
+        defaults.name = name.into();
+        defaults.host = host.into();
+        // Catch experimental gains, relaxed guards, or host-specific options
+        // accidentally replacing the portable defaults in the public example.
+        assert_eq!(arm, &defaults);
+        arm.target_control_options().validate().unwrap();
+    }
 }
 
 #[test]
@@ -87,7 +110,7 @@ fn a_minimal_arm_gets_the_defaults() {
     assert_eq!(arm.max_lead_rotation, 0.26);
     assert_eq!(arm.joint_budget_fraction, 0.2);
     assert_eq!(arm.joint_max_deviation, 1.0);
-    assert_eq!(arm.workspace, Workspace::default());
+    assert_eq!(arm.workspace, None);
     assert_eq!(arm.rate_hz, 250.0);
     assert_eq!(arm.realtime_priority, None);
     assert_eq!(arm.target_control_options().realtime_priority, None);
@@ -405,9 +428,22 @@ fn workspace_min_must_be_below_max() {
     assert!(invalid_text(minimal(inverted)).contains("workspace"));
     let config = minimal("workspace = { min = [0.0, -1.0, -0.5], max = [1.0, 1.0, 1.0] }").unwrap();
     assert_eq!(
-        config.arms[0].guard_options().workspace_min,
-        [0.0, -1.0, -0.5]
+        config.arms[0].guard_options().workspace,
+        Some(Workspace {
+            min: [0.0, -1.0, -0.5],
+            max: [1.0, 1.0, 1.0]
+        })
     );
+}
+
+/// The box is off unless a config asks for one, and a config that asks still gets exactly
+/// what it asked for -- the two directions of the default, so neither can drift alone.
+#[test]
+fn a_config_without_a_workspace_has_no_box() {
+    let config = minimal("").unwrap();
+    assert_eq!(config.arms[0].workspace, None);
+    assert_eq!(config.arms[0].guard_options().workspace, None);
+    assert_eq!(GuardOptions::default().workspace, None);
 }
 
 #[test]
@@ -680,4 +716,50 @@ fn the_joint_gains_override_the_preset_on_both_session_kinds_and_keep_the_cartes
             "{arity} was accepted"
         );
     }
+}
+
+/// What `params/get` answers before a session runs must be what the session will then start
+/// with, or the panel opens on values the arm does not have. The library seeds a session's slot
+/// by reading the very options `target_control_options` builds, so this checks the two readings
+/// against each other rather than against a list of numbers.
+#[test]
+fn live_tuning_is_what_a_session_of_the_same_config_starts_at() {
+    let arm = &minimal(
+        "cartesian_stiffness = 1500.0\nbudget = [0.4, 0.6, 30.0]\n\
+         rotation_budget = [0.2, 0.4, 8.0]\nik_damping = 0.2\nik_nullspace_gain = 0.0\n\
+         velocity_feedforward_gain = 0.5\nvelocity_feedforward_cutoff = 40.0\n\
+         joint_stiffness = [600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0]\n\
+         joint_damping = [50.0, 50.0, 50.0, 50.0, 20.0, 20.0, 15.0]",
+    )
+    .unwrap()
+    .arms[0];
+    let options = arm.target_control_options();
+    let tuning = arm.live_tuning();
+    let Backend::Impedance(impedance) = options.backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(
+        tuning,
+        LiveTuning::from_options(&impedance, options.limits, options.rotation_limits)
+    );
+    // And the one stiffness rebuilds all twelve Cartesian gains exactly, which is what the
+    // library requires of a tunable session -- a seed it cannot rebuild has no live tuning.
+    assert_eq!(tuning.gains(), impedance.gains);
+    assert_eq!(tuning.cartesian_stiffness, 1500.0);
+    assert_eq!(tuning.budget, [0.4, 0.6, 30.0]);
+    assert_eq!(tuning.rotation_budget, [0.2, 0.4, 8.0]);
+    assert_eq!(tuning.ik_damping, 0.2);
+    assert_eq!(tuning.velocity_feedforward_gain, 0.5);
+    assert_eq!(tuning.velocity_feedforward_cutoff, 40.0);
+    assert_eq!(tuning.joint_damping[6], 15.0);
+}
+
+/// The feedforward switch is carried by the weight: off is a gain of zero, which is the same
+/// law and a value the panel can cross continuously rather than throw.
+#[test]
+fn the_feedforward_switch_reaches_the_tuning_as_a_zero_gain() {
+    let off = &minimal("velocity_feedforward = false").unwrap().arms[0];
+    assert_eq!(off.live_tuning().velocity_feedforward_gain, 0.0);
+    let on = &minimal("velocity_feedforward_gain = 0.75").unwrap().arms[0];
+    assert_eq!(on.live_tuning().velocity_feedforward_gain, 0.75);
 }

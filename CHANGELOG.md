@@ -7,7 +7,55 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
+  is now an `Option<Workspace>` defaulting to `None`, and `ArmConfig::workspace` is optional in
+  the TOML. The retired default -- x 0.2..0.8, y -0.5..0.5, z 0..0.8 in the base frame --
+  assumed a forward-facing bench and refused good poses anywhere else, and the box had no off
+  switch: `max_lead` and `max_lead_rotation` are disabled by a zero, but a zero is a legitimate
+  coordinate, so "no box" could only be written as an absurdly large one. A config that names a
+  box still gets exactly that box, and an inverted or non-finite one is still refused. With no
+  box a target is still bounded by the step and lead limits, the rate bucket, the leash and the
+  session's own deviation guard. `Workspace` moved from `config` to `guard`, beside the check
+  that enforces it.
+
 ### Added
+
+- **Live tuning: a running Cartesian session takes a change to the law and the plan, and
+  `franka-node` serves it over Zenoh.** `LiveTuning` is the set of parameters an operator may
+  move while the arm is engaged -- the joint springs and dampers, one Cartesian stiffness the
+  twelve-word preset is derived from, the IK's damping and nullspace gain, the velocity
+  feedforward's weight and cutoff, and the two budgets -- and `LiveTuning::BOUNDS` is how far
+  each of its twenty-five scalars may be moved. `CartesianTargetControl::tune` applies a partial
+  `TuningUpdate` all or nothing, clamps it to that table and returns the bounds that bit;
+  `tuning` reads the targets back. A change is never a step in the torque or in the command: the
+  fields that multiply a generally-nonzero state cross over `SLEW_TAU` (0.3 s), the budget's
+  velocity and acceleration are raised whole and lowered as a ramp at the next order's limit
+  (`TuningPolicy::StepUpGateDown`, whose `rate_word` names which word that limit is), and the
+  rest step. `TuningPolicy::remaining` and `descent` say what is left of a crossing from the
+  clock alone, so nothing is published back out of the realtime thread; the cycle itself holds
+  no `exp`, no allocation and no match on a policy. A session whose gains one Cartesian
+  stiffness cannot rebuild, or whose tracking is the robot's own, has no live tuning rather than
+  a partial one. `Otg::set_limits` and `MultiOtg::set_limits` are what carry a budget to a
+  running generator, with the caller's obligation -- never lower a limit below the state -- in
+  the OTG's rules as a fourth.
+- **`franka/<arm>/params/{schema,get,set}` and `params/current` on the node.** The schema is
+  *serialised from* `LiveTuning::BOUNDS`: every bound, default, unit, policy, danger flag,
+  slider range and log scale a panel renders is the row the arm is actually clamped to, so a
+  client cannot draw a slider the arm would refuse, and the damping floor no per-field row can
+  express is published beside them as a `relations` rule. `derived` adds what the library cannot
+  know and a client must not guess -- the leash, the gate's lead and step limits, the rates, the
+  connected arm's joint velocity limits and the Cartesian preset the one stiffness slider
+  scales. A `set` is partial and all or nothing, checked for shape by the node and for domain by
+  the library, refused with `stale` against a `base_version` that has moved on and with
+  `needs_confirm` where a value crosses a threshold that widens what the arm may do; the reply
+  echoes the clamped values so an operator learns a bound exists. The values are the session's
+  own: with no session there is nothing to tune and `get` answers with what the next one will
+  start at, and a session ending puts them back to the TOML's, deliberately, because an
+  experiment nobody saved is not one a new session should inherit.
+  `cargo run -p franka-node --example params_schema` dumps that schema without a robot, which
+  is what `tools/tuning-panel`'s mock owner serves instead of a copy of the numbers.
 
 - **A continuous weight and a bandwidth bound on the impedance law's velocity feedforward**
   (`ImpedanceOptions::velocity_feedforward_gain`, `velocity_feedforward_cutoff`,
@@ -130,7 +178,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `franka/<arm>/state` and drive `acquire`/`enable`/`stop`/`release`/`recover`/`home` through
   queryables. A per-arm
   thread is the single writer of the target seqlock; targets are gated (lease holder, order,
-  finite, unit quaternion, step, lead, workspace, rate) before they reach it; a client's liveliness
+  finite, unit quaternion, step, lead, rate, and a workspace box when a config names one --
+  there is none by default) before they reach it; a client's liveliness
   token and a target-staleness watchdog stop the arm when the commander goes away. Config in
   TOML, a `client` example, unit tests and a simulator test (`tests/sim_node.rs`).
   - Joint targets and `home`: `enable` takes `"mode": "joints"` for a session on

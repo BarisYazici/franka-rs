@@ -10,6 +10,7 @@
 mod commands;
 pub mod gripper;
 mod machine;
+mod params;
 mod record;
 mod state;
 #[cfg(test)]
@@ -22,14 +23,17 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use franka::robot::target_control::{FieldBound, LiveTuning, TuningUpdate, NO_TUNING_MESSAGE};
 use franka::{
-    CartesianTargetControl, FciVersion, FrankaResult, JointTargetControl,
+    CartesianTargetControl, FciVersion, FrankaError, FrankaResult, JointTargetControl,
     JointTargetControlOptions, Model, Robot, RobotState, TargetControlOptions,
 };
 
 pub use gripper::{GripperSide, GRIPPER_STATE_HZ};
+pub use params::{ParamsVerb, CURRENT_PERIOD};
 
 use crate::config::ArmConfig;
+use crate::msg::params::ParamsMsg;
 use crate::msg::{CmdReply, CmdRequest, EpisodeMsg, GripperMsg, StateMsg, TargetMsg};
 use crate::status::ArmStats;
 
@@ -67,6 +71,11 @@ pub trait Control: Send {
     fn target(&self) -> [f64; 7];
     fn state(&self) -> RobotState;
     fn is_running(&self) -> bool;
+    /// The session's live tuning targets, or why it has none: a joints session's plan is per
+    /// joint and its tracking is not what [`LiveTuning`] describes.
+    fn tuning(&self) -> FrankaResult<LiveTuning>;
+    /// Moves those targets, returning the bounds that had to clamp a value.
+    fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>>;
     fn stop(self: Box<Self>) -> FrankaResult<()>;
 }
 
@@ -91,6 +100,14 @@ impl Control for CartesianTargetControl {
         CartesianTargetControl::is_running(self)
     }
 
+    fn tuning(&self) -> FrankaResult<LiveTuning> {
+        CartesianTargetControl::tuning(self)
+    }
+
+    fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        CartesianTargetControl::tune(self, update)
+    }
+
     fn stop(self: Box<Self>) -> FrankaResult<()> {
         CartesianTargetControl::stop(*self)
     }
@@ -111,6 +128,14 @@ impl Control for JointTargetControl {
 
     fn is_running(&self) -> bool {
         JointTargetControl::is_running(self)
+    }
+
+    fn tuning(&self) -> FrankaResult<LiveTuning> {
+        Err(FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()))
+    }
+
+    fn tune(&self, _update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        Err(FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()))
     }
 
     fn stop(self: Box<Self>) -> FrankaResult<()> {
@@ -207,12 +232,18 @@ impl Verb {
 /// Delivers a command's reply; the transport builds it around the query.
 pub type Reply = Box<dyn FnOnce(CmdReply) + Send>;
 
+/// Delivers a `params/*` reply, which is JSON of its own shape rather than a [`CmdReply`].
+pub type JsonReply = Box<dyn FnOnce(String) + Send>;
+
 /// What the arm thread receives.
 pub enum Event {
     /// A decoded target and the node's [`crate::monotonic_ns`] at receipt.
     Target(TargetMsg, u64),
     /// A command with its request and its reply.
     Cmd(Verb, CmdRequest, Reply),
+    /// A `params/*` query with the query's payload (empty where it takes none) and its reply.
+    /// Decoded on the arm thread, which is where the values it would change live.
+    Params(ParamsVerb, Vec<u8>, JsonReply),
     /// A decoded gripper command; never dropped, the driver keeps the latest.
     Gripper(GripperMsg),
     LeaseAlive(u32),
@@ -329,6 +360,7 @@ pub fn spawn(
     gripper: Option<GripperSide>,
     publish: impl Fn(&StateMsg) + Send + 'static,
     episode: impl Fn(&EpisodeMsg) + Send + 'static,
+    params: impl Fn(&ParamsMsg) + Send + 'static,
 ) -> std::io::Result<ArmHandle> {
     let (sender, rx) = channel();
     let name = format!("franka-node-{}", config.name);
@@ -337,6 +369,7 @@ pub fn spawn(
     let publishers = machine::Publishers {
         state: Box::new(publish),
         episode: Box::new(episode),
+        params: Box::new(params),
     };
     let mut machine = machine::Machine::new(
         config,

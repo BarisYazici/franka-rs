@@ -138,6 +138,7 @@ mod rotation;
 mod runner;
 mod slot;
 mod torque;
+mod tuning;
 mod velocity;
 
 pub use cartesian::{CartesianObserver, CartesianSent, CartesianTargetControl};
@@ -151,6 +152,10 @@ pub use options::{JointTargetControlOptions, TargetControlOptions, DEFAULT_LIMIT
 pub use position::{POSITION_BARRIER_STIFFNESS, POSITION_FADE_BAND};
 pub use rotation::{ORTHONORMAL_TOLERANCE, UNIT_QUATERNION_TOLERANCE};
 pub use slot::TargetSlot;
+pub use tuning::{
+    FieldBound, LiveTuning, SlewGains, TuningDanger, TuningPolicy, TuningUpdate,
+    MIN_JOINT_DAMPING_RATIO, SLEW_TAU,
+};
 pub use velocity::{FADE_BAND, VELOCITY_BARRIER_GAIN};
 
 use runner::Runner;
@@ -179,6 +184,21 @@ pub const STOP_TIMEOUT_CYCLES: u32 = 5000;
 /// ended, for whatever reason; `stop()` has the reason.
 pub const ENDED_MESSAGE: &str =
     "franka target control: the control loop has ended; stop() returns its result.";
+
+/// The message of the [`FrankaError::InvalidOperation`] a live-tuning call returns on a session
+/// whose interface or backend has none: [`LiveTuning`] describes the impedance law of the
+/// Cartesian interface, and nothing else runs one.
+pub const NO_TUNING_MESSAGE: &str = "franka target control: this session has no live tuning; \
+     it is the Cartesian interface's on the impedance backend.";
+
+/// The message of the [`FrankaError::InvalidOperation`] a live-tuning call returns on a Cartesian
+/// impedance session whose gains [`LiveTuning::gains`] cannot rebuild from one Cartesian
+/// stiffness -- [`ImpedanceGains::DROID`] is the preset this is true of. Such a session keeps the
+/// gains it was started with and is given no tuning slot, rather than having the six derived
+/// dampings rewritten in one cycle by the first change to any other field.
+pub const DERIVED_GAINS_MESSAGE: &str = "franka target control: this session has no live tuning; \
+     its Cartesian gains are not a scaled ImpedanceGains::CARTESIAN, which is all the one \
+     tunable stiffness can rebuild.";
 
 /// The message of the [`FrankaError::Control`] the loop ends with after the deviation guard
 /// froze the target.
@@ -333,10 +353,15 @@ fn check_posture(backend: &Backend, limits: &([f64; 7], [f64; 7])) -> FrankaResu
 /// What the user thread and the loop thread share.
 struct Shared<const N: usize> {
     slot: TargetSlot<N>,
+    /// The live tuning, as [`LiveTuning::to_words`]: the same seqlock as `slot` and the same
+    /// single writer, but the loop only ever reads it, and what it carries are targets the loop
+    /// crosses to over [`SLEW_TAU`] rather than a command for the next cycle. A session without
+    /// live tuning leaves it unwritten, which is what [`NO_TUNING_MESSAGE`] reports.
+    tuning: TargetSlot<{ LiveTuning::WORDS }>,
     stop: AtomicBool,
     running: AtomicBool,
     state: Mutex<RobotState>,
-    /// Serialises the writers of `slot`.
+    /// Serialises the writers of `slot` and of `tuning`.
     writer: Mutex<()>,
 }
 
@@ -344,6 +369,7 @@ impl<const N: usize> Default for Shared<N> {
     fn default() -> Self {
         Shared {
             slot: TargetSlot::default(),
+            tuning: TargetSlot::default(),
             stop: AtomicBool::new(false),
             running: AtomicBool::new(false),
             state: Mutex::new(RobotState::default()),
@@ -383,6 +409,48 @@ impl<const N: usize> Handle<N> {
         }
         self.shared.slot.publish(target);
         Ok(())
+    }
+
+    /// Applies `update` to the published tuning and returns the bounds that clamped a value.
+    ///
+    /// The read, the gate and the publish are one critical section under the same `writer` lock
+    /// `modify_target` takes, so two callers moving different sliders cannot lose each other's,
+    /// and [`LiveTuning::apply_update`] is the only way into the slot: there is no setter that
+    /// takes values past [`LiveTuning::BOUNDS`].
+    fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        let _writer = self
+            .shared
+            .writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if !self.is_running() {
+            return Err(FrankaError::InvalidOperation(ENDED_MESSAGE.to_string()));
+        }
+        let mut tuning = self.published_tuning()?;
+        let clamped = tuning.apply_update(update)?;
+        self.shared.tuning.publish(tuning.to_words());
+        Ok(clamped)
+    }
+
+    /// The published tuning targets; the loop is somewhere between these and what it started
+    /// with (see [`TuningPolicy::remaining`]).
+    fn tuning(&self) -> FrankaResult<LiveTuning> {
+        let _writer = self
+            .shared
+            .writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        self.published_tuning()
+    }
+
+    /// The tuning slot, read by a caller already holding `writer`: the slot's one writer is
+    /// therefore excluded, so a load cannot tear and a failure means the slot was never seeded.
+    fn published_tuning(&self) -> FrankaResult<LiveTuning> {
+        let mut words = [0.0; LiveTuning::WORDS];
+        if !self.shared.tuning.load(&mut words) {
+            return Err(FrankaError::InvalidOperation(NO_TUNING_MESSAGE.to_string()));
+        }
+        Ok(LiveTuning::from_words(&words))
     }
 
     fn target(&self) -> [f64; N] {

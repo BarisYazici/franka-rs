@@ -18,11 +18,12 @@ use super::rotation::{
 use super::runner::Step;
 use super::torque::{PoseTracker, TorqueLoop};
 use super::{
-    check_posture, joint_position_limits, spawn, Backend, Handle, ImpedanceOptions, Runner, Shared,
-    TargetControlOptions,
+    check_posture, joint_position_limits, spawn, Backend, FieldBound, Handle, ImpedanceOptions,
+    LiveTuning, Runner, Shared, TargetControlOptions, TuningUpdate, DERIVED_GAINS_MESSAGE,
+    NO_TUNING_MESSAGE,
 };
 use crate::control_types::CartesianPose;
-use crate::error::FrankaResult;
+use crate::error::{FrankaError, FrankaResult};
 use crate::lowpass_filter::MAX_CUTOFF_FREQUENCY;
 use crate::math_utils::orthonormalized_rotation;
 use crate::model::Model;
@@ -156,6 +157,9 @@ pub type CartesianObserver = Box<dyn FnMut(&RobotState, &CartesianSent) + Send>;
 /// scalar part last) or the rotation block of a column-major pose as in `O_T_EE`.
 pub struct CartesianTargetControl {
     inner: Handle<7>,
+    /// Why this session has no live tuning, `None` when it has: the reason is known at
+    /// [`start`] and nowhere else, since an unseeded slot cannot say which of the two it was.
+    no_tuning: Option<&'static str>,
 }
 
 impl CartesianTargetControl {
@@ -233,6 +237,56 @@ impl CartesianTargetControl {
         self.inner.state()
     }
 
+    /// Moves the law's parameters while the loop runs: applies every field `update` carries and
+    /// returns the [`bounds`](FieldBound) that had to clamp one, so a caller can show a slider
+    /// snapping. Callable from any thread at any rate; the loop reads the result on its next
+    /// cycle and crosses to it under each field's [`policy`](FieldBound::policy).
+    ///
+    /// The update is all or nothing and then clamped into [`LiveTuning::BOUNDS`]; what it does
+    /// not carry, it does not touch. A change is never a step in the torque: the fields that
+    /// multiply a nonzero state cross over [`SLEW_TAU`](super::SLEW_TAU), and
+    /// [`TuningPolicy::remaining`](super::TuningPolicy::remaining) says how much of a crossing
+    /// is still to come.
+    ///
+    /// Nor is it ever a step in the command. [`budget`](LiveTuning::budget) and
+    /// [`rotation_budget`](LiveTuning::rotation_budget) reach the generator, whose velocity and
+    /// acceleration are raised on the cycle the update arrives and lowered as a ramp at the next
+    /// order's limit, because a narrower budget clamps the generator's stored state rather than
+    /// re-planning it ([`TuningPolicy::StepUpGateDown`](super::TuningPolicy::StepUpGateDown)).
+    /// So a lowered budget takes `(current - target) / rate` seconds to be wholly in force; the
+    /// jerks step, either way.
+    ///
+    /// # Errors
+    /// [`crate::error::FrankaError::InvalidArgument`] naming the field if a value is not finite
+    /// or is a zero that means something other than "softer", with nothing written;
+    /// [`crate::error::FrankaError::InvalidOperation`] with [`super::ENDED_MESSAGE`] once the
+    /// loop has ended, with [`super::NO_TUNING_MESSAGE`] on a [`Backend::RobotController`]
+    /// session, whose tracking is the robot's own, or with [`super::DERIVED_GAINS_MESSAGE`] on
+    /// one whose gains a single Cartesian stiffness cannot rebuild.
+    pub fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        self.tunable()?;
+        self.inner.tune(update)
+    }
+
+    /// The tuning targets in force, the session's own options until something tunes them.
+    ///
+    /// # Errors
+    /// [`crate::error::FrankaError::InvalidOperation`] with [`super::NO_TUNING_MESSAGE`] or
+    /// [`super::DERIVED_GAINS_MESSAGE`] on a session that has no live tuning, as
+    /// [`tune`](Self::tune) describes.
+    pub fn tuning(&self) -> FrankaResult<LiveTuning> {
+        self.tunable()?;
+        self.inner.tuning()
+    }
+
+    /// Whether this session has live tuning at all, with why not if it has not.
+    fn tunable(&self) -> FrankaResult<()> {
+        match self.no_tuning {
+            Some(why) => Err(FrankaError::InvalidOperation(why.to_string())),
+            None => Ok(()),
+        }
+    }
+
     /// Whether the loop is still running; `false` after it ended for any reason.
     pub fn is_running(&self) -> bool {
         self.inner.is_running()
@@ -243,6 +297,20 @@ impl CartesianTargetControl {
     /// robot aborted the motion or a deviation guard fired.
     pub fn stop(self) -> FrankaResult<()> {
         self.inner.stop()
+    }
+}
+
+#[cfg(test)]
+impl CartesianTargetControl {
+    /// The handle `start` builds on `shared` for a session whose seed came back as `seed`.
+    pub(super) fn on(shared: Arc<Shared<7>>, seed: Result<LiveTuning, &'static str>) -> Self {
+        CartesianTargetControl {
+            inner: Handle {
+                shared,
+                thread: None,
+            },
+            no_tuning: seed.err(),
+        }
     }
 }
 
@@ -385,6 +453,10 @@ pub(super) fn start(
     let shared = Arc::new(Shared::<7>::default());
     let loop_shared = Arc::clone(&shared);
     let scheduling = options.scheduling();
+    let tuning = match &options.backend {
+        Backend::Impedance(impedance) => seed(&options, impedance),
+        Backend::RobotController => Err(NO_TUNING_MESSAGE),
+    };
     let inner = match options.backend {
         Backend::RobotController => spawn(
             THREAD,
@@ -395,6 +467,13 @@ pub(super) fn start(
         )?,
         Backend::Impedance(impedance) => {
             let model = Arc::new(robot.load_model()?);
+            // Before the thread, so the loop's first read of the slot is the seed the loop was
+            // built with and no cycle runs with anything else. The user thread is the slot's
+            // only writer for the session's whole life; the loop never writes it. A seed that
+            // is not faithful is not published at all, and the session then has no live tuning.
+            if let Ok(seed) = tuning {
+                shared.tuning.publish(seed.to_words());
+            }
             spawn(
                 THREAD,
                 robot,
@@ -409,7 +488,34 @@ pub(super) fn start(
             )?
         }
     };
-    Ok(CartesianTargetControl { inner })
+    Ok(CartesianTargetControl {
+        inner,
+        no_tuning: tuning.err(),
+    })
+}
+
+/// What the session's live tuning starts at -- the law as `impedance` has it and the plan's two
+/// budgets -- or why it has none. The loop and the slot are seeded from this one place, so the
+/// loop's first read of the slot finds exactly what it already holds and nothing is applied
+/// until something is tuned.
+///
+/// A seed is refused when [`LiveTuning::gains`] does not rebuild `impedance`'s own gains. The
+/// operator's Cartesian stiffness is one number and the law's are twelve, derived from it by
+/// [`ImpedanceGains::scaled_cartesian`](super::ImpedanceGains::scaled_cartesian), and the apply
+/// step rebuilds all twelve whenever *any* field moves. On a gains set that derivation cannot
+/// reproduce -- [`DROID`](super::ImpedanceGains::DROID), whose translational damping is 37
+/// against the scaled preset's 50 and 90 -- the first retune of an unrelated field would rewrite
+/// them in a single cycle, and the slew could not soften it, because the stiffness it watches
+/// never moved. A session `LiveTuning` cannot represent is left with no live tuning rather than
+/// quietly retuned into one it can.
+pub(super) fn seed(
+    options: &TargetControlOptions,
+    impedance: &ImpedanceOptions,
+) -> Result<LiveTuning, &'static str> {
+    let seed = LiveTuning::from_options(impedance, options.limits, options.rotation_limits);
+    (seed.gains() == impedance.gains)
+        .then_some(seed)
+        .ok_or(DERIVED_GAINS_MESSAGE)
 }
 
 /// The [`Backend::Impedance`] loop of this interface: a [`PoseTracker`] on the six-axis
@@ -437,12 +543,16 @@ pub(super) fn torque_loop(
         joint_position_limits(version),
         velocity,
     );
+    // The loop reads the slot only where `start` seeded it, and the two agree because both ask
+    // the same question of the same options.
+    let tuning = seed(&options, &impedance).ok();
     Ok(TorqueLoop::new(
         runner,
         model,
         impedance,
         tracker,
         options.observer,
+        tuning,
     ))
 }
 

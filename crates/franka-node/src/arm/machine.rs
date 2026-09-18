@@ -12,6 +12,7 @@ use log::{debug, info, warn};
 use zerocopy::little_endian::{F64, U16, U32, U64};
 
 use super::gripper::{GripperSide, GRIPPER_STATE_HZ};
+use super::params::Params;
 use super::record::Recording;
 use super::state::pose_target;
 use super::{
@@ -20,6 +21,7 @@ use super::{
 use crate::config::ArmConfig;
 use crate::guard::{Guard, Verdict};
 use crate::monotonic_ns;
+use crate::msg::params::ParamsMsg;
 use crate::msg::{
     robot_mode_code, CmdReply, EpisodeMsg, EpisodePhase, GripperKind, GripperMsg, Kind, Phase,
     StateMsg, TargetMsg, FLAG_HOLDING, FLAG_JOINTS, VERSION,
@@ -47,6 +49,9 @@ pub(super) struct Counts {
 pub(super) struct Publishers {
     pub(super) state: Box<dyn Fn(&StateMsg) + Send>,
     pub(super) episode: Box<dyn Fn(&EpisodeMsg) + Send>,
+    /// `params/current`, on every change and every
+    /// [`CURRENT_PERIOD`](super::CURRENT_PERIOD).
+    pub(super) params: Box<dyn Fn(&ParamsMsg) + Send>,
 }
 
 /// A `home` in progress: its query is answered when it ends.
@@ -62,6 +67,7 @@ pub(super) struct Machine<R: RobotSide> {
     pub(super) robot: R,
     publish: Box<dyn Fn(&StateMsg) + Send>,
     publish_episode: Box<dyn Fn(&EpisodeMsg) + Send>,
+    pub(super) publish_params_msg: Box<dyn Fn(&ParamsMsg) + Send>,
     pub(super) backlog: Arc<Backlog>,
     /// Stored into with every published state; read by the status publisher.
     pub(super) stats: Arc<ArmStats>,
@@ -91,6 +97,8 @@ pub(super) struct Machine<R: RobotSide> {
     /// The last accepted target's `seq` and `t_send_ns`.
     pub(super) accepted: (u64, u64),
     pub(super) counts: Counts,
+    /// The `params/*` surface's bookkeeping; the values themselves live in the session's slot.
+    pub(super) params: Params,
     pub(super) gripper: Option<GripperSide>,
     /// State ticks since the gripper state was last published.
     gripper_ticks: u32,
@@ -113,6 +121,7 @@ impl<R: RobotSide> Machine<R> {
             robot,
             publish: publishers.state,
             publish_episode: publishers.episode,
+            publish_params_msg: publishers.params,
             backlog,
             stats,
             gripper,
@@ -131,6 +140,7 @@ impl<R: RobotSide> Machine<R> {
             holding: false,
             accepted: (0, 0),
             counts: Counts::default(),
+            params: Params::default(),
         }
     }
 
@@ -170,6 +180,7 @@ impl<R: RobotSide> Machine<R> {
             match event {
                 Event::Target(..) => self.backlog.release(),
                 Event::Cmd(_, _, reply) => reply(CmdReply::err("shutting down")),
+                Event::Params(verb, payload, reply) => self.params_query(verb, &payload, reply),
                 _ => {}
             }
         }
@@ -226,6 +237,7 @@ impl<R: RobotSide> Machine<R> {
         match event {
             Event::Target(msg, received_ns) => self.target(&msg, received_ns),
             Event::Cmd(verb, request, reply) => self.command(verb, request, reply),
+            Event::Params(verb, payload, reply) => self.params_query(verb, &payload, reply),
             Event::Gripper(msg) => self.gripper_target(&msg),
             Event::LeaseAlive(client) => {
                 self.alive.insert(client);
@@ -325,6 +337,7 @@ impl<R: RobotSide> Machine<R> {
             _ => {}
         }
         self.publish_state();
+        self.publish_params_if_due();
         self.gripper_ticks += 1;
         if self.gripper_ticks >= (self.config.state_hz / GRIPPER_STATE_HZ).max(1) {
             self.gripper_ticks = 0;

@@ -25,6 +25,7 @@
 mod joint;
 mod pose;
 mod restart;
+mod tuning;
 
 use std::sync::Arc;
 
@@ -37,12 +38,14 @@ use super::impedance::impedance_torques;
 use super::position::{spring_ramp, JointLimits};
 use super::runner::{Step, REST_JOINT_VELOCITY};
 use super::velocity::{barrier_gains, fade_push, velocity_barrier};
-use super::{ImpedanceOptions, Leash, Runner, STOP_TIMEOUT_CYCLES};
+use super::{ImpedanceOptions, Leash, LiveTuning, Runner, STOP_TIMEOUT_CYCLES};
 use crate::control_types::Torques;
 use crate::error::FrankaResult;
 use crate::model::{Frame, Model};
+use crate::otg::OtgLimits;
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
+use tuning::Tuning;
 
 /// What differs between the Cartesian and the joint torque path: where the generator is
 /// anchored, what its step means as a joint goal, the deviation guard and the observer's
@@ -64,6 +67,16 @@ pub(super) trait Tracker<const N: usize, const S: usize> {
     /// The joint goal and its velocity after this cycle's step.
     fn goal(&mut self, step: &Step<N, S>) -> ([f64; 7], [f64; 7]);
     fn sent(&self, step: &Step<N, S>, command: &Command) -> Self::Sent;
+    /// Writes the tracker's own copies of the tuned options, called before `anchor` on a cycle
+    /// something moved. The joint tracker keeps no copy of any of them -- it has no IK, and its
+    /// goal velocity is the generator's own, unfiltered -- so the default is to do nothing.
+    fn retune(&mut self, _tuning: &LiveTuning) {}
+    /// The generator's per-axis limits for `tuning`'s budget, in the runner's coordinates.
+    /// `None` where the interface plans nothing from a Cartesian budget: the joint one, whose
+    /// generator's limits are per joint and are not in [`LiveTuning`] at all.
+    fn budget(&self, _tuning: &LiveTuning) -> Option<[OtgLimits; N]> {
+        None
+    }
 }
 
 type Observer<S> = Box<dyn FnMut(&RobotState, &S) + Send>;
@@ -93,6 +106,8 @@ pub(super) struct TorqueLoop<const N: usize, const S: usize, T: Tracker<N, S>> {
     cycles: u32,
     /// Cycles the runner has reported the finish for while the arm was still moving.
     waited: u32,
+    /// The [live tuning](tuning) this session accepts, `None` where it accepts none.
+    tuning: Option<Tuning>,
 }
 
 impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
@@ -102,6 +117,7 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
         impedance: ImpedanceOptions,
         tracker: T,
         observer: Option<Observer<T::Sent>>,
+        tuning: Option<LiveTuning>,
     ) -> Self {
         TorqueLoop {
             runner,
@@ -113,10 +129,12 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
             gains: barrier_gains(&impedance.torque_limits),
             cycles: 0,
             waited: 0,
+            tuning: tuning.map(Tuning::new),
         }
     }
 
     pub(super) fn cycle(&mut self, state: &RobotState) -> Torques {
+        self.retune();
         let commanded = self.tracker.anchor(state, &self.impedance.leash);
         let strayed = self.tracker.strayed(state);
         if let Some((velocity, acceleration)) = self.tracker.restart() {

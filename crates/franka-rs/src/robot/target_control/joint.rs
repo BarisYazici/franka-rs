@@ -79,6 +79,11 @@ pub struct JointSent {
 pub type JointObserver = Box<dyn FnMut(&RobotState, &JointSent) + Send>;
 
 /// The handle of a running joint target control; see the [module documentation](super).
+///
+/// It has no live tuning, and no `tune`: [`LiveTuning`](super::LiveTuning) describes the
+/// Cartesian interface's law and plan -- a Cartesian stiffness this interface has none of, and a
+/// budget as a norm, where this one plans per joint. A joint session therefore runs the options
+/// it was started with for its whole life.
 pub struct JointTargetControl {
     inner: Handle<7>,
     limits: ([f64; 7], [f64; 7]),
@@ -230,12 +235,17 @@ pub(super) fn torque_loop(
         velocity,
     };
     let tracker = JointTracker::new(&options, limits);
+    // No live tuning: `LiveTuning`'s budget is a Cartesian norm, which this interface plans
+    // nothing with, and the fields of it this tracker would keep a copy of -- the IK's, the
+    // feedforward's filter -- it has none of. Its slot stays unseeded and its handle offers no
+    // setter, so the loop reads nothing per cycle.
     Ok(TorqueLoop::new(
         runner,
         model,
         impedance,
         tracker,
         options.observer,
+        None,
     ))
 }
 

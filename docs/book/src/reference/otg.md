@@ -117,6 +117,18 @@ reverses, and the replay reproduces the ±10 cm orbit in the log. Three rules fo
    cycle, half an acceleration step behind the generator's end-of-cycle state, and
    re-anchoring on it throttles the plan to a crawl.
 
+A fourth rule applies only to a caller that moves the limits of a *running* generator, with
+`Otg::set_limits` or `MultiOtg::set_limits`. Those keep the position, velocity, acceleration
+and target exactly as they are, and the next step simply re-plans, so **raising** a limit may
+step. **Lowering** one below the state the generator is already in may not: nothing in
+`set_limits` clamps, but `set_state` — which rule 3's `set_position` runs every cycle — clamps
+the stored velocity and acceleration into the limits, and the end of every `step` clamps them
+again. A velocity truncated by `dv` in one cycle is `dv / dt` of acceleration in the command,
+a thousand times `dv` at 1 kHz. So a lowered limit is walked down: `max_velocity` no faster
+than the `max_acceleration` in force, `max_acceleration` no faster than `max_jerk`. Each clamp
+is then at most one cycle of the next order, which is the generator's own bound rather than an
+impulse. `max_jerk` is not stored in the state and clamps nothing, so it may step either way.
+
 With the first two rules the replayed backstop never touches a command (worst alteration
 below 1e-9 m) and every target is met exactly. With the third rule alone it binds by up to
 50 µm and the run stays bounded, millimetres from the targets and no orbit, but does not
