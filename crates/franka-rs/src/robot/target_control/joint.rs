@@ -8,8 +8,8 @@ use std::sync::Arc;
 use super::runner::{identity, Step};
 use super::torque::{JointTracker, TorqueLoop};
 use super::{
-    check_joint_limits, check_posture, joint_position_limits, spawn, Backend, Handle,
-    ImpedanceOptions, JointTargetControlOptions, Runner, Shared, DEFAULT_LIMIT_FRACTION,
+    check_joint_limits, check_posture, joint_position_limits, max_joint_velocity, spawn, Backend,
+    Handle, ImpedanceOptions, JointTargetControlOptions, Runner, Shared, DEFAULT_LIMIT_FRACTION,
 };
 use crate::control_types::JointPositions;
 use crate::error::FrankaResult;
@@ -19,6 +19,7 @@ use crate::otg::OtgLimits;
 use crate::rate_limiting::limit_rate_joint_positions;
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
+use crate::wire::robot::codec::FciVersion;
 
 /// What one cycle sent, for the observer.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,9 +40,24 @@ pub struct JointSent {
     pub backstop_alteration: f64,
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
+    /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
+    /// forward, under the joint velocity cap; zeros while holding and with
+    /// [`Backend::RobotController`].
+    pub dq_goal: [f64; 7],
+    /// The scale this cycle's goal step was cut by to stay under
+    /// [`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction)
+    /// of the joint velocity limits: 1 when it was not, and with [`Backend::RobotController`].
+    pub cap_scale: f64,
     /// The torques sent, Nm, clamped to the torque limits; zeros with
     /// [`Backend::RobotController`].
     pub tau: [f64; 7],
+    /// The velocity envelope's share of `tau`, Nm, before the clamp: the barrier opposing every
+    /// joint measured faster than
+    /// [`ImpedanceOptions::velocity_barrier_fraction`](super::ImpedanceOptions::velocity_barrier_fraction)
+    /// of its limit, less the law's torque along a joint's motion faded out above the fade's
+    /// start ([`FADE_BAND`](super::FADE_BAND)); zeros below it and with
+    /// [`Backend::RobotController`].
+    pub tau_envelope: [f64; 7],
     /// The most, rad, the leash pulled any joint of the generator's anchor back from the
     /// previous goal toward the measured position: zero while the arm follows, positive while
     /// it is held back ([`Leash`](super::Leash)); 0 with [`Backend::RobotController`].
@@ -113,7 +129,10 @@ pub(super) fn sent(step: &Step<7, 7>, q: [f64; 7]) -> JointSent {
         acceleration: step.acceleration,
         backstop_alteration: 0.0,
         q_goal: [0.0; 7],
+        dq_goal: [0.0; 7],
+        cap_scale: 1.0,
         tau: [0.0; 7],
+        tau_envelope: [0.0; 7],
         leash_alteration: 0.0,
     }
 }
@@ -132,13 +151,13 @@ pub(super) fn start(
     });
     let shared = Arc::new(Shared::<7>::default());
     let loop_shared = Arc::clone(&shared);
-    let priority = options.realtime_priority;
+    let scheduling = options.scheduling();
     let inner = match options.backend {
         Backend::RobotController => spawn(
             THREAD,
             robot,
             shared,
-            priority,
+            scheduling,
             move |robot: &Robot, started| {
                 position_loop(robot, started, options, limits, loop_shared)
             },
@@ -149,11 +168,20 @@ pub(super) fn start(
                 THREAD,
                 robot,
                 shared,
-                priority,
+                scheduling,
                 move |robot: &Robot, started| {
                     let limit_rate = options.limit_rate;
-                    torque_loop(options, limits, impedance, model, loop_shared, started)?
-                        .run(robot, limit_rate)
+                    let version = robot.fci_version();
+                    torque_loop(
+                        options,
+                        limits,
+                        impedance,
+                        model,
+                        version,
+                        loop_shared,
+                        started,
+                    )?
+                    .run(robot, limit_rate)
                 },
             )?
         }
@@ -165,23 +193,25 @@ pub(super) fn start(
 }
 
 /// The [`Backend::Impedance`] loop of this interface: a [`JointTracker`] on the seven-joint
-/// runner under `limits`.
+/// runner under `limits`, capped under the version's joint velocity limits.
 pub(super) fn torque_loop(
     options: JointTargetControlOptions,
     limits: [OtgLimits; 7],
     impedance: ImpedanceOptions,
     model: Arc<Model>,
+    version: FciVersion,
     shared: Arc<Shared<7>>,
     started: SyncSender<()>,
 ) -> FrankaResult<TorqueLoop<7, 7, JointTracker>> {
     let runner = Runner::new(shared, started, limits, options.settle, identity)?;
-    let tracker = JointTracker::new(&options);
+    let tracker = JointTracker::new(&options, &impedance, max_joint_velocity(version));
     Ok(TorqueLoop::new(
         runner,
         model,
         impedance,
         tracker,
         options.observer,
+        max_joint_velocity(version),
     ))
 }
 

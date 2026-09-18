@@ -9,8 +9,7 @@
 //!
 //! The image comes from [`SimConfig::fer_v5`]: `$FRANKA_SIM_FER_IMAGE`, else
 //! `franka-sim:panda-v5`. `FRANKA_SIM_IMAGE` names the **FR3** image and is deliberately
-//! ignored here; the FER image's build recipe is kept privately, outside this
-//! repository. Without it these tests fail rather than skip.
+//! ignored here. Without an FER image these tests fail rather than skip.
 
 mod common;
 
@@ -20,7 +19,7 @@ use franka::error::FrankaError;
 use franka::{FciVersion, VersionPolicy};
 use franka_sim_test::SimConfig;
 
-/// An FER `RobotState` datagram, in bytes (`context-shared.md`, "FCI v5 facts").
+/// An FER `RobotState` datagram, in bytes.
 const V5_STATE_LEN: usize = 2373;
 
 /// (a) the `Connect` handshake reports version 5, (b) the state stream is 2373-byte datagrams

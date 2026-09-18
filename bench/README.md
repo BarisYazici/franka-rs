@@ -11,7 +11,7 @@ Contents:
 | `cpp/bench_joint_velocity.cpp` | the C++ joint-velocity client, linked against a prebuilt libfranka |
 | `cpp/bench_model_control.cpp` | the C++ model-in-the-loop torque client |
 | `cpp/robot_home.cpp` | return-to-ready move, libfranka's own `MotionGenerator`, as its own step |
-| `cpp/cpu_hog.c` | busy-loop load generator (this box has no `stress-ng`) |
+| `cpp/cpu_hog.c` | busy-loop load generator, so `stress-ng` is not needed |
 | `cpp/CMakeLists.txt` | builds all three of the above |
 | `rust/` | the Rust clients — a standalone crate depending on `franka-rs` by path |
 | `run.sh` | runs the whole matrix and writes `results/<timestamp>/` |
@@ -22,8 +22,8 @@ Contents:
 | `so-micro/` | the offline `libfcimodels` microbenchmark (FER / FCI v5 `.so` backend) — no robot, no simulator |
 | `fer-capture/` | tcpdump capture + offline pcap analysis of the FER state-arrival timing (which side stalls) — see its own [`README.md`](fer-capture/README.md) |
 
-The write-up of these numbers is summarised in the [book's benchmarks
-page](../docs/book/src/reference/benchmarks.md); the full record is kept privately.
+The numbers are summarised in the [book's benchmarks
+page](../docs/book/src/reference/benchmarks.md).
 
 ## What is measured
 
@@ -155,11 +155,11 @@ symbols only and does not change codegen.
 Both programs derive lost states from `RobotState::time` the same way: a step of more than
 1 ms counts `dt - 1` lost states, a **backwards** step counts as no loss and is reported
 separately as `lost.backwards_time_steps` (none have been observed). This is saturating in
-both languages — the C++ side no longer relies on unsigned wraparound.
+both languages — the C++ side does not rely on unsigned wraparound.
 
-### Two things to know about scheduling on this box
+### Two things to know about scheduling on the benchmark host
 
-1. `RealtimeConfig::Enforce` needs `/sys/kernel/realtime`, which this machine does not have
+1. `RealtimeConfig::Enforce` needs `/sys/kernel/realtime`, which the benchmark host does not have
    (it is `PREEMPT_DYNAMIC`, not `PREEMPT_RT`). Both clients therefore use
    `RealtimeConfig::kIgnore` / `RealtimeConfig::Ignore`, and realtime priority is applied
    externally with `chrt -f 80`.
@@ -167,11 +167,11 @@ both languages — the C++ side no longer relies on unsigned wraparound.
    constructor and `franka-rs`'s `RobotImpl::new` call
    `setCurrentThreadToHighestSchedulerPriority()` /
    `set_current_thread_to_highest_scheduler_priority()` *unconditionally* — under
-   `kIgnore` they merely swallow the failure. On this box `ulimit -r` is 99, so the call
+   `kIgnore` they merely swallow the failure. There `ulimit -r` is 99, so the call
    succeeds and both clients end up at `SCHED_FIFO` **99** regardless of how they were
    launched. That is why the JSON records `sched_at_start` (what `chrt` set) as well as
    `sched` (what the loop actually ran under), and why the `plain` column is not a
-   SCHED_OTHER baseline. Discussed further in the full write-up, kept privately.
+   SCHED_OTHER baseline.
 
 ## Building
 
@@ -297,7 +297,7 @@ bench/model-micro/run.sh --count 50000 --warmup 5000
 ```
 
 The C++ program needs the same Pinocchio/Eigen include paths as `tools/model-reference`
-(`-DPINOCCHIO_PREFIX=...`, `-DEIGEN_INCLUDE_DIR=...`); the defaults match this box.
+(`-DPINOCCHIO_PREFIX=...`, `-DEIGEN_INCLUDE_DIR=...`); the defaults are those of `tools/model-reference`.
 
 ## The offline model-library microbenchmark
 
@@ -305,7 +305,7 @@ The C++ program needs the same Pinocchio/Eigen include paths as `tools/model-ref
 *compiled* model, the `libfcimodels_x64.so` the robot serves over `LoadModelLibrary`. Both
 programs `dlopen` the **same** captured library — `$FRANKA_FER_MODEL_SO`, the fixture
 `crates/franka-rs/tests/fer_model_conformance.rs` uses — and evaluate the same `q`, `dq`,
-`F_T_EE` and load parameters, taken from robot L's read-only probe of 2026-09-05.
+`F_T_EE` and load parameters: an FER state near the ready pose.
 
 * `rust/` goes through `franka::Model` and `SoModelBackend`.
 * `cpp/` does **not** link libfranka: 0.9.2's `franka::Model` can only be constructed from a
@@ -321,8 +321,8 @@ cycle, as a 1 kHz control loop waits on the state datagram), and duty cycled **a
 increasing amounts of untimed filler work**. The last one exists because the middle one is
 not a property of the model code: on a laptop-class part the core idles during that
 millisecond and needs tens of microseconds of work to climb back to its top frequency, so the
-identical sequence reads 21 us cold and 4 us warm. That is the trap the FER campaign fell
-into; see the "Model wrapper follow-up" section of the full write-up, kept privately.
+identical sequence reads 21 us cold and 4 us warm. The book's benchmarks page describes how
+this trap shows up in an in-loop measurement.
 
 ```sh
 cmake -S bench/so-micro/cpp -B bench/so-micro/cpp/build -DCMAKE_BUILD_TYPE=Release
@@ -336,7 +336,7 @@ bench/so-micro/run.sh --count 20000 --so /path/to/libfcimodels_x64.so
 ## Running against a real arm
 
 > **This drives a physical robot.** Everything below commands torques to a real FR3. Do not
-> run it without the robot's owner saying so, with somebody at the user stop.
+> run it without the operator's go-ahead, with somebody at the user stop.
 
 `bench/run.sh --hardware` is a different harness from the simulator matrix above:
 
@@ -381,7 +381,7 @@ bench/run.sh --hardware --host <robot-ip> --stage c --reps 3 --duration 30 --pau
 ```
 
 Both take the simulator lock. That is deliberate: it is what stops a 12-core simulator matrix
-from competing for this box's CPU while a real arm is under torque control.
+from competing for the host's CPU while a real arm is under torque control.
 
 ### The individual steps, by hand
 
@@ -420,21 +420,21 @@ bench/rust/target/release/bench_model_control 127.0.0.1 --variant model --durati
 ```
 
 `--hardware --host 127.0.0.1` also runs the whole stage machinery against the simulator, which
-is how it was tested here.
+tests it without a robot.
 
 ## OS baseline
 
 `run.sh` runs `cyclictest -q -m -p 80 -i 1000 -h 400 -D 60` under `chrt -f 80` if
-`cyclictest` is on `PATH`. It is **not installed** on this box and the benchmark does not
-install system packages, so `cyclictest.txt` records that instead. `stress-ng` is likewise
-absent, hence `cpu_hog.c`.
+`cyclictest` is on `PATH`; otherwise `cyclictest.txt` records that it is missing, since the
+benchmark does not install system packages. `cpu_hog.c` stands in for `stress-ng` for the
+same reason.
 
 ## Caveats
 
 * The reference C++ library here is **0.20.4**, while the Rust port targets 0.21.2. The
   joint-velocity control path and `ActiveControl` are unchanged between the two, but this is
   not a same-version comparison.
-* This is a **simulator**, not an FR3, and the sim's server runs on the same box over
+* This is a **simulator**, not an FR3, and the sim's server runs on the same host over
   loopback. The numbers describe the client-side loop and the local network stack, not a
   real FCI link.
-* The box is not `PREEMPT_RT`; see the scheduling note above.
+* The benchmark host is not `PREEMPT_RT`; see the scheduling note above.

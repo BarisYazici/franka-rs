@@ -10,6 +10,8 @@ pip install franka-rs
 
 The wheel is `franka-rs`, the package `franka` (Python 3.9 or newer, numpy).
 
+For an arm served by franka-node, see [its Python client](../howto/franka-node.md#from-python).
+
 ```python
 import franka
 
@@ -55,9 +57,9 @@ prefers; default the start) and `torque_cutoff` (Hz, default 100) are the rest o
 - `velocity_feedforward=True`: the damping acts on the velocity error, not the velocity;
   `False` is DROID's form, and with `cartesian_damping=[37, 37, 37, 2, 2, 2]` its law.
 - `leash=(metres, radians)`, default `(0.025, 0.15)`: how far the target may run ahead of an
-  arm that is held back, so the spring never pulls harder than the felt stiffness times the
-  leash (roughly 25 to 30 N at the defaults at the ready pose; target control sets no
-  collision thresholds, so set at least 40 N / 40 Nm with the default gains, see
+  arm that is held back, so the spring's pull plateaus (roughly 40 to 50 N at the defaults,
+  a hard push briefly over 60 N; target control sets no collision
+  thresholds, so set 40 N / 40 Nm for unattended runs and 60 N or more where people push, see
   [Collision thresholds](../howto/target-control.md#backends)).
 - `project_joint_gains=False`: `True` confines the joint term to the nullspace, so the end
   effector feels `cartesian_stiffness` alone.
@@ -67,8 +69,7 @@ prefers; default the start) and `torque_cutoff` (Hz, default 100) are the rest o
 `project_joint_gains`. `backend='robot'` has the robot's own controller (`controller_mode`) track
 the targets instead, as the bindings did before the impedance backend existed; it takes none
 of the gains. The law, the defaults and what differs between the backends are in
-[Command from a low-rate program](../howto/target-control.md#backends), with what two real
-FERs measured on 2026-09-10.
+[Command from a low-rate program](../howto/target-control.md#backends).
 
 | call | what it does |
 |---|---|
@@ -141,9 +142,7 @@ robot, `FRANKA_REALTIME` defaults to `ignore`, and the last cells need
 
 `examples/policy_loop.py <hostname> [--yes]` is a jittery 6-10 Hz policy loop: a 4 cm circle
 through `move_to`, yaw and tilt through `move_by`, a 20-row `follow` chunk back to the start.
-It drove a real FER on 2026-09-09, with the robot's controller tracking. `examples/rotate.py
-<hostname>` is the rotation alone: a
-20° yaw as a quaternion target, a 10° tilt as a rotation vector, back to the start, printing
+`examples/rotate.py <hostname>` is the rotation alone: a 20° yaw as a quaternion target, a 10° tilt as a rotation vector, back to the start, printing
 the measured angle after each.
 
 ## Details

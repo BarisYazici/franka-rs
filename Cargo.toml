@@ -2,20 +2,32 @@
 resolver = "2"
 members = [
     "crates/franka-rs",
+    "crates/franka-description",
     "crates/franka-rerun",
+    "crates/franka-node",
+    "crates/franka-cam",
     "crates/franka-sim-test",
     "crates/franka-py",
     "tools/fer-model-fit",
 ]
 
 [workspace.package]
+# One version for the crates a `v*` tag releases (franka-rs, franka-description, franka-rerun,
+# franka-node, franka-cam and the franka-py wheel): the binstall URLs and the release workflow key
+# on the tag.
+version = "0.4.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.89"
 license = "Apache-2.0"
 repository = "https://github.com/BarisYazici/franka-rs"
 homepage = "https://barisyazici.github.io/franka-rs/"
 
 [workspace.dependencies]
+# Path for the workspace, version for the registry. `default-features = false` so that a member
+# can opt out of `model-library`; a member that wants it says `default-features = true`.
+franka = { package = "franka-rs", path = "crates/franka-rs", version = "0.4", default-features = false }
+franka-description = { path = "crates/franka-description", version = "0.4" }
+franka-rerun = { path = "crates/franka-rerun", version = "0.4" }
 nalgebra = "0.35"
 thiserror = "2"
 zerocopy = { version = "0.8", features = ["derive"] }

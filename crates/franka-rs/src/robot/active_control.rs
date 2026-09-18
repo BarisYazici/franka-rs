@@ -195,7 +195,7 @@ impl Drop for ActiveControl<'_> {
 /// ```no_run
 /// # use franka::{Robot, RealtimeConfig, Torques};
 /// # fn main() -> franka::FrankaResult<()> {
-/// let robot = Robot::new("192.168.0.1", RealtimeConfig::Ignore)?;
+/// let robot = Robot::new("172.16.0.2", RealtimeConfig::Ignore)?;
 /// let mut control = robot.start_torque_control()?;
 /// for _ in 0..1000 {
 ///     let (_state, _period) = control.read_once()?;

@@ -20,20 +20,26 @@
 //! generator's own output on the joint interface, the solution of a differential inverse
 //! kinematics following the generator's pose one cycle at a time on the Cartesian one
 //! ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's low-pass filter
-//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. There is no echo of a
-//! torque command, so the loop anchors on the *measured* configuration in its first cycle
-//! (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
+//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. The goal never moves a joint
+//! faster than [`ImpedanceOptions::joint_velocity_fraction`] of the arm's limit
+//! ([`max_joint_velocity`]): a faster step is scaled down as a whole and the generator re-anchored
+//! on what went out. A joint *measured* faster than the cap, or than [`FADE_BAND`] of its limit
+//! under the barrier's onset if that is lower, keeps less and less of the law's torque along its
+//! motion, none from [`ImpedanceOptions::velocity_barrier_fraction`] of its limit, where it meets a
+//! damping of [`VELOCITY_BARRIER_GAIN`] on the excess, added before the clamp. There is no echo of
+//! a torque command, so the loop anchors on the *measured* configuration in its first
+//! cycle (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
 //! then, every cycle, on the measured state pulled toward the previous desired by at most the
-//! [`Leash`]: exactly the previous desired while the arm follows, so the generator runs from
-//! its own last output and its limits are the whole budget; a bounded distance ahead of an arm
-//! that is held back, so the spring force is bounded by the stiffness times the leash and the
-//! generator resumes from where the arm is once it is let go. [`Backend::RobotController`]
-//! instead streams the generator's output as a pose or joint-position command to the robot's
-//! own impedance controller (`controller_mode`); the rest of this page describes that path
-//! where the two differ.
+//! [`Leash`]: exactly the previous desired while the arm follows, so the generator runs from its
+//! own last output and its limits are the whole budget; a bounded distance ahead of an arm that is
+//! held back, so the spring force is bounded by the stiffness times the leash and the generator
+//! resumes from where the arm is once it is let go.
+//! [`Backend::RobotController`] instead streams the generator's output as a pose or joint-position
+//! command to the robot's own impedance controller (`controller_mode`); the rest of this page
+//! describes that path where the two differ.
 //!
 //! # What the loop does every cycle
-//! The three rules of the [`otg`](crate::otg) module, learnt on a real arm: the generator's
+//! The three rules of the [`otg`](crate::otg) module: the generator's
 //! limits are **per axis** (a Cartesian budget is a norm, so it gets
 //! [`OtgLimits::per_axis_for_norm`](crate::otg::OtgLimits::per_axis_for_norm)`(3)`), it steps **one nominal cycle** per command
 //! ([`DELTA_T`](crate::rate_limiting::DELTA_T)) whatever the measured period, and it is
@@ -84,8 +90,10 @@
 //! what it is for.
 //!
 //! The loop thread is raised to `SCHED_FIFO` like `Robot::new` raises its caller: to the
-//! highest priority, or to `realtime_priority` when the options name one; a failure is fatal
-//! under [`RealtimeConfig::Enforce`] and ignored under [`RealtimeConfig::Ignore`].
+//! highest priority, or to `realtime_priority` when the options name one; when they name a
+//! `cpu`, it also pins itself to that core, whether or not the raise succeeded. A failure of
+//! either is fatal under [`RealtimeConfig::Enforce`] and ignored under
+//! [`RealtimeConfig::Ignore`].
 //!
 //! Only one control or read operation may run on a `Robot` at a time, so while a target
 //! control runs, `robot.read()` and the other loops fail with
@@ -98,7 +106,7 @@
 //! use franka::{RealtimeConfig, Robot, TargetControlOptions};
 //!
 //! # fn main() -> franka::FrankaResult<()> {
-//! let robot = Arc::new(Robot::new("192.168.0.1", RealtimeConfig::Enforce)?);
+//! let robot = Arc::new(Robot::new("172.16.0.2", RealtimeConfig::Enforce)?);
 //! let control = robot.start_cartesian_target_control(TargetControlOptions::default())?;
 //! let start = control.target();
 //! for step in 1..=5 {
@@ -124,6 +132,7 @@ mod rotation;
 mod runner;
 mod slot;
 mod torque;
+mod velocity;
 
 pub use cartesian::{CartesianObserver, CartesianSent, CartesianTargetControl};
 pub use ik::{IkOptions, MAX_POSTURE_RATE};
@@ -134,6 +143,7 @@ pub use joint::{JointObserver, JointSent, JointTargetControl};
 pub use options::{JointTargetControlOptions, TargetControlOptions, DEFAULT_LIMIT_FRACTION};
 pub use rotation::{ORTHONORMAL_TOLERANCE, UNIT_QUATERNION_TOLERANCE};
 pub use slot::TargetSlot;
+pub use velocity::{FADE_BAND, VELOCITY_BARRIER_GAIN};
 
 use runner::Runner;
 pub use runner::{REST_ACCELERATION, REST_JOINT_VELOCITY, REST_VELOCITY};
@@ -146,8 +156,8 @@ use std::thread::JoinHandle;
 use crate::error::{ControlException, FrankaError, FrankaResult};
 use crate::rate_limiting;
 use crate::realtime::{
-    set_current_thread_scheduler_priority, set_current_thread_to_highest_scheduler_priority,
-    RealtimeConfig,
+    pin_current_thread_to_cpu, set_current_thread_scheduler_priority,
+    set_current_thread_to_highest_scheduler_priority, RealtimeConfig,
 };
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
@@ -189,11 +199,19 @@ impl Default for Settle {
     }
 }
 
+/// How the loop thread is scheduled: its `SCHED_FIFO` priority (`None`: the highest) and the
+/// CPU it is pinned to, if any.
+#[derive(Debug, Clone, Copy)]
+struct Scheduling {
+    priority: Option<i32>,
+    cpu: Option<usize>,
+}
+
 /// Checks the options both interfaces share.
 fn validate_common(
     max_deviation: f64,
     settle: Settle,
-    realtime_priority: Option<i32>,
+    scheduling: Scheduling,
     backend: &Backend,
 ) -> FrankaResult<()> {
     if let Backend::Impedance(impedance) = backend {
@@ -211,21 +229,46 @@ fn validate_common(
              cycle, got {settle:?}"
         )));
     }
-    if let Some(priority) = realtime_priority {
+    if let Some(priority) = scheduling.priority {
         if !(1..=99).contains(&priority) {
             return Err(FrankaError::InvalidArgument(format!(
                 "target control: realtime_priority must be within 1..=99, got {priority}"
             )));
         }
     }
+    if let Some(cpu) = scheduling.cpu {
+        if cpu >= libc::CPU_SETSIZE as usize {
+            return Err(FrankaError::InvalidArgument(format!(
+                "target control: cpu must be below {}, got {cpu}",
+                libc::CPU_SETSIZE
+            )));
+        }
+    }
     Ok(())
 }
 
-/// The joint position limits (lower, upper) of the negotiated version's arm.
-fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
+/// The joint position limits (lower, upper), rad, of the arm speaking `version`: the FER's or
+/// the FR3's `JOINT_POSITION_LIMITS`.
+pub fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
     match version {
         FciVersion::V5 => rate_limiting::fer::JOINT_POSITION_LIMITS,
         FciVersion::V10 => rate_limiting::JOINT_POSITION_LIMITS,
+    }
+}
+
+/// The FR3's flat joint velocity caps, rad/s: the `<limit velocity>` of its URDF, which is
+/// what the position-dependent envelope of `compute_upper_limits_joint_velocity` saturates
+/// at away from the joint limits.
+const FR3_MAX_JOINT_VELOCITY: [f64; 7] = [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26];
+
+/// The joint velocity limits, rad/s, of the arm speaking `version`: the FER's
+/// `MAX_JOINT_VELOCITY` or the FR3's flat caps. The impedance backend's cap and barrier
+/// ([`ImpedanceOptions::joint_velocity_fraction`], [`ImpedanceOptions::velocity_barrier_fraction`])
+/// and [`JointTargetControlOptions::scaled_limits`] are fractions of these.
+pub fn max_joint_velocity(version: FciVersion) -> [f64; 7] {
+    match version {
+        FciVersion::V5 => rate_limiting::fer::MAX_JOINT_VELOCITY,
+        FciVersion::V10 => FR3_MAX_JOINT_VELOCITY,
     }
 }
 
@@ -367,13 +410,16 @@ fn join(thread: JoinHandle<FrankaResult<()>>) -> FrankaResult<()> {
     })
 }
 
-/// `SCHED_FIFO` for the loop thread, the way `Robot::new` does it for its caller.
-fn raise_priority(config: RealtimeConfig, priority: Option<i32>) -> FrankaResult<()> {
-    let result = match priority {
+/// `SCHED_FIFO` for the loop thread, the way `Robot::new` does it for its caller, and the
+/// pin to `scheduling.cpu` if there is one. Both are attempted (the pin needs no privilege
+/// the raise may lack); the first failure is the one reported.
+fn schedule(config: RealtimeConfig, scheduling: Scheduling) -> FrankaResult<()> {
+    let priority = match scheduling.priority {
         None => set_current_thread_to_highest_scheduler_priority(),
         Some(priority) => set_current_thread_scheduler_priority(priority),
     };
-    match result {
+    let pin = scheduling.cpu.map_or(Ok(()), pin_current_thread_to_cpu);
+    match priority.and(pin) {
         Err(message) if config == RealtimeConfig::Enforce => Err(FrankaError::Realtime(message)),
         _ => Ok(()),
     }
@@ -386,7 +432,7 @@ fn spawn<const N: usize, F>(
     name: &str,
     robot: &Arc<Robot>,
     shared: Arc<Shared<N>>,
-    priority: Option<i32>,
+    scheduling: Scheduling,
     body: F,
 ) -> FrankaResult<Handle<N>>
 where
@@ -400,7 +446,7 @@ where
     let thread = std::thread::Builder::new()
         .name(name.to_string())
         .spawn(move || {
-            let result = raise_priority(config, priority).and_then(|()| body(&robot, started));
+            let result = schedule(config, scheduling).and_then(|()| body(&robot, started));
             thread_shared.running.store(false, Ordering::SeqCst);
             result
         })
@@ -430,9 +476,9 @@ impl Robot {
     ///
     /// # Errors
     /// [`FrankaError::InvalidArgument`] if the options are invalid,
-    /// [`FrankaError::Realtime`] if the loop thread cannot be raised to `SCHED_FIFO` under
-    /// [`RealtimeConfig::Enforce`], whatever [`Robot::load_model`] fails with under
-    /// [`Backend::Impedance`], and whatever [`Robot::control_torques`] or
+    /// [`FrankaError::Realtime`] if the loop thread cannot be raised to `SCHED_FIFO` or
+    /// pinned to `cpu` under [`RealtimeConfig::Enforce`], whatever [`Robot::load_model`]
+    /// fails with under [`Backend::Impedance`], and whatever [`Robot::control_torques`] or
     /// [`Robot::control_cartesian_pose`] fails with before its first cycle,
     /// [`FrankaError::InvalidOperation`] if another control or read operation is running
     /// among them.

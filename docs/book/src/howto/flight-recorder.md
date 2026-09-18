@@ -9,7 +9,8 @@ a [Rerun](https://rerun.io) recording, and records the same picture live while a
 Prerequisites: a `rerun` viewer of exactly the version the crate pins, **0.37.1**
 (`cargo install rerun-cli --locked --version 0.37.1` or `pip install rerun-sdk==0.37.1`);
 `RUST_LOG=warn rerun` keeps its notification toasts to warnings. `franka-rerun` needs
-Rust 1.96 and is `publish = false`; build it from the repository.
+Rust 1.96: `cargo install franka-rerun --locked` for the binary, `cargo add franka-rerun` for the
+library.
 
 ## Keep a longer control log
 
@@ -38,7 +39,7 @@ The ring is sized once, so a large log costs memory, not cycle time.
 ## Save it: the `serde` feature
 
 The optional `serde` feature of `franka-rs` (off by default;
-`franka-rs = { version = "0.3", features = ["serde"] }`) derives `Serialize` and
+`franka-rs = { version = "0.4", features = ["serde"] }`) derives `Serialize` and
 `Deserialize` for `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`,
 `RobotCommandLog`, `MoveStatus` and `ControlException`. Two representation choices: `Errors`
 serialises as the list of the set flags' names in libfranka's order
@@ -80,16 +81,19 @@ rerun reflex.rrd
 (`franka-rerun csv bridged.csv --robot fr3 -o bridged.rrd` replays the CSV of
 `nonrealtime_commander --log`.) The recording opens with the 3D scene on the left, the plots
 on the right and the event log along the bottom, all on the `robot_time` timeline, the
-robot's own clock in seconds:
+robot's own clock in seconds. `--prefix NAME` puts every entity below under `NAME`, as a node
+does with an arm's name, so that two replays can be routed into one recording:
 
 | entity | content |
 |---|---|
 | `joints/q`, `joints/q_d` | measured joint positions and the commanded ones (the sent `q_c` for a joint-position motion, else the robot's `q_d`) |
 | `joints/dq`, `joints/tau_J`, `joints/tau_J_d`, `joints/tau_ext` | velocities, measured and desired torques, `tau_ext_hat_filtered` |
+| `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`, `joints/tau_envelope` | a live recording of target control's torque backend (`Recorder::push_torque_at`, which franka-node uses): the joint goal, its velocity, the scale the joint velocity cap cut the goal's step by (1 when it did not), the velocity envelope's torque: the barrier's, less the law's torque faded out along a joint's motion above the fade's start |
 | `ee/F_ext` | `O_F_ext_hat_K`, force in N and torque in Nm |
 | `ee/position` | measured `O_T_EE` against commanded `O_T_EE_c`, translation only; per-axis plots and the derivatives of the sent position when the command was a Cartesian pose |
+| `ee/orientation` | the rotations of those two poses as quaternions `xyzw`, every cycle (the 3D scene's pose is decimated by `--every`) |
 | `flags/*` | `joint_contact`, `joint_collision` (7 series each), `cartesian_contact`, `cartesian_collision` (6 each) as 0/1; contact amber, collision red |
-| `world/*` | the arm from `Model::pose_q`, a sphere per joint that turns amber on contact and red on collision and grows with `\|tau_ext\|`, the external force as an arrow from the end effector (1 cm per N by default), the end effector axes; with `--meshes DIR` the link meshes |
+| `world/*` | the arm from `Model::pose_q`, a sphere per joint that turns amber on contact and red on collision and grows with `\|tau_ext\|`, the external force as an arrow from the end effector (1 cm per N by default), the end effector axes; Franka's link meshes (built in; `--meshes DIR` for other files, `--no-meshes` for none) |
 | `world/contact/*`, `contact/link` | where the seven external joint torques say the arm was touched, and the force there |
 | `events` | every change of `current_errors` and `robot_mode`, the first rising edge of every flag (`joint 4 contact`, `cartesian collision on Fz`), and `motion aborted: <names>` at the end |
 
@@ -114,10 +118,14 @@ robot.control_joint_positions(
 let stats = recorder.finish()?;   // Stats { pushed, dropped, summary }
 ```
 
-`push` runs on the realtime thread, so it must be cheap: it copies the record into a bounded
-`std::sync::mpsc::sync_channel` of 4096 records (four seconds at 1 kHz) with `try_send`,
-which neither blocks nor allocates (the ring is allocated once, with the recorder), and
-drops the record, counted in `Stats::dropped`, when the ring is full. A background thread
+`push` runs on the realtime thread, so it must be cheap: it reads the host's `CLOCK_MONOTONIC`
+and copies the record into a bounded `std::sync::mpsc::sync_channel` of 4096 records (four
+seconds at 1 kHz) with `try_send`, which neither blocks nor allocates (the ring is allocated
+once, with the recorder), and drops the record, counted in `Stats::dropped`, when the ring is
+full. Every row it writes carries that host stamp as a second timeline, `host_time`: two robots
+are two controllers, so their `robot_time`s are unrelated, and `host_time` is the axis a
+recording of both is synchronised on. An offline replay has no host clock for a record and
+writes `robot_time` alone. A background thread
 drains the channel every 100 ms and does all the Rerun work, the 3D scene decimated to every
 10th record. `crates/franka-rerun/tests/flight.rs` checks the no-allocation claim with a
 counting allocator around a 1 kHz producer. For a loop the crate runs for you, the observer
@@ -137,16 +145,10 @@ of [target control](./target-control.md) is the hook.
 ## Status
 
 Everything above is exercised against synthetic logs in `crates/franka-rerun/tests/flight.rs`.
-On a real FER (2026-09-08) `reflex_replay` recorded 24 s at 1 kHz without a push: 23 941
-records pushed, 0 dropped, peak |F_ext| 4.5 N, no flags raised. The pushed run on the same
-arm the same day raised `cartesian_reflex` 3.9 s in (3928 records pushed live, 0 dropped);
-in the replay of its last 3000 records the Cartesian contact flag on `Fy` rises at 5 N, the
-joint 3 contact flag 13 ms later, and the Cartesian collision flag at 10.6 N in the cycle
-before the robot stopped.
 
-**Open item.** `Recorder::finish()` joins the background thread, which ends with the
+**Known limitation.** `Recorder::finish()` joins the background thread, which ends with the
 stream's `flush_blocking()`; neither has a timeout (`crates/franka-rerun/src/recorder.rs`,
 `flight/logger.rs`). With `to_viewer` and a viewer that is not reachable, `finish()` can
-therefore hang, which was observed on 2026-09-09; Rerun's Python SDK gives up after a few
-seconds instead. Dropping the recorder without `finish()` closes the channel and does not
-wait. Until this is fixed, record to a file when the viewer is not certainly up.
+therefore hang; Rerun's Python SDK gives up after a few seconds instead. Dropping the
+recorder without `finish()` closes the channel and does not wait. Record to a file when the
+viewer may not be up.

@@ -88,13 +88,13 @@ never overshot; that every target is reached within 10 % of the time an admissib
 brake-then-move profile would take; and, on the synchronised three-axis variant that every
 eighth sequence also runs, that an axis at rest whose target did not change stays bit-exact.
 
-## The three rules, learnt on the arm
+## The three rules
 
-The first version of the bridge in `examples/nonrealtime_commander.rs` ran this generator on
-a real FER (2026-09-08) with `limit_rate_cartesian_pose` behind it, and the run did not go
-cleanly: the generator stayed on its targets, but the limiter clamped it on the first
-two-axis move and from then on the command orbited at the velocity cap until the robot
-refused it. The per-cycle log of that run is a fixture in the module's tests. Replayed
+Without the rules below, with `limit_rate_cartesian_pose` behind it, the generator stays on
+its targets, but the limiter clamps it on the first move of the commander example's
+sequence that brakes one axis while another starts, and from then on the command orbits at
+the velocity cap until the robot refuses it. The per-cycle log of such a run is a fixture in
+the module's tests. Replayed
 through the generator alone, it ends exactly on the last target with every per-axis limit
 respected. Replayed through the generator *and* the limiter, the limiter clamps the command
 by nanometres at 1.601 s (`y` braking at −0.5 m/s² while `z` starts at +0.5 m/s² is a norm
@@ -129,19 +129,19 @@ The crate's rate limiter with `limit_rate = true` is a port of libfranka's, and 
 (13 m/s² and 6500 m/s³ on an FER, 9 m/s² and 4500 m/s³ on an FR3) are what the robot accepts
 *in Cartesian space*. The robot also runs inverse kinematics on every commanded pose and
 checks the continuity of the result in **joint space**, and that is the check a stepped target
-stream trips. On a real FER near the ready pose a ramp at 2.5 m/s² was refused as
-`cartesian_motion_generator_joint_velocity_discontinuity`, 1.5 m/s² passed, and the cause is
+stream trips. Near the ready pose of an FER a ramp at 2.5 m/s² is refused as
+`cartesian_motion_generator_joint_velocity_discontinuity` and 1.5 m/s² passes; the cause is
 the ordinary per-joint acceleration limit: joint 2 moves about 3.2 rad per metre of x travel
 there, so 2.5 m/s² is 8 rad/s² against its 7.5 rad/s² limit. On an FR3 the same refusal
-came in the cycle a joint crossed its 10 rad/s². The full account, with dates, is on [FER /
-Panda specifics](./fer.md).
+comes in the cycle a joint crosses its 10 rad/s². The full account is on [FER / Panda
+specifics](./fer.md).
 
-A second limit appeared on the same FER above roughly 1 m/s² of commanded acceleration: the
-robot's external-force estimate `O_F_ext_hat_K` crossed 20 N at about 0.25 m/s and raised
+A second limit binds on an FER above roughly 1 m/s² of commanded acceleration: the robot's
+external-force estimate `O_F_ext_hat_K` crosses 20 N at about 0.25 m/s and raises
 `cartesian_reflex`, so for fast target steps the collision thresholds, not the kinematic
-limits, were the binding constraint (the examples' 10 N nominal thresholds were crossed at
+limits, are the binding constraint (the examples' 10 N nominal thresholds are crossed at
 0.25 m/s, which is why the commander example sets libfranka's example thresholds
-explicitly). Both figures are an observation on one arm, not a specification.
+explicitly). Both figures are approximate, not a specification.
 
 Hence the defaults: a translational budget of **0.3 m/s, 0.5 m/s², 20 m/s³**, under which a
 5 cm step along one axis becomes an S-curve that peaks at about 0.12 m/s and lands after
@@ -195,12 +195,12 @@ on and the low-pass filter off. Every cycle, on that thread:
    `REST_VELOCITY` (1e-4 m/s or rad/s) and accelerating less than `REST_ACCELERATION` (0.05).
    The hold freezes a velocity step of at most `REST_VELOCITY` in one cycle, a jerk of
    100 per second cubed, which the joint side of a Cartesian command amplifies about
-   threefold (1 mm/s froze as 3840 rad/s³ on joint 2 in the simulator, over its 3750); not
+   threefold (1 mm/s freezes as about 3840 rad/s³ on joint 2 in the simulator, over its 3750); not
    smaller, because the `float32` echo of an FR3 keeps a landed generator in micro-profiles
    that peak at about 2e-5 per second and 0.01 per second squared. Then the loop stops
    stepping the generator and sends the robot's echo of the last command, bit for bit and
    past the backstop, for `Settle::cycles` cycles (250), and sets `motion_finished` on one
-   more of it. A motion never finishes on a moving command: a real FER refused exactly that
+   more of it. A motion never finishes on a moving command: the robot refuses exactly that
    with `cartesian_motion_generator_velocity_discontinuity`. If the generator has not landed
    within `STOP_TIMEOUT_CYCLES` (5000, five seconds) the same hold starts from wherever the
    command is.
@@ -208,5 +208,4 @@ on and the low-pass filter off. Every cycle, on that thread:
 Nothing allocates on the realtime thread after the start; the observer, called every cycle
 with the state and what was sent, must keep it that way. Dropping a handle without `stop()`
 requests the stop and detaches: the loop settles and finishes on its own, holding its
-`Arc<Robot>` until it has. This loop has run on franka-sim, on a real FER and on a real FR3;
-the hardware runs are listed in [Benchmarks and hardware validation](./benchmarks.md).
+`Arc<Robot>` until it has.

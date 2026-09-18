@@ -26,13 +26,16 @@ fn default_options_are_valid_and_documented() {
     assert_eq!(cartesian.settle, Settle::default());
     assert!(cartesian.limit_rate);
     assert_eq!(cartesian.realtime_priority, None);
+    assert_eq!(cartesian.cpu, None);
     assert!(cartesian.observer.is_none());
     let debug = format!("{cartesian:?}");
     assert!(debug.contains("observer: false") && debug.contains("backend: Impedance("));
+    assert!(debug.contains("cpu: None"));
 
     let joint = JointTargetControlOptions::default();
     assert!(joint.validate().is_ok());
     assert_eq!(joint.limits, None);
+    assert_eq!(joint.cpu, None);
     assert_eq!(joint.backend, Backend::Impedance(ImpedanceOptions::joint()));
     assert_eq!(joint.max_deviation, 1.0);
     assert!(joint.limit_rate);
@@ -97,12 +100,16 @@ fn cartesian_options_reject_bad_fields() {
         let options = TargetControlOptions::default().with_realtime_priority(Some(priority));
         assert!(is_invalid_argument(options.validate(), "realtime_priority"));
     }
+    let cpu = TargetControlOptions::default().with_cpu(Some(usize::MAX));
+    assert!(is_invalid_argument(cpu.validate(), "cpu must be below"));
     let fine = TargetControlOptions::default()
         .with_realtime_priority(Some(80))
+        .with_cpu(Some(2))
         .with_controller_mode(ControllerMode::JointImpedance)
         .with_limit_rate(false)
         .with_observer(|_, _| {});
     assert!(fine.validate().is_ok());
+    assert_eq!(fine.cpu, Some(2));
     assert!(fine.observer.is_some());
 }
 
@@ -119,6 +126,12 @@ fn joint_options_reject_bad_fields() {
         priority.validate(),
         "realtime_priority"
     ));
+    let cpu = JointTargetControlOptions::default().with_cpu(Some(1024));
+    assert!(is_invalid_argument(cpu.validate(), "cpu must be below"));
+    assert_eq!(
+        JointTargetControlOptions::default().with_cpu(Some(3)).cpu,
+        Some(3)
+    );
 }
 
 #[test]
@@ -146,6 +159,36 @@ fn scaled_joint_limits_follow_the_version() {
         let options = JointTargetControlOptions::default()
             .with_limits(JointTargetControlOptions::scaled_limits(version, 0.2));
         assert!(options.validate().is_ok());
+    }
+}
+
+#[test]
+fn max_joint_velocity_follows_the_version() {
+    assert_eq!(
+        max_joint_velocity(FciVersion::V5),
+        rate_limiting::fer::MAX_JOINT_VELOCITY
+    );
+    assert_eq!(
+        max_joint_velocity(FciVersion::V10),
+        [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26]
+    );
+    // The FER's stop short of the nominal 2.175 and 2.61 rad/s by libfranka's margins.
+    let fer = max_joint_velocity(FciVersion::V5);
+    for (i, expected) in [(0, 2.129), (4, 2.564), (6, 2.549)] {
+        assert!(
+            (fer[i] - expected).abs() < 1e-5,
+            "joint {}: {}",
+            i + 1,
+            fer[i]
+        );
+    }
+    // The joint interface's scaled limits are fractions of the same table.
+    for version in [FciVersion::V5, FciVersion::V10] {
+        let scaled = JointTargetControlOptions::scaled_limits(version, 0.3);
+        let limits = max_joint_velocity(version);
+        for i in 0..7 {
+            assert!((scaled[i].max_velocity - 0.3 * limits[i]).abs() < 1e-12);
+        }
     }
 }
 

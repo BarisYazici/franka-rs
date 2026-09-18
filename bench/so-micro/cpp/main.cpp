@@ -205,9 +205,8 @@ int main(int argc, char** argv) {
 
   Model model{std::string(argv[1])};
 
-  // Robot L's read-only probe of 2026-09-05
-  // (bench/results/20260905-fer-hw/L/model_probe_cpp_0.9.2.txt), with a non-zero dq so
-  // coriolis is not evaluated at rest. The Rust side uses exactly these values.
+  // An FER state near the ready pose, with a non-zero dq so coriolis is not evaluated at
+  // rest. The Rust side uses exactly these values.
   State s;
   s.q = {-0.000230663600055855, -0.785250788805778, 0.000051590539422385,
          -2.35692138653159,     0.000811206067415174, 1.57033887690968,

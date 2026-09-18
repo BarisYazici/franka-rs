@@ -6,7 +6,7 @@ the 1 kHz control loop runs on a Rust thread that never touches the GIL::
 
     import franka
 
-    robot = franka.Robot("192.168.0.1")       # FRANKA_REALTIME=ignore for franka-sim
+    robot = franka.Robot("172.16.0.2")        # FRANKA_REALTIME=ignore for franka-sim
 
     with robot.cartesian_targets(max_velocity=0.3) as arm:
         obs = arm.state().flat()              # 1-D float64, order: franka.FLAT_LAYOUT

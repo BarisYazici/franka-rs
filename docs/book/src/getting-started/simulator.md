@@ -48,11 +48,11 @@ docker ps                      # no franka-sim container may be running
 ## What it is not
 
 - Not a realtime system: timing measured against it is a same-machine comparison, not an FCI
-  qualification ([Benchmarks and hardware validation](../reference/benchmarks.md)).
+  qualification ([Benchmarks](../reference/benchmarks.md)).
 - Not the robot: it has documented divergences from real hardware, each pinned by a test that
   names the gap in its failure message ([Simulator gaps](../reference/simulator-gaps.md)).
-- Only the FR3 image is published. The FER / FCI v5 image (`franka-sim:panda-v5`) is a local
-  build whose recipe is kept outside this repository.
+- Only the FR3 image is published; the FER / FCI v5 image (`franka-sim:panda-v5`) needs a
+  local build, or `FRANKA_SIM_ADDR` pointed at a running v5 server.
 
 Running the crate's test suites against it, including the harness that starts the container
 for you, is described in [Test against the simulator](../howto/simulator-tests.md).

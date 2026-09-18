@@ -1,17 +1,21 @@
 //! The shared scaffolding: the mock arm, the recording observer. The generator runner in
-//! [`runner`], the pose path in [`pose`], the impedance law in [`impedance`], the option
-//! validation in [`options`], the rotation arithmetic in [`rotation`], the torque loops in
-//! [`torque_cartesian`] and [`torque_joint`] on the helpers of [`torque`].
+//! [`runner`], the pose path in [`pose`], the impedance law in [`impedance`], the joint
+//! velocity envelope in [`velocity`], the option validation in [`options`], the rotation
+//! arithmetic in [`rotation`], the torque loops in [`torque_cartesian`] and [`torque_joint`]
+//! on the helpers of [`torque`].
 
 mod ik;
 mod impedance;
 mod options;
 mod pose;
+mod replay;
 mod rotation;
 mod runner;
 mod torque;
 mod torque_cartesian;
 mod torque_joint;
+mod torque_velocity;
+mod velocity;
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::sync::{Arc, Mutex};
@@ -68,14 +72,11 @@ impl Arm {
     fn drag_along_x(&mut self, dx: f64) {
         let mut pose = self.pose();
         pose[12] += dx;
-        let options = IkOptions {
-            max_step: 1.0,
-            ..IkOptions::default()
-        };
         let mut ik = Ik::new(
             Arc::clone(&self.model),
-            options,
+            IkOptions::default(),
             rate_limiting::fer::JOINT_POSITION_LIMITS,
+            [1e3; 7],
             self.state.q,
             self.state.F_T_EE,
             self.state.EE_T_K,

@@ -96,13 +96,14 @@ and the handle's `stop()` then returns the preemption as `FrankaError::Control`.
 | `settle: Settle` (landing tolerance, hold cycles) | 1 mm, 250 cycles | `settle` | 1 mrad, 250 cycles |
 | `limit_rate` | `true` | `limit_rate` | `true` |
 | `realtime_priority: Option<i32>` | `None` (highest) | same | same |
+| `cpu: Option<usize>` | `None` (not pinned) | same | same |
 | `observer` | none | `observer` | none |
 
 Every field is public and has a `with_*` builder; `validate()` checks the options without
-starting anything. A Cartesian budget is a norm and each axis gets 1/√3 of it. The default
-was measured on a real FER with the robot's controller tracking: its joint-space continuity
-check refuses 2.5 m/s² near the ready pose and its collision threshold trips above about
-1 m/s², so 0.5 m/s² sits below both. The continuity check applies to a pose stream, so to the
+starting anything. A Cartesian budget is a norm and each axis gets 1/√3 of it. With the
+robot's controller tracking, an FER's joint-space continuity check refuses 2.5 m/s² near the
+ready pose and its collision threshold trips above about 1 m/s², so the default 0.5 m/s² sits
+below both. The continuity check applies to a pose stream, so to the
 robot-controller backend only; the collision thresholds apply to both. The joint default is
 slow on purpose; raise it with `JointTargetControlOptions::scaled_limits(version, fraction)`
 or explicit limits.
@@ -112,10 +113,12 @@ every cycle *on the realtime thread* with the state and what was sent: the pose 
 after the backstop, the target, the generator's velocity and acceleration (angular too for a
 pose), and by how much the backstop altered the command. In the impedance backend `pose` /
 `q` is the loop's setpoint, the backstop alterations are 0, and the record also carries the
-joint goal `q_goal`, the clamped torques `tau`, what the leash took off the desired state
-this cycle (`leash_alteration`, m for a pose and rad for joints, plus
-`leash_angular_alteration`, rad, for a pose; 0 while the arm follows) and, for a pose, the
-inverse kinematics residual `ik_error` (m plus rad). It must not allocate or block; copying into a preallocated
+joint goal `q_goal`, its velocity `dq_goal`, the scale the joint velocity cap cut the goal's
+step by (`cap_scale`, 1 when it did not), the clamped torques `tau` and the velocity
+envelope's share of them (`tau_envelope`), what the leash took off the desired state this
+cycle (`leash_alteration`, m for a pose and rad for joints, plus `leash_angular_alteration`,
+rad, for a pose; 0 while the arm follows) and, for a pose, the inverse kinematics residual
+`ik_error` (m plus rad). It must not allocate or block; copying into a preallocated
 ring is what it is for, and how `franka_rerun::Recorder::push` and the commander example's
 CSV log hook in.
 
@@ -123,6 +126,14 @@ CSV log hook in.
 as `Robot::new` uses for its caller. A program with other realtime threads gives the loop a
 lower one. A failure to raise it is fatal under `RealtimeConfig::Enforce` and ignored under
 `Ignore`, so the simulator runs the loop on an ordinary kernel.
+
+**Pinning the loop thread.** `with_cpu(Some(n))` pins the loop thread to core `n` with
+`sched_setaffinity` right after the priority is raised
+(`franka::realtime::pin_current_thread_to_cpu` is the call); `None`, the default, leaves the
+placement to the scheduler. On a host that keeps a core free for the loop (`isolcpus=` on
+the kernel command line) the loop never migrates and never shares its core with the rest of
+the program; two arms in one process can each be given a core. A failure to pin is treated
+like a failure to raise the priority: fatal under `Enforce`, ignored under `Ignore`.
 
 ## Backends
 
@@ -162,15 +173,16 @@ behind), and the generator is leashed to the arm (below).
 | `leash: Leash` | 0.025 m, 0.15 rad | 0.1 rad per joint (the torque clamp, not the leash, bounds the torque: 600 × 0.1 = 60 Nm on joints 1 to 4, under their 86 Nm clamp; on joints 5 and 6 the 11.5 Nm clamp binds first) |
 | `project_joint_gains` | `false` | `false` |
 | `posture` (IK nullspace reference) | `None`: the start configuration | not used |
-| `ik: IkOptions` | λ 0.05, nullspace gain 1.0 /s, 3 iterations, tolerance 1e-6, limit margin 0.02 rad, max step 0.01 rad | not used |
+| `ik: IkOptions` | λ 0.05, nullspace gain 1.0 /s, 3 iterations, tolerance 1e-6, limit margin 0.02 rad | not used |
+| `joint_velocity_fraction` (of `max_joint_velocity(version)`) | 0.7 | 0.7 |
+| `velocity_barrier_fraction` | 0.85 | 0.85 |
 
 The Cartesian column, `ImpedanceGains::CARTESIAN`, is DROID's preset with the translational
 damping raised from 37 to 50, 50, 90 Ns/m: a damping ratio of about 0.8 from the arm's
 apparent masses at the ready pose (0.94 kg along x and y, 3.9 kg along z, computed from the
 model), where 37 leaves z at 0.34 and ringing. `ImpedanceGains::DROID` is the preset as DROID
 ran it, and with `velocity_feedforward` off it is the polymetis law for replaying policies
-trained on it. The joint column is the `fer_joint_impedance` example's gains, which have run
-on a real FER. What each knob does:
+trained on it. The joint column is the `fer_joint_impedance` example's gains. What each knob does:
 
 - `cartesian_stiffness`: how hard the arm pulls back toward the target, per metre and per
   radian of end-effector error; the arm is a spring of this stiffness to anything that
@@ -190,9 +202,10 @@ on a real FER. What each knob does:
   toward the previous desired by at most the leash, the torque-mode form of the third
   [generator rule](../reference/otg.md): while the arm follows, that is exactly the previous
   desired and nothing changes; held back by a hand, an obstacle or an unreachable target,
-  the desired stays within the leash of the arm, so the spring force on whoever holds it is
-  bounded by the felt stiffness times the leash (roughly 25 to 30 N at the default gains at
-  the ready pose, 18.75 N with `project_joint_gains`; see the thresholds below), and on
+  the desired stays within the leash of the arm, so the spring force on whoever holds it
+  plateaus (roughly 40 to 50 N at the default gains in an FER's estimate; 750 N/m × 0.025 m =
+  18.75 N is the translational spring alone with `project_joint_gains`, not what the robot's
+  estimate shows; see the thresholds below), and on
   release the generator resumes from where the arm is, under its budget. The leash keeps
   acting during the stop's hold. On the joint interface each joint's goal stays within
   `leash.joint` of the measured joint; there the torque clamp bounds the torque (the
@@ -208,9 +221,19 @@ on a real FER. What each knob does:
   at most 0.5 rad/s; `None` is the configuration the loop started in. A posture outside the
   joint limits (inset 0.02 rad) is refused with `InvalidArgument`, as is a joint target
   outside them.
-- `ik.max_step`: the most any joint of the IK solution moves per cycle (0.01 rad, 10 rad/s);
-  a larger step is scaled down whole, so an unreachable or singular pose is approached at a
-  bounded rate rather than jumped at.
+- `joint_velocity_fraction`: no joint of the goal moves faster than this fraction of the arm's
+  velocity limit (`target_control::max_joint_velocity`: the FER's `MAX_JOINT_VELOCITY`, about
+  2.13 rad/s on joints 1 to 4 and 2.55 on 5 to 7, or the FR3's flat 2.62, 5.26, 4.18, 5.26).
+  A faster step is scaled down as a whole, so the goal keeps its direction and an unreachable or
+  singular pose is approached at a bounded rate; the generator is then re-anchored on what went
+  out, so it never plans from a velocity the arm was not sent. In (0, 1].
+- `velocity_barrier_fraction`: a joint *measured* faster than this fraction of its limit meets
+  `VELOCITY_BARRIER_GAIN` (20 Nm per rad/s) of damping on the excess, at most its torque limit,
+  added before the clamp. It catches what the command cap cannot, a spring-back or an arm
+  overshooting its goal. Below it the law's torque along a joint's motion fades out linearly,
+  from `min(cap, onset − FADE_BAND × limit)` (`FADE_BAND` 0.15) of measured speed to none at
+  the onset, so a joint catching up on its lag cannot cancel the barrier. At least
+  `joint_velocity_fraction`, at most 1.
 
 Every gain must be finite and non-negative, the leash finite and positive (`validate()`).
 The law itself is public as `franka::impedance_torques`. The options are set through
@@ -234,14 +257,13 @@ let parity = ImpedanceOptions::cartesian()
 **Collision thresholds.** Target control sets none; `set_collision_behavior` is yours, and
 the robot's reflexes watch the external forces whatever commands the torques. A spring meets
 them by deflection: at the default gains a push of 2.7 cm reaches the examples' 20 N
-threshold (750 N/m; sooner at the felt stiffness), and an arm held at the leash pulls with
-roughly 25 to 30 N at the ready pose. Measured on a real FER (2026-09-10): a slow push read
-725 N/m along one direction and about 1090 N/m from the other side, the leash held the error
-at exactly 2.5 cm, and a fast push at the leash (0.25 m/s) reached 45 to 50 N, because the
-damping adds to the spring: with 40 N thresholds that push ended in a `cartesian_reflex`,
-with 60 N it did not. So set the thresholds to at least 40 N and 40 Nm for a commander that
-only sends targets, and to 60 N or more where someone will push the arm; or lower the
-stiffness. On the joint interface the `JOINT` preset reaches the examples' 20 Nm joint
+threshold (750 N/m; sooner at the felt stiffness), and the leash bounds the spring, so an arm
+pushed past it plateaus at roughly 40 to 50 N at the default gains in `|O_F_ext_hat_K|`,
+however far past the leash it is pushed. The felt stiffness depends on the direction (about
+725 to 1090 N/m at the default 750 N/m), and a hard, fast push adds the damping term and
+peaks near 60 N: with 40 N thresholds a fast push ends in a `cartesian_reflex`. So set the thresholds to at
+least 40 N and 40 Nm for a commander that only sends targets, and to 60 N or more where
+someone will push the arm; or lower the stiffness. On the joint interface the `JOINT` preset reaches the examples' 20 Nm joint
 threshold at 0.033 rad of error. `nonrealtime_commander` takes `--thresholds N` for its
 collision thresholds.
 
@@ -249,8 +271,7 @@ collision thresholds.
 pose (`max_deviation` 0.30 m, `max_angular_deviation` 0.5 rad). Compliance lets a person
 move the arm, and moving it past either bound ends the loop: the target freezes where the
 command is, the loop finishes at rest, and the robot's own controller holds the arm where
-it was left (measured on the FER: a push that dragged the hand 12 cm and turned the wrist
-past 0.5 rad ended the session that way, cleanly, without a reflex). That is the right
+it was left, without a reflex. That is the right
 default against a runaway commander; a session where the arm is meant to be moved by hand
 raises both bounds.
 
@@ -268,9 +289,9 @@ What changes between the two:
   about force / stiffness (10 N against the default 750 N/m is about 1 cm, the unprojected
   joint term making the arm somewhat stiffer than `Kx`) and returns when released; the
   robot's controller holds the pose stiffly. Hold the arm and the desired pose stops within
-  the leash of it, so the spring never pulls harder than the felt stiffness times the leash
-  (roughly 25 to 30 N at the defaults at the ready pose) however far the target has moved
-  on; let go and it resumes from where the arm is.
+  the leash of it, so the spring's pull plateaus (roughly 40 to 50 N at the defaults; a hard,
+  fast push briefly exceeds 60 N) however far the target has moved on; let
+  go and it resumes from where the arm is.
 - **No joint-side continuity refusals.** The robot checks the inverse kinematics of a pose
   stream against its joint limits and refuses a stream whose joints would accelerate too
   fast (2.5 m/s² near the ready pose on an FER, 10 rad/s² on a joint of an FR3; see
@@ -284,8 +305,8 @@ What changes between the two:
   compliant arm meeting an obstacle still trips them at the thresholds
   `set_collision_behavior` sets, and a spring reaches them by deflection (the paragraph
   above).
-- **An unreachable or singular target** lags in the impedance backend, because the inverse
-  kinematics never jumps (at most `ik.max_step` per cycle) and the leash holds the desired
+- **An unreachable or singular target** lags in the impedance backend, because no joint of the
+  goal moves faster than `joint_velocity_fraction` of its limit and the leash holds the desired
   pose near the arm; the robot's controller refuses a pose stream it cannot follow.
 - **The finish waits for the arm.** `stop()` in the impedance backend sets `motion_finished`
   only once every joint is slower than `REST_JOINT_VELOCITY`, or after the 5 s timeout.
@@ -293,15 +314,9 @@ What changes between the two:
 On franka-sim 1.1.6 the arm did not move at the start of a session (measured change 0 to
 within floating point over the first 500 cycles), a 5 cm step lands 0.5 to 0.8 mm from the
 target and the peak lag during the motion is 3.7 mm with velocity feedforward and 12.3 mm
-without. On two real FERs (2026-09-10, `PREEMPT_RT` host, thresholds 40 N) the first torque
-of a session was that of rest (under 0.04 Nm), the commander's stepped sequence and the
-±15° yaw sweep ran with no reflex and an IK residual under 1e-6, joint targets landed within
-0.6 mrad (a 0.2 rad step) to 4 mrad, `stop()` at rest took 0.44 s and mid-motion 0.9 s, and
-the tracking error at the holds was 4.6 mm (arm L) and 2.8 mm (arm R) at 750 N/m, 2.7 mm at
-1500 N/m, 8 to 10 mm along a slow circle: a constant residual force of about 4 N on these
-arms that the robot's own controller also shows (3.7 mm at the same holds) and that scales
-with 1/K. The push tests are under [Collision thresholds](#backends) above. The full record
-is in [Benchmarks and hardware validation](../reference/benchmarks.md).
+without. On a robot the tracking error at a hold is the arm's residual force (load or
+friction) over the stiffness, as it is under the robot's own controller; see [The impedance
+backend](../reference/impedance.md#what-a-spring-does-not-do).
 
 ## What the loop does every cycle
 
@@ -318,8 +333,10 @@ is in [Benchmarks and hardware validation](../reference/benchmarks.md).
 3. **Generate.** One synchronised jerk-limited generator over all axes, per-axis limits,
    one nominal millisecond per command, re-anchored before every re-plan on the echo
    (robot-controller backend) or on the leashed anchor (impedance backend).
-4. **Track.** Impedance backend: the inverse kinematics step for a pose, the law, the
-   clamp, `Torques`. Robot-controller backend: the rate limiter under the same budget,
+4. **Track.** Impedance backend: the inverse kinematics step for a pose, the joint velocity
+   cap on the goal's step, the law with its torque along a fast joint's motion faded, plus the
+   velocity barrier, the clamp, `Torques`.
+   Robot-controller backend: the rate limiter under the same budget,
    then the loop's own libfranka limiter; neither is meant to bind, and the observer sees
    when one does.
 5. **Guard.** If the measured pose strays past `max_deviation` or `max_angular_deviation`
@@ -330,7 +347,7 @@ is in [Benchmarks and hardware validation](../reference/benchmarks.md).
    the command is. The impedance backend finishes only once the arm itself is at rest
    (`REST_JOINT_VELOCITY`), or after five more seconds.
 
-Why each step is what it is, and what happened on the arm without it, is in
+Why each step is what it is, and what goes wrong without it, is in
 [Online trajectory generation](../reference/otg.md); the impedance law, its inverse
 kinematics and its provenance are in [The impedance backend](../reference/impedance.md).
 
@@ -345,9 +362,5 @@ one, for contrast. `crates/franka-rerun/examples/commander_live.rs` is the same 
 streamed into a Rerun viewer as it runs. Python's `move_to`, `move_by` and `follow` are this
 loop; see [From Python](../getting-started/python.md).
 
-Target control with the robot's controller tracking has run on franka-sim, on a real FER
-(2026-09-09: the commander's translation and rotation sequences, and the Python policy loop)
-and on a real FR3 (2026-09-09: the same sequences, with the robot's joint-side acceleration
-check bracketed at 10 rad/s²); see
-[Benchmarks and hardware validation](../reference/benchmarks.md). The impedance backend ran
-on both FERs on 2026-09-10 (the FR3 was not reachable that day); see [Backends](#backends).
+Target control works on the FR3 (FCI v10) and the FER (FCI v5) with either backend; the
+impedance backend is not yet validated on an FR3. See [Backends](#backends).

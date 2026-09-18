@@ -12,12 +12,16 @@
 //! the command line over the two replays.
 //!
 //! Everything is logged on the [`TIMELINE`] `robot_time`: seconds since the motion started
-//! for a commander CSV, the robot's own clock for a control log.
+//! for a commander CSV, the robot's own clock for a control log. A record taken live carries
+//! the host's clock as well and is logged on [`HOST_TIMELINE`] too; that is the axis on which
+//! two robots, each with its own controller and so its own `robot_time`, line up. A [`Prefix`]
+//! puts everything one recorder writes under a name, which is what lets them share a recording.
 
 pub mod commander;
 pub mod demo;
 pub mod flight;
 pub mod meshes;
+mod prefix;
 pub mod recorder;
 pub mod scene;
 pub mod series;
@@ -25,14 +29,36 @@ pub mod series;
 pub use commander::CommanderLog;
 pub use flight::{
     load_records, log_records, replay_exception, save_records, ContactEstimate, ContactOptions,
-    FlightLogger, FlightOptions, Summary,
+    FlightLogger, FlightOptions, Layout, Stamped, Summary, TorqueLog,
 };
-pub use meshes::Meshes;
+pub use meshes::{MeshChoice, Meshes};
+pub use prefix::Prefix;
 pub use recorder::{Recorder, RecorderOptions, Stats};
+/// The SDK behind [`Recorder::stream`], at the version this crate pins, for dependants that
+/// log their own entities.
+pub use rerun;
 pub use series::{Limits, Peaks};
 
 /// The timeline every entity is logged on: the robot's time, seconds since the motion started.
+///
+/// It is the controller's own millisecond counter, so two robots' values are unrelated: a
+/// recording of two of them is synchronised on [`HOST_TIMELINE`], not on this one.
 pub const TIMELINE: &str = "robot_time";
+
+/// The second timeline of a live recording: the host's `CLOCK_MONOTONIC` in seconds, stamped
+/// where the record was taken ([`Recorder::push`]).
+///
+/// Every process on one host reads the same clock, so an arm, a second arm and a camera node
+/// all put their rows on one axis without exchanging anything. An offline replay has no host
+/// clock for a record and writes only [`TIMELINE`].
+pub const HOST_TIMELINE: &str = "host_time";
+
+/// The Rerun application id of every stream this crate opens.
+///
+/// A viewer keys a store by the application id *and* the recording id, so a second process
+/// that wants its file to load as part of one of ours has to name this same id alongside the
+/// recording id it was given.
+pub const APPLICATION_ID: &str = "franka_rs";
 
 /// Series colours as `0xRRGGBBAA`: target orange, commanded blue, measured green (the same
 /// three as `bench/commander/plot.py`), limit grey, and budget red.

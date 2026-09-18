@@ -9,6 +9,12 @@
 //! bounded distance ahead of an arm that is held back. Once the runner holds, the leash
 //! pulls toward the frozen hold instead, every cycle: an arm moved during the hold meets the
 //! spring over the leash, never over the whole displacement.
+//!
+//! When the joint velocity cap cuts a goal, the generator is restarted at its own end-of-cycle
+//! velocity cut by the same scale, keeping only an acceleration that brakes (and, for a pose, the
+//! leash re-anchored on the capped goal's pose) before the next step: no windup, and no braking
+//! lost to a cap that keeps binding. Not at the capped step's mean velocity: once the plan brakes
+//! inside a step the mean is above its end velocity, and replanning from it runs past the target.
 
 use std::sync::Arc;
 
@@ -18,6 +24,7 @@ use super::impedance::impedance_torques;
 use super::joint::{self, max_abs_difference, JointSent};
 use super::rotation::{exp, log, norm};
 use super::runner::{Step, REST_JOINT_VELOCITY};
+use super::velocity::{cap_step, fade_push, fade_start, velocity_barrier};
 use super::{
     ImpedanceOptions, JointTargetControlOptions, Leash, Runner, TargetControlOptions,
     STOP_TIMEOUT_CYCLES,
@@ -39,12 +46,24 @@ pub(super) trait Tracker<const N: usize, const S: usize> {
     fn anchor(&mut self, state: &RobotState, leash: &Leash) -> [f64; S];
     /// Whether the measured state has strayed further from the start than allowed.
     fn strayed(&self, state: &RobotState) -> bool;
+    /// The velocity to restart the generator at, in the runner's coordinates, when the joint
+    /// velocity cap cut the previous goal: its end-of-cycle velocity cut by the cap's scale;
+    /// `None` when the cap did not cut.
+    fn capped_velocity(&self) -> Option<[f64; N]>;
     /// The joint goal and its velocity after this cycle's step.
     fn goal(&mut self, step: &Step<N, S>) -> ([f64; 7], [f64; 7]);
-    fn sent(&self, step: &Step<N, S>, q_goal: [f64; 7], tau: [f64; 7]) -> Self::Sent;
+    fn sent(&self, step: &Step<N, S>, command: &Command) -> Self::Sent;
 }
 
 type Observer<S> = Box<dyn FnMut(&RobotState, &S) + Send>;
+
+/// What the law made of a cycle's goal, for the observer's record.
+pub(super) struct Command {
+    pub q_goal: [f64; 7],
+    pub dq_goal: [f64; 7],
+    pub tau: [f64; 7],
+    pub tau_envelope: [f64; 7],
+}
 
 /// The loop of [`Backend::Impedance`](super::Backend::Impedance); `cycle` is the
 /// [`Robot::control_torques`] callback.
@@ -54,6 +73,11 @@ pub(super) struct TorqueLoop<const N: usize, const S: usize, T: Tracker<N, S>> {
     impedance: ImpedanceOptions,
     tracker: T,
     observer: Option<Observer<T::Sent>>,
+    /// Where the law's push along a joint's motion starts to fade, rad/s per joint: the cap, or
+    /// [`FADE_BAND`](super::FADE_BAND) of the limit under the barrier's onset if that is lower.
+    fade_start: [f64; 7],
+    /// Where the velocity barrier starts and that push is gone, rad/s per joint.
+    barrier_onset: [f64; 7],
     /// Cycles the runner has reported the finish for while the arm was still moving.
     waited: u32,
 }
@@ -65,6 +89,7 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
         impedance: ImpedanceOptions,
         tracker: T,
         observer: Option<Observer<T::Sent>>,
+        max_velocity: [f64; 7],
     ) -> Self {
         TorqueLoop {
             runner,
@@ -72,6 +97,14 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
             impedance,
             tracker,
             observer,
+            fade_start: max_velocity.map(|v| {
+                fade_start(
+                    v,
+                    v * impedance.joint_velocity_fraction,
+                    v * impedance.velocity_barrier_fraction,
+                )
+            }),
+            barrier_onset: max_velocity.map(|v| v * impedance.velocity_barrier_fraction),
             waited: 0,
         }
     }
@@ -79,9 +112,12 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
     pub(super) fn cycle(&mut self, state: &RobotState) -> Torques {
         let commanded = self.tracker.anchor(state, &self.impedance.leash);
         let strayed = self.tracker.strayed(state);
+        if let Some(velocity) = self.tracker.capped_velocity() {
+            self.runner.restart_at_velocity(velocity);
+        }
         let step = self.runner.cycle(state, commanded, strayed);
         let (q_goal, dq_goal) = self.tracker.goal(&step);
-        let tau = impedance_torques(
+        let law = impedance_torques(
             &self.impedance,
             &self.model.zero_jacobian(Frame::EndEffector, state),
             &q_goal,
@@ -90,8 +126,24 @@ impl<const N: usize, const S: usize, T: Tracker<N, S>> TorqueLoop<N, S, T> {
             &state.dq,
             &self.model.coriolis(state),
         );
+        let kept = fade_push(&law, &state.dq, &self.fade_start, &self.barrier_onset);
+        let barrier = velocity_barrier(
+            &state.dq,
+            &self.barrier_onset,
+            &self.impedance.torque_limits,
+        );
+        let limits = &self.impedance.torque_limits;
+        let tau: [f64; 7] =
+            std::array::from_fn(|i| (kept[i] + barrier[i]).clamp(-limits[i], limits[i]));
+        let tau_envelope = std::array::from_fn(|i| barrier[i] - (law[i] - kept[i]));
         if let Some(observe) = self.observer.as_mut() {
-            observe(state, &self.tracker.sent(&step, q_goal, tau));
+            let command = Command {
+                q_goal,
+                dq_goal,
+                tau,
+                tau_envelope,
+            };
+            observe(state, &self.tracker.sent(&step, &command));
         }
         let mut output = Torques::new(tau);
         output.motion_finished = step.finished && self.arm_at_rest_or_waited_out(state);
@@ -147,6 +199,8 @@ pub(super) struct PoseTracker {
     ik: IkOptions,
     posture: Option<[f64; 7]>,
     joint_limits: ([f64; 7], [f64; 7]),
+    /// The joint velocity cap, rad/s: the arm's limits times the fraction.
+    max_velocity: [f64; 7],
     max_deviation: f64,
     max_angular_deviation: f64,
     anchored: Option<PoseAnchor>,
@@ -168,6 +222,11 @@ struct PoseAnchor {
     previous_goal: Option<[f64; 7]>,
     pose: [f64; 16],
     ik_error: f64,
+    /// The scale the IK's step was cut by this cycle, 1 when it was not.
+    cap_scale: f64,
+    /// The generator's end-of-cycle twist cut by the cap's scale when the cap cut the goal: its
+    /// next velocity.
+    capped: Option<[f64; 6]>,
 }
 
 impl PoseTracker {
@@ -176,12 +235,14 @@ impl PoseTracker {
         impedance: &ImpedanceOptions,
         model: Arc<Model>,
         joint_limits: ([f64; 7], [f64; 7]),
+        max_velocity: [f64; 7],
     ) -> Self {
         PoseTracker {
             model,
             ik: impedance.ik,
             posture: impedance.posture,
             joint_limits,
+            max_velocity: max_velocity.map(|v| v * impedance.joint_velocity_fraction),
             max_deviation: options.max_deviation,
             max_angular_deviation: options.max_angular_deviation,
             anchored: None,
@@ -194,7 +255,13 @@ impl Tracker<6, 7> for PoseTracker {
 
     fn anchor(&mut self, state: &RobotState, leash: &Leash) -> [f64; 7] {
         let measured = placement(&self.model.pose(Frame::EndEffector, state));
-        let (model, ik, posture, limits) = (&self.model, self.ik, self.posture, self.joint_limits);
+        let (model, ik, posture, limits, cap) = (
+            &self.model,
+            self.ik,
+            self.posture,
+            self.joint_limits,
+            self.max_velocity,
+        );
         let a = self.anchored.get_or_insert_with(|| {
             // The desired pose starts where the IK's own model puts the arm, not at `O_T_EE`:
             // the residual is then zero by construction, whatever the two differ by (the
@@ -211,6 +278,7 @@ impl Tracker<6, 7> for PoseTracker {
                     Arc::clone(model),
                     ik,
                     limits,
+                    cap,
                     state.q,
                     state.F_T_EE,
                     state.EE_T_K,
@@ -218,6 +286,8 @@ impl Tracker<6, 7> for PoseTracker {
                 previous_goal: None,
                 pose: [0.0; 16],
                 ik_error: 0.0,
+                cap_scale: 1.0,
+                capped: None,
             }
         });
         let reference = a.frozen.as_ref().unwrap_or(&a.desired);
@@ -236,6 +306,10 @@ impl Tracker<6, 7> for PoseTracker {
         })
     }
 
+    fn capped_velocity(&self) -> Option<[f64; 6]> {
+        self.anchored.as_ref().and_then(|a| a.capped)
+    }
+
     fn goal(&mut self, step: &Step<6, 7>) -> ([f64; 7], [f64; 7]) {
         let a = self.anchored.as_mut().expect("anchored before goal");
         if step.hold {
@@ -248,8 +322,14 @@ impl Tracker<6, 7> for PoseTracker {
             a.desired = compose(step, &a.anchor.1);
         }
         a.pose = cartesian::pose_of(&a.desired);
+        // The cap bounds the IK's step from its own last solution: `dq_goal` is under the cap
+        // only as long as that is the previous goal. Bitwise, so a NaN goal does not panic here.
+        debug_assert!(a
+            .previous_goal
+            .is_none_or(|previous| previous.map(f64::to_bits) == a.ik.q().map(f64::to_bits)));
         let (q_goal, ik_error) = a.ik.step(&a.pose, &a.posture, DELTA_T);
         a.ik_error = ik_error;
+        a.cap_scale = a.ik.cap_scale();
         let dq_goal = match a.previous_goal {
             Some(previous) if !step.hold => {
                 std::array::from_fn(|i| (q_goal[i] - previous[i]) / DELTA_T)
@@ -257,14 +337,26 @@ impl Tracker<6, 7> for PoseTracker {
             _ => [0.0; 7],
         };
         a.previous_goal = Some(q_goal);
+        a.capped = None;
+        if a.cap_scale < 1.0 && !step.hold {
+            // What went out, not what was planned: the capped goal's pose is the leash's next
+            // reference, and the generator's end twist cut by the same scale its next velocity
+            // (see the module documentation).
+            a.desired = placement(&a.ik.pose_of(&q_goal));
+            let scale = a.cap_scale;
+            a.capped = Some(step.velocity.map(|v| scale * v));
+        }
         (q_goal, dq_goal)
     }
 
-    fn sent(&self, step: &Step<6, 7>, q_goal: [f64; 7], tau: [f64; 7]) -> CartesianSent {
+    fn sent(&self, step: &Step<6, 7>, command: &Command) -> CartesianSent {
         let a = self.anchored.as_ref().expect("anchored before sent");
         CartesianSent {
-            q_goal,
-            tau,
+            q_goal: command.q_goal,
+            dq_goal: command.dq_goal,
+            cap_scale: a.cap_scale,
+            tau: command.tau,
+            tau_envelope: command.tau_envelope,
             ik_error: a.ik_error,
             leash_alteration: a.leash_alteration.0,
             leash_angular_alteration: a.leash_alteration.1,
@@ -274,10 +366,13 @@ impl Tracker<6, 7> for PoseTracker {
 }
 
 /// The joint tracker: the generator runs from its own last output, anchored on the measured
-/// configuration in the first cycle; its limits are the whole budget (no backstop, no
-/// tightening to the robot's velocity envelope).
+/// configuration in the first cycle; its limits are the budget, and the goal's step is scaled
+/// under the joint velocity cap. The hold is not capped: its goal moves only with an arm moved
+/// by hand, a leash ahead of it.
 pub(super) struct JointTracker {
     max_deviation: f64,
+    /// The joint velocity cap as a step per cycle, rad.
+    max_step: [f64; 7],
     anchored: Option<JointAnchor>,
 }
 
@@ -291,12 +386,22 @@ struct JointAnchor {
     /// The leashed anchor the runner was given this cycle.
     anchor: [f64; 7],
     leash_alteration: f64,
+    /// The scale the goal's step was cut by this cycle, 1 when it was not.
+    cap_scale: f64,
+    /// The generator's end-of-cycle velocity cut by the cap's scale when the cap cut the goal:
+    /// its next velocity.
+    capped: Option<[f64; 7]>,
 }
 
 impl JointTracker {
-    pub(super) fn new(options: &JointTargetControlOptions) -> Self {
+    pub(super) fn new(
+        options: &JointTargetControlOptions,
+        impedance: &ImpedanceOptions,
+        max_velocity: [f64; 7],
+    ) -> Self {
         JointTracker {
             max_deviation: options.max_deviation,
+            max_step: max_velocity.map(|v| v * impedance.joint_velocity_fraction * DELTA_T),
             anchored: None,
         }
     }
@@ -312,6 +417,8 @@ impl Tracker<7, 7> for JointTracker {
             frozen: None,
             anchor: state.q,
             leash_alteration: 0.0,
+            cap_scale: 1.0,
+            capped: None,
         });
         let reference = a.frozen.unwrap_or(a.goal);
         let mut worst = 0.0f64;
@@ -334,32 +441,45 @@ impl Tracker<7, 7> for JointTracker {
             .is_some_and(|a| max_abs_difference(&state.q, &a.start) > self.max_deviation)
     }
 
+    fn capped_velocity(&self) -> Option<[f64; 7]> {
+        self.anchored.as_ref().and_then(|a| a.capped)
+    }
+
     fn goal(&mut self, step: &Step<7, 7>) -> ([f64; 7], [f64; 7]) {
         let a = self.anchored.as_mut().expect("anchored before goal");
         // The goal's own velocity, not the generator's: while the leash binds the goal
         // stands a leash ahead of the arm and the damping feeds nothing forward.
         let (q_goal, dq_goal) = if step.hold {
             a.frozen.get_or_insert(a.anchor);
+            a.cap_scale = 1.0;
             (a.anchor, [0.0; 7])
         } else {
             let previous = a.goal;
-            let q_goal = step.position;
+            let mut q_goal = step.position;
+            a.cap_scale = cap_step(&previous, &mut q_goal, &self.max_step);
             (
                 q_goal,
                 std::array::from_fn(|i| (q_goal[i] - previous[i]) / DELTA_T),
             )
         };
+        // The goal is the leash's next reference already; when the cap cut it, the generator's
+        // end velocity cut by the same scale is its next one (see the module documentation).
+        let scale = a.cap_scale;
+        a.capped = (scale < 1.0).then(|| step.velocity.map(|v| scale * v));
         a.goal = q_goal;
         (q_goal, dq_goal)
     }
 
-    fn sent(&self, step: &Step<7, 7>, q_goal: [f64; 7], tau: [f64; 7]) -> JointSent {
+    fn sent(&self, step: &Step<7, 7>, command: &Command) -> JointSent {
         let a = self.anchored.as_ref().expect("anchored before sent");
         JointSent {
-            q_goal,
-            tau,
+            q_goal: command.q_goal,
+            dq_goal: command.dq_goal,
+            cap_scale: a.cap_scale,
+            tau: command.tau,
+            tau_envelope: command.tau_envelope,
             leash_alteration: a.leash_alteration,
-            ..joint::sent(step, q_goal)
+            ..joint::sent(step, command.q_goal)
         }
     }
 }

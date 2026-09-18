@@ -440,7 +440,7 @@ fn main() {
         "load-model" => command_load_model(),
         "fixture" => command_fixture(),
         other => {
-            eprintln!("usage: fer-model-fit <compare-fr3|fit|verify|diagnose|fixture>");
+            eprintln!("usage: fer-model-fit <compare-fr3|fit|verify|load-model|fixture>");
             if !other.is_empty() {
                 eprintln!("unknown command: {other}");
             }

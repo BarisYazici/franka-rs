@@ -37,9 +37,8 @@ cache to the configuration being dumped.
 ## Build
 
 Requires libfranka 0.20.4 built with Pinocchio, Eigen 3 and Pinocchio 4.1. The
-default source/build paths are `$HOME/libfranka` and
-`$HOME/libfranka/build-rt-ignore`; override them with `-D` if your libfranka
-tree lives elsewhere (see the cache variables below).
+default source/build paths are `reference/libfranka` and `reference/libfranka/build`;
+override them with `-DLIBFRANKA_DIR=...` and `-DLIBFRANKA_BUILD_DIR=...`.
 
 ```sh
 cmake -S tools/model-reference -B tools/model-reference/build -DCMAKE_BUILD_TYPE=Release

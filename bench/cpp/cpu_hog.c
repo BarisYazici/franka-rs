@@ -1,7 +1,7 @@
 /* A minimal CPU hog: `cpu_hog <workers> <seconds>` forks <workers> busy-looping children.
  *
- * Stands in for `stress-ng --cpu $(nproc)`, which is not installed on this box (and the
- * benchmark is not allowed to install system packages). Each worker runs a floating-point
+ * Stands in for `stress-ng --cpu $(nproc)`, which may not be installed (and the
+ * benchmark does not install system packages). Each worker runs a floating-point
  * busy loop at the default scheduling policy, so a SCHED_FIFO control loop should still
  * preempt it; the point is to saturate every core and to make the simulator container
  * compete for CPU. Children exit on their own after <seconds> and are also killed when the

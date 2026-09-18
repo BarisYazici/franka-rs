@@ -18,6 +18,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BarisYazici/franka-rs/main/docs/book/src/assets/franka-rs-overview.gif" width="800" alt="Overview animation: commanders send targets over Zenoh to a Raspberry Pi 5 running franka-node, which drives two Franka arms over one Ethernet cable each at 1 kHz.">
+</p>
+
 `franka-rs` speaks the protocol a Franka Research 3 or a Franka Emika Robot (Panda) is
 controlled through: a TCP channel for commands and the 1 kHz UDP loop for state and
 commands, with the robot's kinematics and dynamics evaluated in the crate. There is no
@@ -40,7 +44,7 @@ options, or with the robot's own controller on request (`Backend::RobotControlle
 ## Install
 
 ```sh
-cargo add franka-rs        # Rust: `use franka::Robot;`, Rust 1.85 or newer
+cargo add franka-rs        # Rust: `use franka::Robot;`, Rust 1.89 or newer
 pip install franka-rs      # Python: `import franka`
 ```
 
@@ -107,20 +111,20 @@ with robot.cartesian_targets() as arm:
 | drive it from Python or a notebook | [From Python](https://barisyazici.github.io/franka-rs/getting-started/python.html) |
 | know what can stop you before it does | [Things to keep in mind](https://barisyazici.github.io/franka-rs/concepts/fci.html) |
 | do one specific thing | [Command from a low-rate program](https://barisyazici.github.io/franka-rs/howto/target-control.html), [Write a 1 kHz callback](https://barisyazici.github.io/franka-rs/howto/callback-control.html), [Use the model](https://barisyazici.github.io/franka-rs/howto/model.html), [Record and replay a run](https://barisyazici.github.io/franka-rs/howto/flight-recorder.html), [Run the examples](https://barisyazici.github.io/franka-rs/howto/examples.html) |
-| see the protocol, the constants and the measurements | [Compared with libfranka](https://barisyazici.github.io/franka-rs/reference/libfranka.html), [Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html) |
+| see the protocol, the constants and the measurements | [Compared with libfranka](https://barisyazici.github.io/franka-rs/reference/libfranka.html), [Benchmarks](https://barisyazici.github.io/franka-rs/reference/benchmarks.html) |
 | read the rustdoc | [API reference](https://barisyazici.github.io/franka-rs/api/franka/index.html) |
 | contribute or run the tests | [Contributing](https://barisyazici.github.io/franka-rs/contributing.html) |
 
 ## Status
 
-Version 0.3. Both protocol versions, every control interface, target control from Rust and
-Python, the gripper and the flight recorder have run on real FR3 and FER arms; measured side
-by side with libfranka, loop timing is the same and the model agrees to 1e-14. Target
-control's impedance backend, new in 0.3.0 and the default, has run on the simulator and on
-two real FERs, not yet on an FR3. Not there yet: a `ros2_control` hardware interface, the
-vacuum gripper, a published simulator image for the FER. The dates and figures are in
-[Benchmarks and hardware validation](https://barisyazici.github.io/franka-rs/reference/benchmarks.html),
-what changed in [`CHANGELOG.md`](CHANGELOG.md).
+Version 0.4, released with the Zenoh nodes, covers both protocol versions, every control
+interface, target control from Rust and Python, the gripper and the flight recorder, on the
+FR3 and the FER; measured side by side with libfranka, loop timing is the same and the model
+agrees to 1e-14. Target control's impedance backend, new in 0.3.0 and the default, is not yet
+validated on an FR3. Not there yet: a `ros2_control` hardware interface, the vacuum gripper,
+a published simulator image for the FER. The figures are in
+[Benchmarks](https://barisyazici.github.io/franka-rs/reference/benchmarks.html), what changed
+in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Credit and license
 

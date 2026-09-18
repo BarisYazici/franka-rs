@@ -7,10 +7,12 @@ control on a Rust thread; **the GIL is never on the 1 kHz path**. `move_to` / `m
 are one write into that loop's seqlock slot, `follow` hands a chunk of targets to a Rust
 timer thread, and `state()` is a copy out of a mutex.
 
+For an arm served by `franka-node` over Zenoh, see its client, `pip install franka-node-client`.
+
 ```python
 import franka
 
-robot = franka.Robot("192.168.0.1")   # FRANKA_REALTIME=ignore for franka-sim
+robot = franka.Robot("172.16.0.2")    # FRANKA_REALTIME=ignore for franka-sim
 
 with robot.cartesian_targets(max_velocity=0.3, max_acceleration=0.5, max_jerk=20.0) as arm:
     while not done:
@@ -41,7 +43,7 @@ too, as a unit quaternion `x, y, z, w` after the position; a `move_by` of 6 elem
 appends a rotation vector (axis times angle, rad) composed onto the target orientation in
 the base frame. `arm.target()` is that 7-vector, `arm.target_pose()` the 4x4 matrix.
 `examples/policy_loop.py` is a jittery 6-10 Hz loop with a circle, a yaw and tilt sweep
-and a `follow` chunk, as run on a Panda; `examples/rotate.py` is the rotation alone, and
+and a `follow` chunk; `examples/rotate.py` is the rotation alone, and
 `examples/quickstart.ipynb` a notebook that connects, moves, and replays the motion inline
 with Franka's meshes. `robot.model()` is the kinematics and dynamics over numpy
 (`pose`, `body_jacobian`, `zero_jacobian`, `mass`, `coriolis`, `gravity`, `link_poses`,

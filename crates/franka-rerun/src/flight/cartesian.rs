@@ -8,11 +8,12 @@
 
 use franka::Record;
 use rerun::components::AggregationPolicy;
-use rerun::{Color, RecordingStream, Scalars, SeriesLines, TimeColumn};
+use rerun::{Color, RecordingStream, Scalars, SeriesLines};
 
-use super::logger::FlightLogger;
+use super::logger::{time_columns, FlightLogger, Times};
+use super::Stamped;
 use crate::series::Peaks;
-use crate::{norm, scene, Result, RobotKind, COMMANDED, LIMIT, MEASURED, TARGET, TIMELINE};
+use crate::{norm, scene, Prefix, Result, RobotKind, BUDGET, COMMANDED, LIMIT, MEASURED, TARGET};
 
 /// `ee/position/{x,y,z}`: the sent position and the measured one, per axis.
 pub const POSITION_PREFIX: &str = "ee/position";
@@ -64,14 +65,17 @@ impl FlightLogger<'_> {
     pub(super) fn log_cartesian(
         &mut self,
         first: usize,
-        t: &[f64],
-        records: &[Record],
+        t: &Times,
+        records: &[Stamped],
     ) -> Result<()> {
         let mut times = Vec::new();
+        let mut host_times = Vec::new();
         let mut positions: Vec<[f64; 6]> = Vec::new();
         let mut derivatives: Vec<[f64; 3]> = Vec::new();
-        for (i, (record, &time)) in records.iter().zip(t).enumerate() {
-            let Some(p) = sent(record) else {
+        for (i, stamped) in records.iter().enumerate() {
+            let record = &stamped.record;
+            let at = t.at(i);
+            let (time, Some(p)) = (at.robot, sent(record)) else {
                 continue;
             };
             let [v, a, j] = match self.cartesian.last {
@@ -95,35 +99,39 @@ impl FlightLogger<'_> {
             positions.push([p[0], p[1], p[2], m[12], m[13], m[14]]);
             derivatives.push(norms);
             times.push(time);
+            host_times.extend(at.host);
             if (first + i).is_multiple_of(self.options.every) {
-                self.rec.set_duration_secs(TIMELINE, time);
-                scene::log_point(&self.rec, COMMANDED_POINT, &p, 0.008, COMMANDED)?;
+                at.set(&self.rec);
+                let prefix = &self.options.prefix;
+                scene::log_point(&self.rec, prefix, COMMANDED_POINT, &p, 0.008, COMMANDED)?;
             }
         }
         if times.is_empty() {
             return Ok(());
         }
         self.summary.commanded_peaks = Some(self.cartesian.peaks);
-        let column = || TimeColumn::new_duration_secs(TIMELINE, times.iter().copied());
+        let host = t.has_host().then_some(host_times.as_slice());
+        let column = || time_columns(&times, host);
         for (k, axis) in AXES.iter().enumerate() {
             let values = positions.iter().flat_map(|row| [row[k], row[k + 3]]);
             let columns = Scalars::new(values).columns(std::iter::repeat_n(2, times.len()))?;
-            let entity = format!("{POSITION_PREFIX}/{axis}");
-            self.rec.send_columns(entity, [column()], columns)?;
+            let entity = self.path(&format!("{POSITION_PREFIX}/{axis}"));
+            self.rec.send_columns(entity, column(), columns)?;
         }
         let limits = self.kind.limits();
         let limit_values = [limits.speed, limits.acceleration, limits.jerk];
-        let ends = [times[0], times[times.len() - 1]];
+        // The limit line is two points, at the ends of what this batch covered.
+        let ends = |v: &[f64]| [v[0], v[v.len() - 1]];
+        let (robot_ends, host_ends) = (ends(&times), host.map(ends));
         for (k, (name, _, _)) in DERIVATIVES.iter().enumerate() {
             let values = derivatives.iter().map(|row| row[k]);
             let columns = Scalars::new(values).columns_of_unit_batches()?;
-            let entity = format!("{DERIVATIVES_PREFIX}/{name}");
-            self.rec
-                .send_columns(entity.as_str(), [column()], columns)?;
+            let entity = self.path(&format!("{DERIVATIVES_PREFIX}/{name}"));
+            self.rec.send_columns(entity.as_str(), column(), columns)?;
             let limit = Scalars::new([limit_values[k]; 2]).columns_of_unit_batches()?;
-            let column = TimeColumn::new_duration_secs(TIMELINE, ends);
+            let column = time_columns(&robot_ends, host_ends.as_ref().map(<[f64; 2]>::as_slice));
             self.rec
-                .send_columns(format!("{entity}/limit"), [column], limit)?;
+                .send_columns(format!("{entity}/limit"), column, limit)?;
         }
         Ok(())
     }
@@ -162,18 +170,38 @@ fn unaggregated(
     Ok(())
 }
 
+/// The legend names and colours of a gripper's series, for the node that logs `gripper/*` into
+/// an episode: the width in metres against the width it was told to take, and the flags as
+/// zero-or-one steps beside them.
+pub fn log_gripper_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
+    for (entity, name, color) in [
+        ("gripper/width", "width [m]", MEASURED),
+        ("gripper/commanded", "commanded [m]", COMMANDED),
+        ("gripper/grasped", "grasped", TARGET),
+        ("gripper/moving", "moving", LIMIT),
+        ("gripper/fault", "fault", BUDGET),
+    ] {
+        unaggregated(rec, &prefix.path(entity), &[name], &[color], &[1.5])?;
+    }
+    Ok(())
+}
+
 /// The legend names and colours of the per-axis positions and the derivatives (the limit
 /// lines carry `kind`'s values in their names).
-pub(super) fn log_cartesian_styles(rec: &RecordingStream, kind: RobotKind) -> Result<()> {
+pub(super) fn log_cartesian_styles(
+    rec: &RecordingStream,
+    prefix: &Prefix,
+    kind: RobotKind,
+) -> Result<()> {
     for axis in AXES {
-        let entity = format!("{POSITION_PREFIX}/{axis}");
+        let entity = prefix.path(&format!("{POSITION_PREFIX}/{axis}"));
         let names = ["commanded (sent)", "measured O_T_EE"];
         style(rec, &entity, &names, &[COMMANDED, MEASURED], &[2.0, 1.2])?;
     }
     let limits = kind.limits();
     let values = [limits.speed, limits.acceleration, limits.jerk];
     for ((name, label, unit), limit) in DERIVATIVES.iter().zip(values) {
-        let entity = format!("{DERIVATIVES_PREFIX}/{name}");
+        let entity = prefix.path(&format!("{DERIVATIVES_PREFIX}/{name}"));
         style(rec, &entity, &[label], &[COMMANDED], &[2.0])?;
         let label = format!("limit {limit:.1} {unit}");
         style(rec, &format!("{entity}/limit"), &[&label], &[LIMIT], &[1.0])?;
@@ -183,9 +211,9 @@ pub(super) fn log_cartesian_styles(rec: &RecordingStream, kind: RobotKind) -> Re
 
 /// The legend names and colours of the commander's own entities, [`TARGET_PREFIX`] and
 /// [`TARGET_SPEED`], for a program that logs them from its commander thread.
-pub fn log_target_styles(rec: &RecordingStream) -> Result<()> {
+pub fn log_target_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
     for axis in AXES {
-        let entity = format!("{TARGET_PREFIX}/{axis}");
+        let entity = prefix.path(&format!("{TARGET_PREFIX}/{axis}"));
         unaggregated(rec, &entity, &["target (raw)"], &[TARGET], &[1.5])?;
     }
     let names = [
@@ -194,7 +222,7 @@ pub fn log_target_styles(rec: &RecordingStream) -> Result<()> {
     ];
     unaggregated(
         rec,
-        TARGET_SPEED,
+        &prefix.path(TARGET_SPEED),
         &names,
         &[TARGET, TARGET_PALE],
         &[2.0, 1.5],

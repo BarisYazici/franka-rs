@@ -9,9 +9,9 @@ use franka::RobotState;
 use rerun::{Arrows3D, Clear, Color, Points3D, Scalars, TextLogLevel};
 
 use super::contact;
-use super::logger::FlightLogger;
+use super::logger::{FlightLogger, Stamp};
 use super::style::{Flags, COLLISION, CONTACT, FORCE, JOINT_NAMES, QUIET};
-use crate::{scene, Result, TIMELINE};
+use crate::{scene, Result};
 
 /// Sphere radius at a joint, m, plus this much per Nm of `|tau_ext_hat_filtered|`.
 const JOINT_RADIUS: f64 = 0.02;
@@ -25,9 +25,10 @@ pub(super) const FORCE_ENTITY: &str = "world/contact/force";
 pub(super) const LINK_ENTITY: &str = "contact/link";
 
 impl FlightLogger<'_> {
-    /// The arm, the joint spheres, the meshes and the external force arrow at `time`.
-    pub(super) fn log_scene(&self, time: f64, state: &RobotState) -> Result<()> {
-        self.rec.set_duration_secs(TIMELINE, time);
+    /// The arm, the joint spheres, the meshes and the external force arrow at `at`.
+    pub(super) fn log_scene(&self, at: Stamp, state: &RobotState) -> Result<()> {
+        at.set(&self.rec);
+        let prefix = &self.options.prefix;
         let points = scene::skeleton(self.model, &state.q, &state.F_T_EE);
         let ee_pose = self.model.pose_q(
             franka::Frame::EndEffector,
@@ -35,9 +36,9 @@ impl FlightLogger<'_> {
             &state.F_T_EE,
             &IDENTITY_TRANSFORM,
         );
-        let ee = scene::log_skeleton(&self.rec, &points, &ee_pose)?;
+        let ee = scene::log_skeleton(&self.rec, prefix, &points, &ee_pose)?;
         if let Some(meshes) = &self.meshes {
-            meshes.log_poses(&self.rec, self.model, &state.q)?;
+            meshes.log_poses(&self.rec, prefix, self.model, &state.q)?;
         }
         let flags = Flags::of(state);
         let joints: [[f32; 3]; 7] = std::array::from_fn(|j| points[j + 1].map(|v| v as f32));
@@ -58,7 +59,7 @@ impl FlightLogger<'_> {
             .with_radii(radii)
             .with_labels(JOINT_NAMES)
             .with_show_labels(false);
-        self.rec.log("world/joints", &spheres)?;
+        self.rec.log(self.path("world/joints"), &spheres)?;
 
         let f = &state.O_F_ext_hat_K;
         let scale = self.options.force_scale;
@@ -74,11 +75,11 @@ impl FlightLogger<'_> {
             .with_origins([ee.map(|v| v as f32)])
             .with_colors([Color::from_u32(color)])
             .with_radii([0.006]);
-        self.rec.log("world/force", &arrow)?;
+        self.rec.log(self.path("world/force"), &arrow)?;
         Ok(())
     }
 
-    /// The contact estimate for record `index` at `time`, from the torques less the [`Tare`]
+    /// The contact estimate for record `index` at `at`, from the torques less the [`Tare`]
     /// baseline: computed when a flag is set, or when a torque exceeds the noise floor and the
     /// record is one the 3D scene draws (`every`); cleared from the scene when it goes away.
     ///
@@ -86,7 +87,7 @@ impl FlightLogger<'_> {
     pub(super) fn log_contact(
         &mut self,
         index: usize,
-        time: f64,
+        at: Stamp,
         state: &RobotState,
     ) -> Result<()> {
         let flags = Flags::of(state);
@@ -109,15 +110,15 @@ impl FlightLogger<'_> {
         };
         let Some(estimate) = estimate else {
             if self.contact_shown {
-                self.rec.set_duration_secs(TIMELINE, time);
-                self.rec.log(ESTIMATE_ENTITY, &Clear::flat())?;
-                self.rec.log(FORCE_ENTITY, &Clear::flat())?;
+                at.set(&self.rec);
+                self.rec.log(self.path(ESTIMATE_ENTITY), &Clear::flat())?;
+                self.rec.log(self.path(FORCE_ENTITY), &Clear::flat())?;
                 self.contact_shown = false;
             }
             return Ok(());
         };
 
-        self.rec.set_duration_secs(TIMELINE, time);
+        at.set(&self.rec);
         let magnitude = estimate.magnitude();
         let color = Color::from_u32(if flags.any_collision() {
             COLLISION
@@ -132,28 +133,30 @@ impl FlightLogger<'_> {
             .with_colors([color])
             .with_labels([format!("link {} {:.1} N", estimate.link, magnitude)])
             .with_show_labels(true);
-        self.rec.log(ESTIMATE_ENTITY, &marker)?;
+        self.rec.log(self.path(ESTIMATE_ENTITY), &marker)?;
         let scale = self.options.force_scale;
         let vector = estimate.force.map(|v| (v * scale) as f32);
         let arrow = Arrows3D::from_vectors([vector])
             .with_origins([point])
             .with_colors([color])
             .with_radii([0.005]);
-        self.rec.log(FORCE_ENTITY, &arrow)?;
-        self.rec
-            .log(LINK_ENTITY, &Scalars::single(estimate.link as f64))?;
+        self.rec.log(self.path(FORCE_ENTITY), &arrow)?;
+        self.rec.log(
+            self.path(LINK_ENTITY),
+            &Scalars::single(estimate.link as f64),
+        )?;
         self.contact_shown = true;
         self.summary.contact_estimates += 1;
 
         if !self.contact_reported {
             self.contact_reported = true;
             let text = format!("estimated {estimate}");
-            self.event(time, TextLogLevel::INFO, text)?;
+            self.event(at, TextLogLevel::INFO, text)?;
         }
         if flags.any_collision() && !self.collision_contact_reported {
             self.collision_contact_reported = true;
             let text = format!("at the collision: estimated {estimate}");
-            self.event(time, TextLogLevel::ERROR, text)?;
+            self.event(at, TextLogLevel::ERROR, text)?;
         }
         self.summary.last_contact = Some(estimate);
         Ok(())

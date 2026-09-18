@@ -113,11 +113,6 @@ physics simulation.
   native backend's differences against it. Needs the `model-library` feature and the `.so`;
   skips loudly without it.
 
-The kinematics have also been checked against the robot rather than its library: converting
-the 1 kHz logs of the 2026-09-08 hardware runs with `franka-rerun csv --robot fer`, the
-native model's end effector, from the logged `q` and the tool offset identified from the
-first row, matched the measured `O_T_EE` to under 0.01 mm on every row.
-
 ## `load_model_from_robot`: the opt-in download path
 
 The v5 download path is still there and still supported:
@@ -162,7 +157,7 @@ blob:
 ## Cost
 
 Evaluating the five model calls a model-based controller makes costs about 3 µs offline
-(2.97 µs p50 on 10 000 random FR3 states) and 11–15 µs inside a 1 kHz loop on a laptop-class
+(2.97 µs p50 on 10 000 random FR3 states) and about 11 µs inside a 1 kHz loop on a laptop-class
 CPU, about 1.5 % of the cycle. The in-loop figure is higher than the offline one in every
 implementation measured, because a duty-cycled loop starts each cycle on a core that has just
 idled and the measurement prices the CPU's post-idle frequency ramp, not the arithmetic. The

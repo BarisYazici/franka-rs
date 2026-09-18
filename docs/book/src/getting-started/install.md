@@ -13,10 +13,10 @@ or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-franka-rs = "0.3"
+franka-rs = "0.4"
 ```
 
-The library is named `franka`, so you write `use franka::Robot;`. Rust 1.85 or newer
+The library is named `franka`, so you write `use franka::Robot;`. Rust 1.89 or newer
 (edition 2021). Build with `--release`: a debug build of a stiff torque controller misses
 cycles. To follow `main` instead of a release, depend on the git repository:
 `franka-rs = { git = "https://github.com/BarisYazici/franka-rs" }`.
@@ -25,6 +25,15 @@ cycles. To follow `main` instead of a release, depend on the git repository:
 |---|---|---|
 | `model-library` | on | Compiles `Robot::load_model_from_robot`, the `dlopen` path for the model library an FER serves (pulls in `libloading`). Turn it off for a static musl build or to keep `dlopen` out of your process; `Robot::load_model()` works either way, on both robots. |
 | `serde` | off | `Serialize` / `Deserialize` on `RobotState`, `RobotMode`, `Errors`, `Duration`, `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a control log can be saved as JSON and replayed; see [Record and replay a run](../howto/flight-recorder.md). |
+
+## The Zenoh nodes
+
+```sh
+cargo binstall franka-node franka-cam     # prebuilt binaries, aarch64 and x86_64 Linux
+```
+
+Compiling them instead, and the release tarballs:
+[Serve arms over Zenoh](../howto/franka-node.md#installing).
 
 ## Python
 

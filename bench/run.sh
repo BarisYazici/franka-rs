@@ -43,7 +43,7 @@
 #   --stage c   REPS interleaved repetitions of both clients (odd reps C++ first)
 #
 # The simulator lock is still taken in hardware mode: it is what keeps a 12-core simulator
-# matrix from competing for this box's CPU while a real arm is under torque control.
+# matrix from competing for the host's CPU while a real arm is under torque control.
 #
 # The script takes the simulator lock itself (one simulator per machine), refuses to start
 # if ports 1337/1338 are in use or another franka-sim container exists, and removes only the
@@ -260,7 +260,7 @@ meta = {
     "sim_cpu_shares": ${SIM_CPU_SHARES},
     "git_rev": sh("git -C ${REPO_DIR} rev-parse HEAD"),
     "git_dirty": sh("git -C ${REPO_DIR} status --porcelain") != "",
-    "libfranka": sh("ls ${LIBFRANKA_BUILD_DIR:-$HOME/libfranka/build-rt-ignore}/libfranka.so.* 2>/dev/null | head -1"),
+    "libfranka": sh("ls ${LIBFRANKA_BUILD_DIR:-$HOME/libfranka/build}/libfranka.so.* 2>/dev/null | head -1"),
     "rustc": sh("rustc --version"),
     "gcc": sh("c++ --version | head -1"),
     "cyclictest": "${CYCLICTEST}" or None,
@@ -316,7 +316,7 @@ run_one() {
         --cell-first "${cell_first}" --out "${json}" "${extra[@]}")
 
   if [[ "${condition}" == "rt_load" ]]; then
-    # No stress-ng on this box: our own busy-loop hog, one worker per core, at the default
+    # A busy-loop hog instead of stress-ng, one worker per core, at the default
     # scheduling policy so the SCHED_FIFO client can still preempt it.
     "${HOG_BIN}" "$(nproc)" $((DURATION + 60)) &
     HOG_PID=$!

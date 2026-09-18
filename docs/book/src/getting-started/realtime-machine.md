@@ -57,8 +57,8 @@ FRANKA_REALTIME=ignore  cargo run --release --example echo_robot_state -- 127.0.
 ```
 
 Only the control thread should be `SCHED_FIFO`. Do not start the whole process with
-`chrt -f 80`: with other busy threads in the same process (a Rerun recorder, for instance)
-that starved the loop. The crate raises the control thread itself; a target control loop
+`chrt -f 80`: other busy threads in the same process (a Rerun recorder, for instance) then
+starve the loop. The crate raises the control thread itself; a target control loop
 takes `realtime_priority` when a lower priority is wanted next to other realtime threads.
 [The realtime rules](../concepts/realtime-rules.md) lists what the loop must and must not do.
 
@@ -73,9 +73,9 @@ first thing to point at a new PC or network card.
 cargo run --release --example communication_test -- 172.16.0.2
 ```
 
-A degraded Ethernet cable does not show up in `ping`: on a real FER (2026-09-09) it appeared
-as a `communication_constraints_violation` reflex with a clean `ping`, and a packet capture
-of the 1 kHz stream is what diagnosed it.
+A degraded Ethernet cable does not show up in `ping`: it can appear as a
+`communication_constraints_violation` reflex with a clean `ping`, and a packet capture of the
+1 kHz stream diagnoses it.
 
 ## Details
 

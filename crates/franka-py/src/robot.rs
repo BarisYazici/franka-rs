@@ -192,9 +192,10 @@ impl Robot {
     /// low-pass filter on the torques; `None` keeps the Rust default. `velocity_feedforward`
     /// damps the velocity error rather than the velocity (`False`: DROID parity, with
     /// `cartesian_damping=[37, 37, 37, 2, 2, 2]`), `leash=(metres, radians)` bounds how far
-    /// the desired pose may run ahead of the measured one (default 0.025 m, 0.15 rad: the
-    /// spring's force stays under the felt stiffness times the leash, roughly 25 to 30 N at
-    /// the defaults; set the collision thresholds accordingly, target control sets none),
+    /// the desired pose may run ahead of the measured one (default 0.025 m, 0.15 rad: at the
+    /// defaults the force on a held arm plateaus at roughly 40 to 50 N on a FER, a hard push
+    /// briefly over 60 N; target control sets no collision thresholds, choose
+    /// 40 N unattended and 60 N or more where people push),
     /// `project_joint_gains` confines the joint gains to the Jacobian's nullspace so the end
     /// effector feels the Cartesian gains alone. `backend='robot'` has the robot's own
     /// controller (`controller_mode`) track the pose stream instead, and takes none of those

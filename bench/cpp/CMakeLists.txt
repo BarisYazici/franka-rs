@@ -12,7 +12,7 @@ endif()
 # -DLIBFRANKA_SOURCE_DIR=/path/to/libfranka if it lives somewhere other than $HOME/libfranka.
 set(LIBFRANKA_SOURCE_DIR "$ENV{HOME}/libfranka"
     CACHE PATH "libfranka source tree (for headers and examples_common)")
-set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_SOURCE_DIR}/build-rt-ignore"
+set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_SOURCE_DIR}/build"
     CACHE PATH "libfranka build tree (for libfranka.so and libexamples_common.a)")
 
 find_path(EIGEN3_INCLUDE_DIR signature_of_eigen3_matrix_library
@@ -90,7 +90,7 @@ set_target_properties(robot_home PROPERTIES
   BUILD_RPATH "${LIBFRANKA_BUILD_DIR}"
   INSTALL_RPATH "${LIBFRANKA_BUILD_DIR}")
 
-# A portable CPU hog for the "loaded" condition: this box has no stress-ng.
+# A portable CPU hog for the "loaded" condition, so stress-ng is not needed.
 add_executable(cpu_hog cpu_hog.c)
 target_compile_options(cpu_hog PRIVATE -O2)
 target_link_libraries(cpu_hog PRIVATE m)
