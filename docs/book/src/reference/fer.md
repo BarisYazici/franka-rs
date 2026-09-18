@@ -11,6 +11,10 @@ gaps](./simulator-gaps.md).
 
 ## Torque control on FCI v5
 
+**The Panda supports external joint-torque control.** Both `control_torques` and
+`start_torque_control` send your commanded torques in `tau_J_d`. The difference below is
+how FCI v5 packages those commands with a required motion generator.
+
 libfranka 0.9.2 has no `MotionGeneratorMode::kNone`, and its `finishMotion` always requires
 a motion-generator command. So `franka::Robot::control(ControlCallback)` runs a
 **joint-velocity motion generator commanding zero velocity** next to the external

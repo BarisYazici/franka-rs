@@ -110,7 +110,7 @@ with `franka-cam` in its place (its tarball has no systemd unit).
 ## Configuration
 
 ```toml
-name = "pi"                            # the <node> of franka/node/<node>/status
+name = "cameras"                       # the <node> of franka/node/<node>/status
 # record_dir = "/var/lib/franka-cam"   # --features record: one <recording_id>-<arm>-cam.rrd per episode
 
 [zenoh]

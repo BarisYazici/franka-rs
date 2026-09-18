@@ -132,7 +132,11 @@ fixed-size histogram. It is the example to run with someone standing next to the
 ## On the FER
 
 `ActiveControl` works on FCI v5 as well; libfranka 0.9.2 has no equivalent, its API for that
-robot generation is the callback only. The public API is identical on both versions;
-underneath, `start_torque_control()` on an FER runs a joint-velocity generator commanding
-zeros alongside the external controller, because FCI v5 has no torque-only mode (see
-[FER / Panda specifics](../reference/fer.md)).
+robot generation is the callback only. **`start_torque_control()` sends your commanded joint
+torques to the Panda**, with the same public API as on the FR3.
+
+FCI v5 requires an accompanying motion-generator command: the library supplies zero joint
+velocities alongside your torque commands, following libfranka 0.9.2. Those zeros are in the
+velocity fields, not the torque fields; they do not mean the measured joints must stay still.
+The missing protocol option is `MotionGeneratorMode::None`, not torque control itself.
+See [FER / Panda specifics](../reference/fer.md) for the wire-level details.

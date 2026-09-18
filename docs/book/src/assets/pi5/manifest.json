@@ -1,0 +1,92 @@
+{
+  "revision": "2026-09-18",
+  "files": [
+    {
+      "file": "assembly.glb",
+      "bytes": 6481072,
+      "sha256": "d7a64b27ebdc88a08be863428d6a7b1098e1264872d6d446e40f162c9f1c08ce",
+      "source_modified": "2026-09-18T08:17:52.154844+00:00"
+    },
+    {
+      "file": "assembly-exploded.glb",
+      "bytes": 6481060,
+      "sha256": "377f02f85dd64056ba170060872664af32854a1f121d5e130a1d480ba01d4f1d",
+      "source_modified": "2026-09-18T08:17:52.158844+00:00"
+    },
+    {
+      "file": "assembly.png",
+      "bytes": 1912968,
+      "sha256": "8612f1b77c232e1565aa99c515171b298ebbe47f827ed758d09498076df6d965",
+      "source_modified": "2026-09-16T07:36:25.592311+00:00"
+    },
+    {
+      "file": "assembly-exploded.png",
+      "bytes": 1880286,
+      "sha256": "d59a82d15ccff017e6729019602019ae849595b71718a9187702668c0979e5e5",
+      "source_modified": "2026-09-16T07:36:25.594311+00:00"
+    },
+    {
+      "file": "enclosure-scene.glb",
+      "bytes": 4910576,
+      "sha256": "4640866ddefd90d817a8d485dcdd7bb67a194801de3e5d0441dd7c4fbd0f0a04",
+      "source_modified": "2026-09-18T08:24:20.681310+00:00"
+    },
+    {
+      "file": "enclosure.png",
+      "bytes": 1584378,
+      "sha256": "072f5801f51b90e2895ae0901d4d068ae8dbb563610e971fd84fa144df8de10a",
+      "source_modified": "2026-09-18T08:24:35.962331+00:00"
+    },
+    {
+      "file": "enclosure-exploded.png",
+      "bytes": 1635091,
+      "sha256": "15b28924f8d48149387db5bc8f4f25b9248a792d9350184453c1742c94622a1b",
+      "source_modified": "2026-09-18T08:25:06.308373+00:00"
+    },
+    {
+      "file": "base.stl",
+      "bytes": 1108784,
+      "sha256": "45218ef9e582caaf249defa9aaf433d910d7905fcd00ee9d0c095ecab0dff303",
+      "source_modified": "2026-09-18T08:21:59.895124+00:00"
+    },
+    {
+      "file": "lid.stl",
+      "bytes": 761284,
+      "sha256": "a6074cbad8c385b5a44bed1fc8e34f3fdd0a6ff0d8ed5b0c4833d7685486cfc7",
+      "source_modified": "2026-09-18T08:22:18.871148+00:00"
+    },
+    {
+      "file": "base.step",
+      "bytes": 6785043,
+      "sha256": "1fdf2c588fd7132f12b58b383fc73f1fa20d44932ad76624f0d6eb8aa6a0efaf",
+      "source_modified": "2026-09-18T08:21:59.728124+00:00"
+    },
+    {
+      "file": "lid.step",
+      "bytes": 11626334,
+      "sha256": "0c3cc140adc600bc12cc85a5d9f45bc80490d56d54f23f52611bceea779e576a",
+      "source_modified": "2026-09-18T08:22:18.594148+00:00"
+    },
+    {
+      "file": "enclosure.3mf",
+      "bytes": 414369,
+      "sha256": "dbff00945ba9dc4db3858e2250154a569efece3492a24cb10a0c118ad7543cc2",
+      "source_modified": "2026-09-18T08:22:19.459149+00:00"
+    },
+    {
+      "file": "enclosure-print.zip",
+      "bytes": 820787,
+      "sha256": "c0e2dc5c5d4aeffac823309d45e820548ecf807298e4c287c5a630bcd21691a5"
+    },
+    {
+      "file": "SOURCES.txt",
+      "bytes": 2672,
+      "sha256": "f867d0e56ef53410be0ef06a8ad4cba3abbf852cb1ce4b8a63ca8e28988d834f"
+    },
+    {
+      "file": "RASPBERRY-PI-LICENSE.txt",
+      "bytes": 1881,
+      "sha256": "4ca2d350552b24137e55587e13fb09a249b757c6af49652ff02ea524d154c7fc"
+    }
+  ]
+}

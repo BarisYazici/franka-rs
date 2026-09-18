@@ -5,9 +5,14 @@ the Zenoh node in front of `franka-rs`'s target control. Drive a node-served Fra
 laptop, a workstation or a notebook, on Linux, macOS or Windows, without a byte offset, a
 sequence number, a timestamp or a lease token in your own code.
 
+As of 18 September 2026, this package is not yet published on PyPI. From the repository
+root, in a Python virtual environment, install the same revision as the node:
+
 ```sh
-pip install franka-node-client
+python -m pip install ./crates/franka-node/python
 ```
+
+After publication, `pip install franka-node-client` will install it from PyPI.
 
 ```python
 import franka_node
