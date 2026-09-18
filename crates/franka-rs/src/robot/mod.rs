@@ -235,7 +235,8 @@ impl Robot {
     ///
     /// On FCI v10 this is [`Robot::load_model`] exactly: an FR3 serves a URDF.
     /// On FCI v5 it is libfranka 0.9.2's behaviour — `LoadModelLibrary`
-    /// downloads `libfcimodels.so` and the client `dlopen`s it.
+    /// downloads `libfcimodels.so` and the client `dlopen`s it. This requires
+    /// the opt-in `model-library` feature; it is disabled by default.
     ///
     /// # Security
     ///
@@ -253,10 +254,10 @@ impl Robot {
     /// libfranka's, and the trust boundary is the network you put the robot on:
     /// give the FCI its own isolated link, as Franka's own setup guide requires.
     ///
-    /// To opt out, use [`Robot::load_model`], which needs no download at all, or
-    /// build without the default `model-library` feature — then this method
-    /// returns [`FrankaError::Model`] on an FER instead of loading anything,
-    /// and `libloading` is not linked at all. FCI v10 is unaffected either way:
+    /// Without the opt-in `model-library` feature, this method returns
+    /// [`FrankaError::Model`] on an FER without downloading anything, and
+    /// `libloading` is not linked. [`Robot::load_model`] uses the built-in
+    /// native FER model regardless of the feature. FCI v10 is unaffected:
     /// an FR3 serves a URDF, which is parsed, not executed.
     ///
     /// `Model::from_model_library_bytes` and `Model::from_model_library_path`

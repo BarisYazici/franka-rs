@@ -1,11 +1,13 @@
-//! The FCI v5 TCP command set, model library and gripper of a Franka Emika Robot (FER), against the
+//! The FCI v5 TCP command set, model and gripper of a Franka Emika Robot (FER), against the
 //! franka-sim simulator running `--protocol v5 --robot panda`.
 //!
 //! Run under the machine-wide simulator lock:
 //!
 //! ```text
-//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_commands
+//! flock .sim.lock cargo test --release -p franka-rs --test sim_v5_commands -- --test-threads=1
 //! ```
+//!
+//! Add `--features model-library` before `--` to also check the downloaded shared object.
 //!
 //! The image comes from [`SimConfig::fer_v5`]: `$FRANKA_SIM_FER_IMAGE`, else
 //! `franka-sim:panda-v5`. `FRANKA_SIM_IMAGE` names the **FR3** image and is deliberately
@@ -166,15 +168,24 @@ fn commands_and_model_against_the_fer_simulator() {
         other => panic!("expected InvalidOperation, got {other:?}"),
     }
 
-    // `LoadModelLibrary` downloads `libfcimodels.so`, which is dlopen'd and evaluated.
-    let model = robot
-        .load_model_from_robot()
-        .expect("load_model_from_robot failed on FCI v5");
+    // The default native model must work without the shared-object loader.
+    let model = robot.load_model().expect("load_model failed on FCI v5");
     let state = common::settled_state(&robot, 20);
+    check_model(&model, &state);
 
-    let pose = model.pose(Frame::EndEffector, &state);
-    let joint7 = model.pose(Frame::Joint7, &state);
-    let flange = model.pose(Frame::Flange, &state);
+    #[cfg(feature = "model-library")]
+    {
+        let model = robot
+            .load_model_from_robot()
+            .expect("load_model_from_robot failed on FCI v5");
+        check_model(&model, &state);
+    }
+}
+
+fn check_model(model: &franka::Model, state: &franka::RobotState) {
+    let pose = model.pose(Frame::EndEffector, state);
+    let joint7 = model.pose(Frame::Joint7, state);
+    let flange = model.pose(Frame::Flange, state);
     eprintln!("fer sim: O_T_EE {:?}", state.O_T_EE);
     eprintln!("fer sim: model.pose(EndEffector) {pose:?}");
     eprintln!("fer sim: model.pose(Joint7)      {joint7:?}");
@@ -217,9 +228,9 @@ fn commands_and_model_against_the_fer_simulator() {
     );
 
     // The dynamics terms evaluate at the home pose.
-    let gravity = model.gravity(&state);
-    let coriolis = model.coriolis(&state);
-    let mass = model.mass(&state);
+    let gravity = model.gravity(state);
+    let coriolis = model.coriolis(state);
+    let mass = model.mass(state);
     eprintln!("fer sim: gravity {gravity:?}");
     eprintln!("fer sim: coriolis {coriolis:?}");
     assert!(
@@ -244,7 +255,7 @@ fn commands_and_model_against_the_fer_simulator() {
     // publishes that field as a hard-coded zero vector (`franka_sim/protocols/v5.py`,
     // `"O_ddP_O": [0.0] * 3` -- the v10 simulator does the same), where a real robot reports
     // about [0, 0, -9.81]. So the *simulator* makes this identically zero; that is a
-    // characterisation assertion, and the model symbol itself is checked below with an
+    // characterisation assertion, and the model itself is checked below with an
     // explicit gravity vector.
     assert_eq!(
         state.O_ddP_O, [0.0; 3],

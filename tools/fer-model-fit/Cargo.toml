@@ -9,5 +9,5 @@ publish = false
 description = "Identifies the Franka Emika Robot's link inertial parameters from libfcimodels and generates tests/data/fer.urdf"
 
 [dependencies]
-franka-rs = { path = "../../crates/franka-rs" }
+franka-rs = { path = "../../crates/franka-rs", features = ["model-library"] }
 nalgebra.workspace = true

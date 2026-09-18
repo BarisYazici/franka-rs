@@ -116,8 +116,8 @@ let model = robot.load_model_from_robot()?;   // LoadModelLibrary + dlopen, as l
 # let _ = model; Ok(()) }
 ```
 
-It needs the default `model-library` cargo feature (which links `libloading`), an x86-64
-Linux host, and it executes code the robot served. On an FR3 it is `load_model()` exactly.
+It needs the opt-in `model-library` Cargo feature (`cargo add franka-rs --features model-library`),
+an x86-64 Linux host, and it executes code the robot served. This feature is off by default. On an FR3 it is `load_model()` exactly.
 Its caveats are listed on the [reference page](../reference/model.md).
 
 ## From Python

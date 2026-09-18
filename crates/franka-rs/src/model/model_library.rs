@@ -11,10 +11,11 @@
 //!   (`header.size - 13` bytes: the 12-byte command header plus the status byte
 //!   are subtracted).
 //!
-//! [`load_from_robot`] performs that exchange and hands the bytes to
-//! [`SoModelBackend::from_bytes`]; the offline entry points
-//! [`crate::model::Model::from_model_library_bytes`] and
-//! [`crate::model::Model::from_model_library_path`] skip the network.
+//! With the opt-in `model-library` feature, [`load_from_robot`] performs that
+//! exchange and hands the bytes to `SoModelBackend::from_bytes`; the offline
+//! entry points `Model::from_model_library_bytes` and
+//! `Model::from_model_library_path` skip the network. Without the feature,
+//! [`load_from_robot`] returns an error without requesting any bytes.
 
 #[cfg(feature = "model-library")]
 use std::path::Path;
@@ -167,8 +168,8 @@ pub fn load_from_robot(network: &Network, version: FciVersion) -> FrankaResult<M
     // the FCI command socket, and `dlopen`ing it executes its code. That is the trust
     // boundary libfranka 0.9.2 sits on (`LibraryDownloader` + `LibraryLoader`): the FCI
     // peer is already fully trusted, because it is the thing that commands the arm, and a
-    // caller unwilling to extend that trust disables the `model-library` feature. See the
-    // `# Security` section on `Robot::load_model`.
+    // caller opts in with the `model-library` feature. See the
+    // `# Security` section on `Robot::load_model_from_robot`.
     unsafe { Model::from_model_library_bytes(library_bytes) }
 }
 
