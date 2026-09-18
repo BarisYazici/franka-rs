@@ -3,7 +3,7 @@
 [libfranka](https://github.com/frankarobotics/libfranka) is Franka Robotics' own C++
 client and the reference this crate is checked against. This page is for someone choosing
 between the two. Everything on it is either read from the two source trees or measured;
-the measurements are on [Benchmarks and hardware validation](./benchmarks.md).
+the measurements are on [Benchmarks](./benchmarks.md).
 
 ## Where the two are the same
 
@@ -13,14 +13,14 @@ the measurements are on [Benchmarks and hardware validation](./benchmarks.md).
   error strings are byte-identical, `"libfranka: "` prefix included; the control log holds
   the same 50 cycles by default. A motion refused by the robot fails the same way from
   both clients.
-- **Loop timing.** Measured back to back on the same PC against franka-sim, a real FR3 and
-  two real FERs: median cycle time 1000 µs for both, p99 within the run-to-run spread,
-  lost cycles the same. Neither client is better at holding the 1 ms deadline. franka-rs
-  used slightly less CPU (0.6 percentage points on the simulator, 2.6 on the FR3 in the
-  model-in-the-loop variant); part of the FR3 gap is a per-call allocation in libfranka's
+- **Loop timing.** Measured back to back on the same PC against franka-sim: median cycle
+  time 1000 µs for both, p99 within the run-to-run spread, lost cycles the same. Neither
+  client is better at holding the 1 ms deadline. franka-rs used slightly less CPU (0.6
+  percentage points, and 2.9 against 5.7 % in the model-in-the-loop variant); part of that
+  gap is a per-call allocation in libfranka's
   kinematics path, for which `patches/` holds a fix that closes most of it.
 - **The model.** Poses, Jacobians, mass, Coriolis and gravity agree with libfranka's
-  Pinocchio backend to 5e-14 on the FR3 and with a real FER's `libfcimodels.so` to 5e-14
+  Pinocchio backend to 5e-14 on the FR3 and with an FER's `libfcimodels.so` to 5e-14
   on gravity and 4e-16 on kinematics. Details on [Model parameters and
   conformance](./model.md).
 
@@ -60,8 +60,7 @@ the measurements are on [Benchmarks and hardware validation](./benchmarks.md).
   libfranka; there is no ROS 2 integration here.
 - **`VacuumGripper`.** Not implemented; only the Franka Hand is.
 - **History.** libfranka's history starts in January 2017 and it has driven Franka arms
-  since the Panda shipped. This crate's hardware record is the campaigns and runs listed
-  in the README, all from September 2026.
+  since the Panda shipped. This crate is young.
 
 ## Deliberate differences
 
@@ -89,5 +88,4 @@ Franka's own `pylibfranka` (libfranka 0.16 and later),
 [panda-py](https://github.com/JeanElsner/panda-py) all wrap libfranka: franky and panda-py
 run a C++ control thread with online trajectory generation, so "send a target any time from
 Python" is available there too. What they inherit from libfranka is one protocol version
-per install and an x86-64 C++ build; that, not the interface, is the difference to this
-crate. Surveyed 2026-09-10.
+per install; that, not the interface, is the difference to this crate. Surveyed 2026-09-10.

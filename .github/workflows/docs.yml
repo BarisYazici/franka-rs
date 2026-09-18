@@ -1,7 +1,7 @@
 name: Docs
 
-# Builds the mdBook site under docs/book/ together with the crate's rustdoc, and publishes
-# both to GitHub Pages: the book at the site root, the API reference at /api/franka/.
+# Builds the landing page, mdBook guide and rustdoc together for GitHub Pages.
+# Existing guide URLs stay at the site root; the API reference is at /api/franka/.
 #
 # Repository setting required: this uses actions/deploy-pages, which needs
 # Settings -> Pages -> Build and deployment -> Source set to "GitHub Actions"
@@ -52,8 +52,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # book.toml sets build-dir = ../../target/book, so the site root is target/book.
-      - name: Build the book
-        run: mdbook build docs/book
+      - name: Build the website and guide
+        run: python3 tools/build-site.py
 
       # The book's own Rust snippets, compiled for real. They are built into a scratch
       # target directory outside ./target on purpose: rustdoc's `-L` resolution fails with

@@ -66,11 +66,10 @@ an already-running server. See [Test against the simulator](./howto/simulator-te
 ## No robot in CI
 
 **CI never talks to a robot, and neither should any test.** Every automated job runs
-against the simulator or against nothing at all. Hardware runs are deliberate, manual, and
-recorded: they go through `bench/`'s `--hardware` harness, with a read-only `Idle`
-precondition probe, a return-to-ready move before each run, torque and end-effector
-deviation guards checked outside the timed region, and a written record in `docs/` with the
-raw JSON under `bench/results/`. See [Benchmarks](./reference/benchmarks.md).
+against the simulator or against nothing at all. Hardware runs are deliberate and manual: they
+go through `bench/`'s `--hardware` harness, with a read-only `Idle` precondition probe, a
+return-to-ready move before each run, and torque and end-effector deviation guards checked
+outside the timed region. See `bench/README.md`.
 
 If you are adding a test that would need an arm, add a simulator test and a
 characterisation assertion for the gap instead.
@@ -92,8 +91,7 @@ before the first motion; **How-to** is one task per page, code first; **Referenc
 the protocol tables, constants, measurements and the reasoning behind design decisions.
 Wire-format and version differences, benchmark numbers and the long explanations go to
 Reference and are linked from the other parts, not repeated there. Every claim must be
-traceable to the code, a test or a measurement; write "measured on one arm" when that is
-what it is, and no marketing adjectives. `book.toml` keeps redirects from the 0.2.0 page
+traceable to the code, a test or a measurement, with no marketing adjectives. `book.toml` keeps redirects from the 0.2.0 page
 names, so a renamed page gets a redirect entry.
 
 Every Rust snippet in the book is compiled by `mdbook test`. It needs the crate on
@@ -113,9 +111,9 @@ unset CARGO_TARGET_DIR
 them at edition 2015.
 
 The changelog page is an mdBook `include` of the repository's `CHANGELOG.md`, so it is
-single-sourced — edit the changelog, not the page. The full FR3 and FER measurement
-records are kept privately, outside this repository; the [benchmarks
-page](./reference/benchmarks.md) is the public summary and should stay in sync with them.
+single-sourced — edit the changelog, not the page. The [benchmarks
+page](./reference/benchmarks.md) summarises the measurements and should stay in sync with
+the harness's results.
 
 Snippets are marked `no_run`: they are type-checked but never executed, because every one
 of them would otherwise try to open a socket to a robot.
@@ -140,16 +138,34 @@ The site lands at <https://barisyazici.github.io/franka-rs/> and the API referen
 
 `.github/workflows/release.yml` runs on a `v*` tag: it builds the `franka-rs` wheels
 (x86_64 and aarch64 manylinux, plus the sdist) with `PyO3/maturin-action`, uploads them to
-PyPI through trusted publishing (`pypa/gh-action-pypi-publish`) and runs
-`cargo publish -p franka-rs` with a short-lived token from crates.io's trusted publishing
-(`rust-lang/crates-io-auth-action`). No secret is stored anywhere. From the Actions tab
-(`workflow_dispatch`) it builds the wheels and dry-runs the crate publish, uploading nothing.
+PyPI through trusted publishing (`pypa/gh-action-pypi-publish`), attaches the `franka-node`
+and `franka-cam` tarballs (cargo-zigbuild, aarch64 gnu and musl, x86_64 gnu) to the tag's
+GitHub release, and publishes those of `franka-rs`, `franka-description`, `franka-rerun`,
+`franka-cam` and `franka-node` whose version crates.io does not have yet, with a short-lived token from
+crates.io's trusted publishing (`rust-lang/crates-io-auth-action`). No secret is stored
+anywhere. From the Actions tab (`workflow_dispatch`) it builds the wheels and tarballs and
+dry-runs the crate publish, uploading nothing.
 
 Trusted publishing is configured on both registries for the GitHub repository
 `BarisYazici/franka-rs`, workflow `release.yml`, environment `pypi`; no API token is stored
-in the repository or its secrets. A release is: bump the versions in
-`crates/franka-rs/Cargo.toml` and `crates/franka-py/Cargo.toml` (the wheel takes its
-version from the latter), date the section in `CHANGELOG.md`, and push a `v*` tag.
+in the repository or its secrets. Trusted publishing only updates a crate that exists, so a
+release that brings a new crate (0.4.0: `franka-description`, `franka-rerun`, `franka-node`,
+`franka-cam`) is published by hand from the release commit with an API token and a current
+stable cargo (multi-package publish needs 1.90), `cargo publish -p franka-rs -p
+franka-description -p franka-rerun -p franka-cam -p franka-node` (cargo publishes them in
+that dependency order), before the tag is pushed; then each new crate gets
+the same trusted publisher on crates.io, and the tag's run skips the versions crates.io has.
+The Python client `franka-node-client` (`crates/franka-node/python`, job `node-client`) goes to
+PyPI in the same upload. Before the first tag that ships it, register a *pending* trusted
+publisher for `franka-node-client` on PyPI with the same repository, workflow `release.yml` and
+environment `pypi`, since trusted publishing cannot create the project otherwise.
+
+A release is: bump `version` in the root `Cargo.toml`'s `[workspace.package]` (all five crates
+and the wheel share it, and `crates/franka-node/python/pyproject.toml` repeats it, which a test
+checks; on a minor bump also the `version = "0.x"` of `franka`,
+`franka-description` and `franka-rerun` in `[workspace.dependencies]`), date the section in `CHANGELOG.md`, and push a
+`v*` tag matching it (the tarball job refuses another, since `cargo binstall` looks for
+`v<version>`).
 
 ## Commit conventions
 

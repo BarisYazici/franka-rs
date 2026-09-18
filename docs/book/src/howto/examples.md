@@ -60,7 +60,7 @@ must be 0.37.1 ([Install](../getting-started/install.md)).
 | example | what it does |
 |---|---|
 | `reflex_replay` | A slow joint swing with lowered collision thresholds, recorded live with `Recorder`; the control log of the reflex a push provokes is written as a Rerun recording. See [Record and replay a run](./flight-recorder.md). |
-| `commander_live` | `nonrealtime_commander` streamed live into a viewer: the raw target, the sent and measured position per axis, the arm (with `--meshes DIR`), the derivatives against the limits, the commander's events. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--controller joint\|cartesian] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). |
+| `commander_live` | `nonrealtime_commander` streamed live into a viewer: the raw target, the sent and measured position per axis, the arm with Franka's meshes, the derivatives against the limits, the commander's events. Takes `(--live ADDR \| --out FILE) [--bridged \| --raw] [--stdin] [--budget V,A,J] [--controller joint\|cartesian] [--meshes DIR] [--yes]`; start the viewer first (`rerun --port 9876`). |
 
 `echo_robot_state`, `communication_test`, the four `generate_*` examples and `grasp_object`
 are ports of libfranka's examples of the same name (`grasp_object` always homes and takes

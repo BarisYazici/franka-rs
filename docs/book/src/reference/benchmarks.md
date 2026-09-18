@@ -1,28 +1,18 @@
-# Benchmarks and hardware validation
+# Benchmarks
 
-Two measurement campaigns, both reproduced from the harness in `bench/`:
+Measured against **libfranka 0.20.4** and libfranka `main`, with the harness in `bench/`:
+loop jitter against `franka-sim` over loopback, the model inside the 1 kHz loop, and the
+model calls offline.
 
-- **FR3 benchmark, 2026-09-04** — `franka-sim` over loopback plus a real FR3 at
-  `172.16.0.2`, against **libfranka 0.20.4**.
-- **Franka Emika Robot (FER) hardware run, 2026-09-05** — two real FERs on system 4.2.1, against
-  **libfranka 0.9.2**.
+Every measurement ran on one machine: a laptop-class x86-64 CPU with 12 logical cores, Linux
+6.8, **not `PREEMPT_RT`**. That matters for how to read the tail: every multi-millisecond
+`max` in these tables is a scheduling event on a desktop kernel, and these numbers are a
+same-machine A/B, **not an FCI qualification of either client**.
 
-The full measurement records for both campaigns are kept privately and are not part of this
-repository; this page is the public summary of what they found. The hardware runs that
-followed — the impedance examples, target control, rotation targets and the Python
-bindings on an FER, target control on an FR3 — are functional checks, not timing
-campaigns; they are listed in [Hardware validation record](#hardware-validation-record) at
-the end.
-
-Both were run on the same box: a laptop-class x86-64 CPU with 12 logical cores, Linux 6.8, **not
-`PREEMPT_RT`**. That matters for how to read the tail: every multi-millisecond `max` in
-these tables is a scheduling event on a desktop kernel, and these numbers are a same-box
-A/B, **not an FCI qualification of either client**.
-
-Both campaigns use the same fairness protocol: a *cell* is one (condition, variant,
-repetition), both clients run back to back inside it, the order alternates per repetition,
-and the simulator container is restarted per cell. The **paired within-cell difference** is
-the primary evidence everywhere below; pooled tables are context.
+The fairness protocol: a *cell* is one (condition, variant, repetition), both clients run
+back to back inside it, the order alternates per repetition, and the simulator container is
+restarted per cell. The **paired within-cell difference** is the primary evidence everywhere
+below; pooled tables are context.
 
 ## Simulator: loop jitter
 
@@ -89,135 +79,14 @@ on both.
 anywhere between the two backends is **4.97e-14** (`zeroJacobian` 9.99e-16, `pose`
 1.06e-15, `mass` 3.55e-15). That is double-precision round-off.
 
-## FR3 hardware
+### Reading in-loop model timings
 
-A real FR3 at `172.16.0.2`, model variant, `chrt -f 80` + `mlockall`. Three interleaved
-repetitions of both clients (stage c) plus one C++ shakedown run (stage b), a read-only
-`Idle`-with-no-errors probe before every run, a return-to-ready move before and a 20 s cool
-pause after, and torque/deviation guards checked outside the timed region.
-
-**No guard tripped, no run ended in a `ControlException`, and 0 reflex events across all 8
-runs.** The arm reported `Idle` with no error flags immediately before and after every one.
-
-| statistic (stage c, paired, 3 reps) | C++ minus Rust |
-|---|---|
-| model p50 | **+10.67 µs** mean (+9.20 median), C++ higher in 3/3 |
-| CPU | **+2.61 pp** mean (+2.01 median), C++ higher in 3/3 |
-| interval p99 | 1079–1106 µs for every run, both clients — no difference |
-
-Representative per-run figures: Rust model p50 12.1–13.8 µs at 2.7–3.6 % CPU against C++'s
-21.3–27.6 µs at 4.7–7.4 %; interval p99 1079–1106 µs; success rate average 0.9996–1.0000.
-The C++ side is unpatched libfranka 0.20.4 — the Data-reuse patch was never built for
-hardware, so every C++ row still pays the allocation, and would be expected to close the
-same way it did on the simulator.
-
-## FER hardware
-
-Two FERs — **L** on an onboard NIC, **R** on a USB
-Ethernet adapter — on robot system 4.2.1, against libfranka 0.9.2. Thirteen 30 s runs of
-1 kHz model-in-the-loop torque control, `chrt -f 80` + `mlockall`.
-
-**No reflex, no guard trip, no `ControlException`, no
-`communication_constraints_violation`, and `max_consecutive` lost cycles was 1 in every
-run.** Both arms were `Idle` and error-free afterwards.
-
-| arm | client | interval p50 | p99 | lost / 30 000 | success avg |
-|---|---|---|---|---|---|
-| L (onboard NIC) | **franka-rs** | 999.4 µs | **1171.7 µs** | **27.5** | 0.9862 |
-| L (onboard NIC) | libfranka 0.9.2 | 999.5 µs | 1186.8 µs | 29.5 | 0.9872 |
-| R (USB Ethernet) | **franka-rs** | 999.1 µs | 1181.1 µs | 91.7 | 0.9873 |
-| R (USB Ethernet) | libfranka 0.9.2 | 999.1 µs | 1183.9 µs | 87.0 | 0.9882 |
-
-Every gap there is smaller than the run-to-run spread of either client. **Verdict: for
-running an FER, neither client is meaningfully better at the job.**
-
-Model agreement on the robot, both clients evaluating the same `libfcimodels.so` at
-bit-identical inputs: `gravity` 2.31e−14, `coriolis` 7.68e−22, `mass` 1.09e−14, `pose`
-5.27e−15, `zeroJacobian` 5.27e−15 max absolute difference. Double round-off — the v5 model
-path is numerically identical to libfranka 0.9.2 on real hardware.
-
-### A measurement trap worth knowing about
-
-The campaign's `model_us` **p50** column read 15.45 µs (Rust) against 5.68 µs (C++) on arm
-L, and that is **not** a valid comparison. Offline, on the same shared object and the same
-inputs, the two wrappers are within **1.2 %** of each other (4.011 vs 3.964 µs for all five
-calls). What the in-loop measurement priced is the CPU's post-idle frequency ramp: the same
-C++ code, timed after increasing amounts of untimed filler work, swings from 21.37 µs to
-3.98 µs — a 5.4× spread on identical inputs. The tell is that `model_us` **min** is 4.0 µs
-in all thirteen runs for both clients.
-
-The client that does more work between the datagram arriving and the callback starting
-reaches the model calls on a warmer core. franka-rs's receive path retires ~1200–1500
-instructions where libfranka 0.9.2 retires ~3500–4000, copies 13.4 KB where libfranka
-copies ~19 KB, and allocates nothing where libfranka does two `malloc`/`free` pairs. **The
-crate's model region measured slower because the crate's receive path is leaner.** No crate
-change was made; there is no defect. The deadline, lost-cycle, success-rate and guard
-results are unaffected — those are not sub-10-microsecond measurements.
-
-### Where the FER's lost cycles come from
-
-Wire captures settle this, and the answer is not the client. From `tcpdump` on the link,
-including one run stamped with the NIC's **hardware receive timestamps** (before the
-kernel's interrupt path):
-
-- **Nothing is lost on the network.** Every `message_id` the robot emitted appears in every
-  capture — **0 missing ids in 141 000 states across six runs** — and IP reassembly, socket
-  and NIC counters are all zero.
-- **The gaps are already on the wire.** ~70 inter-arrival gaps ≥ 1.5 ms per 10 s run
-  (about **7 per second**), max 4.77–6.91 ms, present in the PHY timestamps. Median
-  inter-arrival is 999.3–999.4 µs, so this is a rare event, not a shifted distribution.
-- **The robot's control loop keeps running.** Across each gap the millisecond counter
-  advances by exactly one, and 63–87 % of gaps are followed by a burst draining the
-  backlog: the control box's *transmit path* stalls for 2–7 ms a few times per second.
-- **The host is excluded.** Two `SCHED_FIFO` stall probes on the NIC IRQ core and another
-  core saw 1 late wakeup in 93 s (and 0 in 13 s during which the wire showed 97 gaps).
-  Disabling the NIC's Energy-Efficient Ethernet changed nothing.
-- **Both clients are excluded.** Both drain the socket keeping the newest `message_id`, so
-  when two states arrive together the older is discarded *by design*. A "lost cycle" here
-  is a discarded queued state, not packet loss — which is why `max_consecutive` is never
-  above 1 and the robot's own packet-loss watchdog is never approached.
-
-The remaining lever is the control box, not this repository.
-
-Arm R loses ~3× more than L on **both** clients, which tracks its interface, not its
-client: the USB Ethernet adapter has an RX ring of 100 (vs 256) and `rx-usecs` of **15000**
-(vs 3 on the onboard NIC). 15 ms of interrupt coalescing is pathological for a 1 kHz loop.
-
-The v5 state datagram is 2373 bytes, over the 1500-byte MTU, so every state arrives as
-exactly 2.0000 IP fragments — 2000 packets/s instead of 1000 — with **zero** `ReasmFails`,
-`ReasmTimeout`, `Udp.InErrors` or NIC drops. That doubles the packet rate the host must
-service, which is the most plausible reason the FER loses cycles where the FR3 lost none,
-but it is a load effect, not a reassembly failure.
-
-### Two arms at once
-
-Both FERs driven simultaneously, per arm, 10 000 cycles each:
-
-| configuration | L lost | R lost | success avg |
-|---|---|---|---|
-| two independent processes (`taskset -c 3` / `-c 5`) | 39 | 29 | 0.99 / 0.99 |
-| one process, one `Robot` per thread, 3 runs | 24–32 | 43–55 | 0.98–0.99 |
-
-**No cross-interference.** Running both at once does not raise either arm's loss rate,
-success rate or interval spread beyond what it shows alone, and both figures match the
-single-arm campaign. The single-process example (`dual_communication_test`) gives each
-thread its own `Robot`, its own TCP and UDP sockets, and a `Barrier` that releases both
-timed loops together; from that point the two robots share no state at all, and if one
-errors the other runs its cycles to completion.
-
-### `ActiveControl` on the FER
-
-First real-hardware exercise of the `read_once`/`write_once` API on an FER. Robot L, 10 s
-per run:
-
-| variant | cycles | lost | interval p50 | p99 | success avg | CPU % |
-|---|---|---|---|---|---|---|
-| `active` (`read_once`/`write_once`) | 9957 | 36 | 999.2 µs | 1236.6 | 0.981 | 2.55 |
-| `control` (callback) | 9979 | 20 | 999.1 µs | 1271.6 | 0.985 | 2.65 |
-
-No errors, no reflex, `Idle` after both. **Equivalent within noise** — the lost-cycle gap
-is well inside the run-to-run spread seen throughout the campaign. libfranka 0.9.2 has no
-`ActiveControl` at all, so on an FER this is a control style the C++ client cannot offer.
+An in-loop `model_us` figure prices the CPU's post-idle frequency ramp as much as the
+arithmetic: a duty-cycled loop starts each cycle on a core that has just idled. The five FER
+model-library calls in C++ (`bench/so-micro`), timed after increasing amounts of untimed
+filler work, swing from 21.37 µs to 3.98 µs on identical inputs. So a client whose receive
+path does less work can read slower in the loop; compare the arithmetic with the offline
+table.
 
 ## Reproducing
 
@@ -229,51 +98,5 @@ bench/run.sh --duration 30 --reps 3      # takes the simulator lock, one contain
 ```
 
 `bench/README.md` documents the harness, the `--hardware` mode and its guards, and
-`bench/fer-capture/README.md` the wire-capture tooling. Raw per-run JSON lives under
-`bench/results/`.
-
-## Hardware validation record
-
-The functional runs on real arms after the two campaigns, in order. Each completed or
-failed exactly as described; none is a timing measurement.
-
-- **Dual-arm and `ActiveControl`.** Both FERs driven at once, as two processes and as one
-  process with a `Robot` per thread, with no cross-interference; and `read_once`/`write_once`
-  exercised on a real FER, matching the callback API within noise -- a control style
-  libfranka 0.9.2 does not offer for that robot generation.
-- **Cartesian impedance examples on hardware.** `cartesian_impedance_active_control` and
-  `cartesian_impedance_figure_eight` ran on a real FER through `ActiveControl` (2026-09-07),
-  holding and tracking the pose while being pushed, with no reflex.
-- **Cartesian pose bridging and the flight recorder on hardware (2026-09-08).**
-  `nonrealtime_commander` ran its full 19 s bridged sequence on a real FER with no reflex
-  (peak commanded speed 0.25 m/s, measured pose within a few millimetres of the command),
-  and its raw mode was refused at the first step and cleared with
-  `automatic_error_recovery()`; the runs also showed that the robot checks the joint-space
-  continuity of a Cartesian pose stream, which the client-side rate limiter does not bound
-  (see [FER / Panda specifics](./fer.md)). `reflex_replay`'s live `Recorder` pushed 23 941
-  records at 1 kHz with none dropped, and on every logged cycle the native FER model's end
-  effector matched the measured `O_T_EE` to under 0.01 mm.
-- **Rotation targets on target control (2026-09-09).** `nonrealtime_commander --rotate`
-  ran its ±15° yaw sweep on a real FER through `start_cartesian_target_control`, a clean
-  run to the end.
-- **Python bindings on hardware (2026-09-09).** `crates/franka-py/examples/policy_loop.py`
-  drove a real FER from an irregular 6-10 Hz policy loop -- `move_to`, `move_by` and
-  `follow` chunks -- and `stop()` settled within about 0.3 s of the call. A degraded
-  Ethernet cable shows up as `communication_constraints_violation` with a clean `ping`; a
-  packet capture of the 1 kHz stream is what diagnoses it.
-- **Target control on an FR3 (FCI v10, 2026-09-09).** The bridged and rotation sequences of
-  `nonrealtime_commander` ran clean, `stop()` settled and the rate-limiter backstop never
-  bound. The robot's joint-side acceleration check was bracketed on the same arm: a run
-  whose IK peaked at 9.3 rad/s² passed, two runs were refused with
-  `cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
-  10 rad/s² (joint jerk stayed under 1400 rad/s³), so the published 10 rad/s² limit is
-  applied as is.
-- **Torque backend of target control on both FERs (2026-09-10).** First hardware run of the
-  impedance backend (`PREEMPT_RT` host, `FRANKA_REALTIME=enforce`, thresholds 40 N): the
-  commander's stepped and rotating sequences, joint targets and stops ran with no reflex,
-  the first torque of every session under 0.04 Nm, IK residual under 1e-6, tracking error at
-  the holds 4.6 mm (L) and 2.8 mm (R) at 750 N/m against 3.7 mm for the robot's own
-  controller on the same sequence. Push tests measured 725 to 1090 N/m felt stiffness, the
-  leash holding the error at 25.0 mm, and 45 to 50 N under a fast push, which trips 40 N
-  thresholds and not 60 N. The numbers are on
-  [The impedance backend](./impedance.md). The FR3 was not reachable that day.
+`bench/fer-capture/README.md` the wire-capture tooling. Raw per-run JSON of the simulator
+runs lives under `bench/results/`.

@@ -83,14 +83,14 @@ stops after the first state, as 0.9.2 does.
 | `Move` request | 56 bytes | 113 bytes: adds `use_async_motion_generator` and seven `maximum_velocity` values, always transmitted |
 | `Move` generator modes | four, **no `None`** | the same four plus `None` (4) |
 | `Move::Status` | 10 values | 12: `PreemptedDueToActivatedSafetyFunctions` (3) and `CommandRejectedDueToActivatedSafetyFunctions` (4) inserted after `Preempted` (2), so `ReflexAborted` is 6 on v5 and 8 on v10 |
-| torque-only control | joint-velocity generator commanding zeros | `MotionGeneratorMode::None` |
+| torque control (no user motion generator) | user torques + joint-velocity generator commanding zeros | user torques + `MotionGeneratorMode::None` |
 | `SetFilters` | yes (`Robot::set_filters`) | removed from the protocol |
 | `GetCartesianLimit` | yes (`Robot::virtual_wall`) | removed from the protocol |
 | `GetRobotModel` (URDF) | **no such command** | yes (`Robot::robot_model`) |
 | `LoadModelLibrary` | yes (`Robot::load_model_from_robot`) | **no such command** |
-| joint velocity limits | flat: 2.175 rad/s (J1–4), 2.610 rad/s (J5–7) | position-dependent envelope from the URDF |
+| joint velocity limits | none served; libfranka 0.9.2 limits flat: 2.175 rad/s (J1–4), 2.610 rad/s (J5–7) | position-dependent envelope from the URDF |
 | `kTolNumberPacketsLost` | 3.0 | 0.0 |
-| joint position limits (`JOINT_POSITION_LIMITS`, from the robots' URDFs; the FR3 row is the robot URDF's hard limits, a few mrad wider than franka_description's datasheet values) | J1 ±2.8973, J2 ±1.7628, J3 ±2.8973, J4 [−3.0718, −0.0698], J5 ±2.8973, J6 [−0.0175, 3.7525], J7 ±2.8973 | J1 ±2.7501, J2 ±1.7918, J3 ±2.9065, J4 [−3.0481, −0.1458], J5 ±2.8101, J6 [0.5409, 4.5205], J7 ±3.0196 |
+| joint position limits (`JOINT_POSITION_LIMITS`, the `<limit>` of the URDFs the crate compiles in; the FR3's is libfranka's `test/fr3.urdf`, a few mrad wider than franka_description's datasheet values) | J1 ±2.8973, J2 ±1.7628, J3 ±2.8973, J4 [−3.0718, −0.0698], J5 ±2.8973, J6 [−0.0175, 3.7525], J7 ±2.8973 | J1 ±2.7501, J2 ±1.7918, J3 ±2.9065, J4 [−3.0481, −0.1458], J5 ±2.8101, J6 [0.5409, 4.5205], J7 ±3.0196 |
 | gripper protocol | **identical** (version 3, port 1338) | identical |
 
 The status enums other than `Move::Status` are shorter on v5 in the same way (no
@@ -116,10 +116,7 @@ crate root.
 
 The v5 state datagram, 2373 bytes, exceeds the 1500-byte Ethernet MTU, so every FER state
 arrives as exactly two IP fragments: 2000 packets per second for the host to service instead
-of 1000. The FER hardware campaign saw no reassembly failures or drops
-(`ReasmFails`, `ReasmTimeout`, `Udp.InErrors` and NIC drops all zero); the doubled packet
-rate is the most plausible reason the FER lost occasional cycles where the FR3 lost none,
-as a load effect. See [Benchmarks](./benchmarks.md).
+of 1000.
 
 ## How the layout is pinned
 

@@ -1,0 +1,25 @@
+name = "cameras"                       # the <node> of franka/node/<node>/status
+# record_dir = "/var/lib/franka-cam"   # --features record: one <recording_id>-<arm>-cam.rrd per episode
+
+[zenoh]
+mode = "peer"                          # or "client": dial the routers in connect, listen on nothing
+listen = ["tcp/0.0.0.0:7448#iface=eth0"]   # 7448: the arm node has 7447
+connect = []
+scouting_interface = "eth0"            # optional; "auto" when absent
+lease_ms = 1000                        # transport.link.tx.lease, keepalive is lease/4
+# zenoh_config = "/etc/franka/zenoh.json5"  # a Zenoh file to start from: TLS material, auth, ACLs
+
+[[camera]]
+name = "wrist"
+# by-path keys on the socket, which is what distinguishes two cameras of the same model: they
+# report the same serial, so /dev/v4l/by-id names only one of them.
+device = "/dev/v4l/by-path/<your-camera>-video-index0"
+width = 640
+height = 480
+fps = 30
+preview_fps = 5                        # every 6th frame on franka/cam/wrist/preview
+format = "mjpeg"                       # or yuyv, h264, nv12
+buffers = 4
+cpu = [0, 1]                           # never an isolated core: those are a realtime loop's
+controls = { exposure_auto = 1 }       # UVC controls by name, set once at start
+# record_with = "L"                    # the arm whose episode opens and closes the recording

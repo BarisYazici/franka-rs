@@ -2,26 +2,52 @@
 
 Converts the visual meshes of Franka's arms from
 [franka_description](https://github.com/frankarobotics/franka_description) into the `.glb`
-files that `franka-rerun csv|log --meshes DIR` draws the arm with.
+files that `franka-rerun` draws the arm with: decimated into `crates/franka-description`
+(built into `franka-rerun` by default), or at full resolution for `franka-rerun csv|log
+--meshes DIR`.
 
 The meshes are Franka Robotics GmbH's work, published in franka_description under the
 Apache License 2.0 (`LICENSE` and `NOTICE` in that repository: "Copyright 2023 Franka Robotics
-GmbH"). They are not part of this repository -- a converted set is a few megabytes per robot
--- so convert them yourself:
+GmbH"); `crates/franka-description/NOTICE` carries that notice and what was changed.
 
 ```sh
-git clone --depth 1 https://github.com/frankarobotics/franka_description /tmp/franka_description
-python3 -m venv /tmp/meshvenv && /tmp/meshvenv/bin/pip install trimesh pycollada numpy
+git clone https://github.com/frankarobotics/franka_description /tmp/franka_description
+git -C /tmp/franka_description checkout 7aeeddc
+python3 -m venv /tmp/meshvenv
+/tmp/meshvenv/bin/pip install trimesh pycollada numpy meshoptimizer rtree
+```
+
+## The built-in set
+
+```sh
+/tmp/meshvenv/bin/python tools/franka-meshes/convert.py /tmp/franka_description \
+    crates/franka-description/meshes --decimate 0.15
+```
+
+`--decimate RATIO` welds each part's vertices and runs meshoptimizer's quadric edge collapse
+(`meshoptimizer.simplify`, no error bound) down to RATIO of its triangles, twice that for the
+hand, whose sharp edges suffer first; the finger (624 triangles) and parts under 200 triangles
+(small coloured details) stay whole, no normals are written, indices are `uint32`. Rerun 0.37
+rejects Draco, meshopt compression and `KHR_mesh_quantization`, so fewer triangles are the
+only way to a smaller file. Do not swap in `fast-simplification`: it tears holes of several
+centimetres into these open CAD shells. For every file the tool prints the surface
+deviation, the distance of 20 000 points sampled on either surface to the other (p99 and
+max), and it writes `SOURCES.md` next to the meshes with the commit, the command and that
+table. The output is byte for byte reproducible for a given checkout and package versions.
+
+## Full resolution
+
+```sh
 /tmp/meshvenv/bin/python tools/franka-meshes/convert.py /tmp/franka_description /tmp/franka-meshes
+cargo run --release -p franka-rerun -- log reflex.json --robot fer --meshes /tmp/franka-meshes/fer
 ```
 
 That writes `/tmp/franka-meshes/<robot>/link0.glb .. link7.glb, hand.glb, finger.glb` for
 `fer` (the Panda; its own `meshes/robots/fer/visual`, hand included) and `fr3`
-(`meshes/robots/fr3/visual` plus `meshes/robot_ee/franka_hand_white/visual`). Then:
+(`meshes/robots/fr3/visual` plus `meshes/robot_ee/franka_hand_white/visual`), a few
+megabytes per robot.
 
-```sh
-cargo run --release -p franka-rerun -- log reflex.json --robot fer --meshes /tmp/franka-meshes/fer
-```
+## What the conversion does
 
 `convert.py` loads each Collada file with `trimesh` (`pycollada` underneath), bakes the file's
 node transforms into the vertices so that every glTF node is the identity and the accessor

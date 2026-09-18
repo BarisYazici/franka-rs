@@ -4,14 +4,12 @@ name: CI
 # the published `ghcr.io/barisyazici/franka-sim` image via the `BarisYazici/libfranka-sim@v1`
 # action (its `image`/`tag` inputs default to `ghcr.io/barisyazici/franka-sim:latest`).
 #
-# There is no published image for the FER / FCI v5 simulator (its build recipe is kept
-# privately, outside this repository), so `sim-fer-v5` cannot use that action's default and
-# is gated on the `FRANKA_SIM_FER_IMAGE` repository variable (Settings -> Secrets and
-# variables -> Actions -> Variables): unset, the job is skipped; set to a `docker pull`-able
-# reference, the job builds and runs the FCI v5 simulator suite against it, mirroring the
-# local commands documented alongside that private build recipe. Until that variable is set,
-# the FCI v5 protocol suite only runs offline in the `check` job (wire layout and model
-# conformance, no simulator) and is otherwise exercised locally.
+# There is no published image for the FER / FCI v5 simulator, so `sim-fer-v5` cannot use that
+# action's default and is gated on the `FRANKA_SIM_FER_IMAGE` repository variable (Settings ->
+# Secrets and variables -> Actions -> Variables): unset, the job is skipped; set to a
+# `docker pull`-able reference, the job builds and runs the FCI v5 simulator suite against it.
+# Without that variable the FCI v5 protocol suite runs offline in the `check` job only (wire
+# layout and model conformance, no simulator).
 
 on:
   push:
@@ -78,6 +76,14 @@ jobs:
       - name: cargo clippy (franka-rs, --features serde)
         run: cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
 
+      # The node's episode recording pulls franka-rerun; off by default. The camera crate's
+      # integration test is gated on its `fake` source, so --all-targets alone never builds it.
+      - name: cargo clippy (franka-node, --features record)
+        run: cargo clippy -p franka-node --all-targets --features record -- -D warnings
+
+      - name: cargo clippy (franka-cam, --all-features)
+        run: cargo clippy -p franka-cam --all-targets --all-features -- -D warnings
+
       - name: unit tests
         run: cargo test --workspace --lib
 
@@ -101,6 +107,19 @@ jobs:
           cargo test -p franka-rerun
           cargo build -p franka-rerun --examples
 
+      # The node's recording against its fake robot (a real recorder into a temp dir).
+      - name: unit tests (franka-node, --features record)
+        run: cargo test -p franka-node --lib --features record
+
+      # The camera crate's config accepts record_dir only with the feature; the node test needs
+      # the fake source and no camera, on the loopback.
+      - name: unit tests (franka-cam, --features record)
+        run: cargo test -p franka-cam --lib --features record
+
+      # `fake` builds the test's camera, `record` its recording half.
+      - name: camera node in process (franka-cam, --features fake,record)
+        run: cargo test -p franka-cam --features fake,record --test cam_node
+
       - name: cargo doc
         env:
           RUSTDOCFLAGS: -D warnings
@@ -122,10 +141,14 @@ jobs:
       - name: Install aarch64 cross-gcc
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      # franka-cam is built here too: it hand-rolls the V4L2 ioctl numbers from the struct
+      # sizes and refuses to compile off LP64, and the Raspberry Pi it runs on is this target.
       - name: cargo build --target aarch64-unknown-linux-gnu
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --target aarch64-unknown-linux-gnu -p franka-rs --examples
+        run: |
+          cargo build --release --target aarch64-unknown-linux-gnu -p franka-rs --examples
+          cargo build --release --target aarch64-unknown-linux-gnu -p franka-cam --bin franka-cam
 
   # A franka-sim server with the default configuration (no motion-limit or communication-
   # constraint enforcement, gripper enabled, no object between the fingers). `FRANKA_SIM_ADDR`
@@ -170,7 +193,7 @@ jobs:
   #
   # Every test in those files homes the arm with `common::move_to_start` before it moves, so
   # each binary runs as one invocation against this job's single long-lived server, in any
-  # order (libtest runs a file's tests in alphabetical order; the tests no longer depend on it).
+  # order (libtest runs a file's tests in alphabetical order; the tests do not depend on it).
   sim-motion-limits:
     runs-on: ubuntu-latest
     steps:
@@ -187,6 +210,30 @@ jobs:
         run: |
           cargo test --release -p franka-rs --test sim_stop_and_reflex --test sim_target_control \
             -- --test-threads=1
+
+      # The Zenoh node (crates/franka-node) in process against the same server: its target
+      # control needs franka-sim >= 1.1.6 like sim_target_control above. With `record` every
+      # session is also written as an `.rrd` and checked.
+      - name: Simulator test (franka-node, --features record)
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+        run: |
+          cargo test --release -p franka-node --features record --test sim_node \
+            -- --test-threads=1
+
+      # The Python client (crates/franka-node/python) against the node binary and the same
+      # server: its offline tests, then tests/test_sim_node.py (target/release/franka-node).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python client (franka-node-client)
+        env:
+          FRANKA_SIM_ADDR: 127.0.0.1
+        run: |
+          cargo build --release -p franka-node --features record --bin franka-node
+          pip install ./crates/franka-node/python pytest
+          pytest crates/franka-node/python/tests -v
 
   # The Python bindings (crates/franka-py) against the same --enforce-motion-limits server:
   # maturin builds the wheel, pip installs it, and pytest drives the target loops from Python
@@ -238,7 +285,7 @@ jobs:
   # The FER / FCI v5 simulator suite. Unlike the FR3 jobs above, this does not use the
   # BarisYazici/libfranka-sim action (there is no published image for it to pull, and the
   # FER image also lacks the `franka-sim-check` binary that action's readiness probe needs;
-  # see docs/book/src/fer.md). Instead the franka-sim-test harness starts and stops the container
+  # see docs/book/src/reference/fer.md). Instead the franka-sim-test harness starts and stops the container
   # itself -- the same path used locally -- driven entirely by FRANKA_SIM_FER_IMAGE.
   #
   # Skipped entirely when the FRANKA_SIM_FER_IMAGE repository variable is unset, so this

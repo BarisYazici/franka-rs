@@ -28,7 +28,7 @@ and the motion runs until the client sets `motion_finished` on a command or some
 ends it: a reflex, a `StopMove`, the user stop, or missed deadlines.
 
 A motion never finishes on a moving command. The command that carries `motion_finished`
-has to be one the robot can hold; a real FER refused a finish on a moving Cartesian pose
+has to be one the robot can hold; the robot refuses a finish on a moving Cartesian pose
 with `cartesian_motion_generator_velocity_discontinuity`. All three control interfaces of
 this crate end a motion the same way, and target control's `stop()` brings the command to
 rest before it finishes.

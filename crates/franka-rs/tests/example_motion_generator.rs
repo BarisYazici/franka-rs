@@ -1,11 +1,11 @@
 //! The examples' shared `MotionGenerator` seeds its start pose from a different `RobotState`
-//! field depending on the FCI version, and getting that wrong trips a reflex on a real FER
-//! hardware. This pins the behaviour down.
+//! field depending on the FCI version, and getting that wrong trips a reflex on a real FER.
+//! This pins the behaviour down.
 //!
 //! **A simulator test cannot catch this.** franka-sim reports `q_d == q` (the simulated arm
 //! tracks its command exactly, with no impedance deflection), so both seeds produce the same
-//! number there. The bug this guards against only appears on a real arm, where `q` lags `q_d`
-//! by the gravity/impedance deflection -- on the FER that regression tripped
+//! number there. The difference only appears on a real arm, where `q` lags `q_d` by the
+//! gravity/impedance deflection -- on the FER a `q` seed trips
 //! `joint_motion_generator_velocity_discontinuity`, because FCI v5 rate-limits the first
 //! command against the robot's own `q_d` and a `q` seed therefore implies a non-zero commanded
 //! joint velocity out of the gate.
@@ -24,7 +24,7 @@ fn deflected_state(q_d: [f64; 7]) -> RobotState {
         q: q_d,
         ..RobotState::default()
     };
-    // The deflection this rig actually shows, largest at joint 4 (it carries ~22.7 Nm).
+    // A typical deflection under gravity, largest at joint 4 (it carries ~22.7 Nm).
     state.q[3] += 2.3e-3;
     state.q[1] -= 4.0e-4;
     state
@@ -60,7 +60,7 @@ fn v5_seeds_from_q_d_and_v10_from_q() {
 
 #[test]
 fn v5_at_the_goal_commands_q_d_not_q() {
-    // The exact case that reflexed on hardware: the arm has just been homed, so it sits at the
+    // The case that reflexes on hardware: the arm has just been homed, so it sits at the
     // goal, `delta_q` is ~0 and the generator finishes on its first callback. That single
     // command must be `q_d`, which implies no commanded velocity; commanding the measured `q`
     // instead ends the Move while a velocity is still commanded.

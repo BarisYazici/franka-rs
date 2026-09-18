@@ -14,13 +14,15 @@
 /bench/model-micro/results/*/reference.bin
 /bench/results/run-full.log
 # Wire captures of the FCI traffic: 30-220 MB each, regenerable with
-# bench/fer-capture/capture.sh. The .txt analyses and logs beside them are kept.
+# bench/fer-capture/capture.sh.
 *.pcap
 *.pcapng
-# Build/run logs, except the capture logs kept beside the analyses above.
+# Build/run logs.
 **/*.log
-!/bench/results/20260905-fer-capture/*.log
 # The advisory lock bench/run.sh and the simulator tests take at the repository root.
 .sim.lock
 __pycache__/
 /.private/
+
+# Local marketing videos are copied into the ignored site build, not versioned.
+/docs/site/media/*.mp4

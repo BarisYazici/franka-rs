@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
-use super::{Settle, Shared, DEVIATION_MESSAGE, STOP_TIMEOUT_CYCLES};
+use super::{LiveTuning, Settle, Shared, TargetSlot, DEVIATION_MESSAGE, STOP_TIMEOUT_CYCLES};
 use crate::error::{ControlException, FrankaError, FrankaResult};
 use crate::otg::{MultiOtg, OtgLimits};
 use crate::rate_limiting::DELTA_T;
@@ -15,9 +15,9 @@ use crate::robot_state::RobotState;
 /// A generator within [`Settle::tolerance`] of its target moving slower than this, per axis,
 /// counts as landed (m/s, rad/s). The hold then freezes a velocity step of at most this in
 /// one cycle, a jerk of 100 per second cubed, which the joint side of a Cartesian command
-/// amplifies threefold (1 mm/s froze as 3840 rad/s^3 on joint 2 in the simulator, over its
-/// 3750). Not smaller: re-anchoring on a float32 echo (FCI v10) keeps a landed generator in
-/// micro-profiles of a few 1e-8 that peak at about 2e-5 per second.
+/// amplifies threefold (1 mm/s freezes as about 3840 rad/s^3 on joint 2 in the simulator,
+/// over its 3750). Not smaller: re-anchoring on a float32 echo (FCI v10) keeps a landed
+/// generator in micro-profiles of a few 1e-8 that peak at about 2e-5 per second.
 pub const REST_VELOCITY: f64 = 1e-4;
 /// ... and accelerating less than this (m/s^2, rad/s^2); the micro-profiles above peak at
 /// about 0.01.
@@ -63,6 +63,37 @@ pub(super) struct Runner<const N: usize, const S: usize> {
     hold: Option<Hold<N>>,
 }
 
+/// `acceleration` per axis where it brakes a generator restarted at `velocity` (against it, or
+/// `velocity` zero), zero where it would drive it faster: a goal held at the cap sent no
+/// acceleration toward more speed, so a stop never plans from one, and a braking one is kept, so
+/// a generator that meets the cap cycle after cycle still slows at its jerk, not by one cycle's
+/// jerk each time.
+pub(super) fn braking<const N: usize>(velocity: &[f64; N], acceleration: &[f64; N]) -> [f64; N] {
+    std::array::from_fn(|i| {
+        if acceleration[i] * velocity[i] > 0.0 {
+            0.0
+        } else {
+            acceleration[i]
+        }
+    })
+}
+
+/// `acceleration` per axis only where it brakes a generator restarted at `velocity`, strictly: at
+/// a position limit a generator restarted at rest keeps no acceleration that would wind it up
+/// against the limit cycle after cycle.
+pub(super) fn strictly_braking<const N: usize>(
+    velocity: &[f64; N],
+    acceleration: &[f64; N],
+) -> [f64; N] {
+    std::array::from_fn(|i| {
+        if acceleration[i] * velocity[i] < 0.0 {
+            acceleration[i]
+        } else {
+            0.0
+        }
+    })
+}
+
 /// The chart of an interface whose slot and generator share their coordinates.
 pub(super) fn identity<const N: usize>(
     target: &[f64; N],
@@ -95,13 +126,16 @@ impl<const N: usize, const S: usize> Runner<N, S> {
         })
     }
 
-    /// One cycle: `commanded` is the robot's echo of the last command and `strayed` whether
-    /// the deviation guard's threshold is crossed (`false` until anchored).
+    /// One cycle: `commanded` is the robot's echo of the last command, `strayed` whether
+    /// the deviation guard's threshold is crossed (`false` until anchored), and `blocked`
+    /// whether the goal is held at a joint limit as near the target as it gets: a stop counts
+    /// that as landed while the target is the same, since the rest is out of reach.
     pub(super) fn cycle(
         &mut self,
         state: &RobotState,
         commanded: [f64; S],
         strayed: bool,
+        blocked: bool,
     ) -> Step<N, S> {
         if let Ok(mut latest) = self.shared.state.try_lock() {
             *latest = *state;
@@ -121,6 +155,7 @@ impl<const N: usize, const S: usize> Runner<N, S> {
         }
         // Read before the slot: a target published before `stop()` is then never missed.
         let stopping = self.deviated || self.shared.stop.load(Ordering::SeqCst);
+        let previous = self.target;
         if !self.anchored {
             self.anchored = true;
             self.target = commanded;
@@ -148,11 +183,13 @@ impl<const N: usize, const S: usize> Runner<N, S> {
 
         if stopping || self.deviated {
             self.stop_cycles = self.stop_cycles.saturating_add(1);
-            let landed = axes.iter().all(|a| {
-                (a.position() - a.target()).abs() < self.settle.tolerance
-                    && a.velocity().abs() < REST_VELOCITY
-                    && a.acceleration().abs() < REST_ACCELERATION
-            });
+            // `blocked` is the last cycle's, against the last target.
+            let landed = (blocked && self.target == previous)
+                || axes.iter().all(|a| {
+                    (a.position() - a.target()).abs() < self.settle.tolerance
+                        && a.velocity().abs() < REST_VELOCITY
+                        && a.acceleration().abs() < REST_ACCELERATION
+                });
             // Landed, or out of patience: hold the robot's echo of the last command, which
             // is continuous with what the robot already has by construction (the generator's
             // own position may differ from it by whatever the backstop took off the last
@@ -181,6 +218,47 @@ impl<const N: usize, const S: usize> Runner<N, S> {
             hold: false,
             finished: false,
         }
+    }
+
+    /// The generator's axes, for a test that watches what a retuned budget does to them.
+    #[cfg(test)]
+    pub(super) fn axes(&self) -> &[crate::otg::Otg; N] {
+        self.otg.axes()
+    }
+
+    /// The session's live-tuning slot, for the loop that owns this runner. Read-only from here:
+    /// the runner publishes the anchoring cycle's target into `slot`, never into this one.
+    pub(super) fn tuning(&self) -> &TargetSlot<{ LiveTuning::WORDS }> {
+        &self.shared.tuning
+    }
+
+    /// Hands the generator new per-axis limits, for a live retune of the budget. Every other
+    /// part of its state is kept, and the next [`cycle`](Self::cycle) plans under them.
+    ///
+    /// [`Otg::set_state`](crate::otg::Otg::set_state), which `cycle`'s `set_position` runs, and
+    /// the end of every step both clamp the stored velocity and acceleration into whatever
+    /// limits are in force. What holds that clamp to one cycle of the next order rather than an
+    /// impulse is that the caller walks a lowered limit down at that order's rate
+    /// ([`TuningPolicy::StepUpGateDown`](super::TuningPolicy::StepUpGateDown)) -- the rate, not
+    /// the moment this is called: a limit written a cycle later is clamped against a velocity
+    /// that is a cycle older, and the bound is the same one cycle on.
+    ///
+    /// A limit that is not finite and positive leaves the generator as it was, and none is:
+    /// the session's own budget was validated before the loop was built, and a tuned one is
+    /// between that and a target [`LiveTuning::BOUNDS`] holds positive.
+    pub(super) fn set_limits(&mut self, limits: [OtgLimits; N]) {
+        let _ = self.otg.set_limits(limits);
+    }
+
+    /// Restarts the generator at `velocity` and `acceleration`, keeping its position: the torque
+    /// backend re-anchors it on what a cut goal actually carried, as the third OTG rule
+    /// re-anchors the position. Both are end-of-cycle states, as
+    /// [`Otg::set_state`](crate::otg::Otg::set_state) requires: the generator's own, cut, never
+    /// the cut step's mean. A non-finite state leaves the generator as it was.
+    pub(super) fn restart(&mut self, velocity: [f64; N], acceleration: [f64; N]) {
+        let _ = self
+            .otg
+            .set_state(self.otg.position(), velocity, acceleration);
     }
 
     /// The loop's result: a regular end after the deviation guard fired is the error it is.

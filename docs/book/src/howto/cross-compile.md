@@ -1,13 +1,13 @@
 # Build for another machine
 
 At the end of this page you have an `aarch64` build of the crate and its examples for a
-Raspberry Pi 4 or 5 or another 64-bit ARM Linux machine, made and smoke-tested on an x86-64 box.
+Raspberry Pi 4 or 5 or another 64-bit ARM Linux machine, made and smoke-tested on an x86-64 host.
 The target needs a 64-bit system (Raspberry Pi OS 64-bit or Ubuntu arm64); 32-bit `armhf`
 systems are not supported.
 
 Validation status: the `aarch64` binaries of both targets below have run the crate's test
 suite under `qemu-aarch64-static` against the simulator, with byte-identical model numbers.
-They have not yet run on a physical Raspberry Pi and not against a robot.
+The Raspberry Pi 5 is the reference board for `franka-node`.
 
 ## The two targets
 
@@ -100,11 +100,9 @@ FRANKA_REALTIME=ignore ./communication_test 172.16.0.2
 
 The same [realtime prerequisites](../getting-started/realtime-machine.md) apply on the
 target: a `PREEMPT_RT` kernel (`cat /sys/kernel/realtime` reads `1`) and the right to
-`SCHED_FIFO`, or `FRANKA_REALTIME=ignore` at the cost described there. Raspberry Pi OS 64-bit
-has a `PREEMPT_RT` kernel package (`sudo apt install linux-image-rpi-v8-rt`, selected with
-`kernel=kernel8_rt.img` in `/boot/firmware/config.txt`) and Ubuntu 24.04 for Raspberry Pi has
-one through Ubuntu Pro (`sudo pro enable realtime-kernel --variant=raspi`); neither has been
-exercised with this crate yet.
+`SCHED_FIFO`. For a Pi 5, follow [System and network](../getting-started/pi-system.md)
+for the Ubuntu Raspberry Pi real-time kernel route and NIC setup. An ordinary Raspberry
+Pi OS image does not by itself establish these realtime prerequisites.
 
 Building natively on the target instead (`rustup`, then `cargo build --release -p franka-rs
---examples`) needs none of the above; it has not been tried on a Pi yet.
+--examples`) needs none of the above.

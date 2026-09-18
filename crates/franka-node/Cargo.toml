@@ -1,0 +1,46 @@
+[package]
+name = "franka-node"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["robotics", "franka", "zenoh", "teleoperation", "raspberry-pi"]
+categories = ["science::robotics", "command-line-utilities", "network-programming"]
+description = "Zenoh node that drives one or more Franka arms through franka-rs target control"
+# The Python client ships as its own wheel, franka-node-client.
+exclude = ["python"]
+
+# `cargo binstall franka-node`: the tarballs release.yml attaches to the `v*` GitHub release.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[features]
+# Per-episode `.rrd` recording through `franka-rerun` (Rust 1.96 for `rerun` 0.37).
+record = ["dep:franka-rerun"]
+
+[dependencies]
+franka = { workspace = true }
+franka-rerun = { workspace = true, optional = true }
+zerocopy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml = "1"
+log = "0.4"
+env_logger = "0.11"
+zenoh = { version = "1.10", default-features = false, features = [
+    "transport_tcp",
+    "transport_udp",
+    # A link that leaves the local segment must be able to be `tls/`; without the
+    # transport compiled in, such an endpoint cannot be established at all.
+    "transport_tls",
+] }
+ctrlc = { version = "3", features = ["termination"] }
+
+[dev-dependencies]
+franka-sim-test = { path = "../franka-sim-test" }

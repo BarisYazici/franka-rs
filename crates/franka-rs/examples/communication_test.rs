@@ -86,7 +86,7 @@ fn run(hostname: &str) -> FrankaResult<bool> {
         }
         counter += 1;
 
-        if counter % 100 == 0 {
+        if counter.is_multiple_of(100) {
             println!(
                 "#{counter} Current success rate: {:.2}",
                 state.control_command_success_rate

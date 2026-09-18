@@ -155,7 +155,7 @@ fn run(args: &Args) -> FrankaResult<()> {
     let mut samples = vec![Sample::default(); capacity];
     let mut count = 0usize;
 
-    // `RealtimeConfig::Ignore`: this box is not PREEMPT_RT (no `/sys/kernel/realtime`), so
+    // `RealtimeConfig::Ignore`: the benchmark host is not PREEMPT_RT (no `/sys/kernel/realtime`), so
     // realtime priority is applied externally with `chrt -f 80`.
     let robot = Robot::new(&args.host, RealtimeConfig::Ignore)?;
     common::set_default_behavior(&robot)?;

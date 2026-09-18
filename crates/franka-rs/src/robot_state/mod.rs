@@ -1,7 +1,6 @@
 //! Public robot state (mirrors `franka::RobotState`, all values `f64`).
 //!
-//! The conversion from the packed wire struct (`RobotState::from_wire`) lives in this file too
-//! and is added together with the wire layer.
+//! The conversion from the packed wire structs (`RobotState::from_wire`) lives in this file too.
 
 use crate::duration::Duration;
 use crate::errors::Errors;

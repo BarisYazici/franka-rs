@@ -47,7 +47,8 @@ pub fn log_target(rec: &RecordingStream, t: f64, position: Option<&[f64; 3]>, sp
                 let entity = format!("{TARGET_PREFIX}/{axis}");
                 rec.log(entity, &Scalars::single(*value))?;
             }
-            scene::log_point(rec, "target", p, 0.015, TARGET)?;
+            let prefix = franka_rerun::Prefix::none();
+            scene::log_point(rec, &prefix, "target", p, 0.015, TARGET)?;
         }
         rec.log(TARGET_SPEED, &Scalars::new(speeds))?;
         Ok(())

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1360" role="img" aria-labelledby="title desc">
+  <title id="title">A parameter update: discover, request, validate, accept, apply</title>
+  <desc id="desc">For each arm, a client queries params/schema for read-only field rules and configured defaults, and params/get for accepted targets and version. It sends a partial params/set request over Zenoh. The node requires a live Cartesian impedance session, checks the optional base version, validates types and domains, clamps the proposed values, and checks confirmation crossings. Refusal changes neither targets nor version. Acceptance stores a complete target set through a seqlock and increments version. The reply includes stored values and clamp details; params/current publishes accepted targets. The local 1 kHz loop reads the seqlock without waiting and applies each field's transition policy. Accepted targets and the estimated slewing fraction are not per-cycle applied-value feedback.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#266b62"/></marker>
+    <marker id="reject-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#9b493b"/></marker>
+    <style>
+      text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; fill: #202d38; }
+      .heading { font-size: 27px; font-weight: 700; }
+      .title { font-size: 23px; font-weight: 700; }
+      .body { font-size: 20px; }
+      .label { font-size: 18px; font-weight: 600; }
+      .code { font-family: ui-monospace, 'DejaVu Sans Mono', monospace; font-size: 18px; }
+      .blue { fill: #285f89; }
+      .teal { fill: #266b62; }
+      .red { fill: #9b493b; }
+      .white { fill: #fff; }
+    </style>
+  </defs>
+  <rect width="800" height="1360" rx="18" fill="#f6f5f1"/>
+  <text x="36" y="48" class="heading">A parameter update, from panel to controller</text>
+  <text x="36" y="80" class="body">One arm at a time · JSON over Zenoh</text>
+
+  <rect x="36" y="108" width="728" height="169" rx="14" fill="#eaf1f8" stroke="#b3cadb"/>
+  <text x="58" y="145" class="title blue">1. Read before editing</text>
+  <text x="58" y="180" class="code">franka/&lt;arm&gt;/params/schema</text>
+  <text x="58" y="207" class="body">Read-only rules, bounds and configured defaults.</text>
+  <text x="58" y="241" class="code">params/get → accepted targets + version</text>
+  <path d="M400 278V322" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="36" y="334" width="728" height="158" rx="14" fill="#eaf1f8" stroke="#b3cadb"/>
+  <text x="58" y="371" class="title blue">2. Client sends a partial update → params/set</text>
+  <text x="58" y="408" class="code">client_id · params: { changed fields }</text>
+  <text x="58" y="440" class="code">optional: base_version · confirm: [ field names ]</text>
+  <text x="58" y="472" class="body">Partial fields are merged with current targets.</text>
+  <path d="M274 493V539" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="36" y="551" width="477" height="318" rx="14" fill="#fff" stroke="#bac6ca"/>
+  <text x="58" y="589" class="title">3. Node checks a scratch copy</text>
+  <text x="58" y="629" class="body">Decode request and client ID.</text>
+  <text x="58" y="666" class="body">Require active Cartesian impedance;</text>
+  <text x="58" y="693" class="body">check base_version if supplied.</text>
+  <text x="58" y="733" class="body">Merge fields; reject invalid domains.</text>
+  <text x="58" y="773" class="body">Clamp with library bounds + relations.</text>
+  <text x="58" y="813" class="body">Check confirmation threshold crossings.</text>
+  <text x="58" y="846" class="label teal">Nothing stored until every check passes.</text>
+
+  <path d="M514 658H558" fill="none" stroke="#9b493b" stroke-width="3" marker-end="url(#reject-arrow)"/>
+  <text x="639" y="600" text-anchor="middle" class="label red">Any check fails</text>
+  <rect x="570" y="616" width="194" height="212" rx="14" fill="#f8ebe7" stroke="#d9b5aa"/>
+  <text x="590" y="650" class="title red">Refused</text>
+  <text x="590" y="686" class="body">Reply to client:</text>
+  <text x="590" y="715" class="code">ok: false</text>
+  <text x="590" y="748" class="body">Reason + error.</text>
+  <text x="590" y="781" class="body">No target or</text>
+  <text x="590" y="807" class="body">version change.</text>
+
+  <path d="M274 870V916" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="301" y="904" class="label teal">All checks pass</text>
+  <rect x="36" y="928" width="728" height="184" rx="14" fill="#e7f2ee" stroke="#a7c9bf"/>
+  <text x="58" y="966" class="title teal">4. Accept the complete target set</text>
+  <text x="58" y="1001" class="body">Store through the seqlock; increment version.</text>
+  <text x="58" y="1034" class="body">Reply → client: stored values, version and clamp details.</text>
+  <text x="58" y="1067" class="body">Publish → params/current: accepted targets + progress estimate.</text>
+  <text x="58" y="1096" class="label">get / current report targets, not per-cycle applied values.</text>
+
+  <path d="M400 1113V1168" fill="none" stroke="#266b62" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="425" y="1148" class="label teal">Local memory · no network hop</text>
+  <rect x="36" y="1180" width="728" height="147" rx="14" fill="#266b62"/>
+  <text x="58" y="1219" class="title white">5. Realtime loop reads without waiting · 1 kHz</text>
+  <text x="58" y="1254" class="body white">Apply each field's policy: slew, step, or gated decrease.</text>
+  <text x="58" y="1287" class="body white">Calculate torques locally; JSON and Zenoh stay outside this loop.</text>
+  <text x="58" y="1313" class="label white">A smooth parameter transition does not guarantee feasible motion.</text>
+</svg>

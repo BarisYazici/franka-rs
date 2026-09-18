@@ -11,6 +11,10 @@ gaps](./simulator-gaps.md).
 
 ## Torque control on FCI v5
 
+**The Panda supports external joint-torque control.** Both `control_torques` and
+`start_torque_control` send your commanded torques in `tau_J_d`. The difference below is
+how FCI v5 packages those commands with a required motion generator.
+
 libfranka 0.9.2 has no `MotionGeneratorMode::kNone`, and its `finishMotion` always requires
 a motion-generator command. So `franka::Robot::control(ControlCallback)` runs a
 **joint-velocity motion generator commanding zero velocity** next to the external
@@ -40,9 +44,8 @@ own reference and passes the limiter unchanged. Seed from `q` and you start one 
 error away from what the robot is commanding, and the limiter has to absorb that step, which
 at best distorts the start of your motion and at worst saturates.
 
-This is why the README's joint-move example reads `robot.read_once()?.q_d` rather than `.q`.
-The same defect in the examples' shared `MotionGenerator` was found and fixed during the
-2026-09-05 hardware campaign.
+This is why the README's joint-move example reads `robot.read_once()?.q_d` rather than `.q`,
+and why the examples' shared `MotionGenerator` seeds from `q_d` on an FER.
 
 ## Joint-space continuity of Cartesian pose commands
 
@@ -53,11 +56,10 @@ acceleration and jerk checks. The client-side rate limiter, the crate's with
 (`rate_limiting::fer::MAX_TRANSLATIONAL_ACCELERATION` = 13 m/s², jerk 6500 m/s³) are what the
 robot accepts there, not what the joint-side check accepts.
 
-Measured on a real FER near the ready pose (2026-09-08): a translational ramp at 2.5 m/s²
-with 500 m/s³ of jerk was refused within six cycles as
-`cartesian_motion_generator_joint_velocity_discontinuity`; a ramp at libfranka's own
-Cartesian limits tripped both that and
-`cartesian_motion_generator_joint_acceleration_discontinuity`; 1.5 m/s² with 200 m/s³ passed.
+Near the ready pose of an FER, a translational ramp at 2.5 m/s² with 500 m/s³ of jerk is
+refused within a few cycles as `cartesian_motion_generator_joint_velocity_discontinuity`; a
+ramp at libfranka's own Cartesian limits trips both that and
+`cartesian_motion_generator_joint_acceleration_discontinuity`; 1.5 m/s² with 200 m/s³ passes.
 The criterion is the per-joint acceleration limit
 (`rate_limiting::fer::MAX_JOINT_ACCELERATION`, 7.5 rad/s² on joint 2) applied to the joint
 motion the poses imply. At the ready pose a metre of end-effector travel in x costs about
@@ -67,12 +69,9 @@ trip. libfranka behaves identically, and its Cartesian examples pass because the
 trajectories start with near-zero acceleration.
 
 The check is not v5-specific. Both error names are in libfranka's error list for the FR3
-too, and on an FR3 (2026-09-09) the bracket was repeated: a run whose IK peaked at
-9.3 rad/s² passed, two runs were refused with
-`cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crossed
-10 rad/s² (`franka::MAX_JOINT_ACCELERATION`), with joint jerk under 1400 rad/s³, so the
-published limit is applied as is (see
-[Benchmarks and hardware validation](./benchmarks.md)).
+too, and an FR3 applies its published limit as is: a stream is refused with
+`cartesian_motion_generator_joint_velocity_discontinuity` in the cycle a joint crosses
+10 rad/s² (`franka::MAX_JOINT_ACCELERATION`).
 
 A stream of stepped targets therefore needs its own, smaller budget with the loop's limiter
 left on as the backstop. That is what [target control](../howto/target-control.md) does with
@@ -108,8 +107,8 @@ On an FR3 both calls fail with `InvalidOperation` before anything is sent. The s
 whose parameters were identified from a real FER's own `libfcimodels.so`, evaluated by the
 same native backend as the FR3's URDF. `Robot::robot_model()` fails with `InvalidOperation`
 because an FER has no URDF to serve; `Robot::load_model_from_robot()` is the opt-in
-download-and-`dlopen` path. The fit, the agreement figures, the payload caveat and the check
-against a real FER's measured `O_T_EE` are on [Model parameters and conformance](./model.md).
+download-and-`dlopen` path. The fit, the agreement figures and the payload caveat are on
+[Model parameters and conformance](./model.md).
 
 ## The joint-impedance example
 
@@ -132,6 +131,5 @@ controller does its own limiting.
 FCI v5. libfranka 0.9.2 has no equivalent: its API for that generation is the callback
 `franka::Robot::control()` only, with no `startTorqueControl()` / `readOnce()` / `writeOnce()`.
 The public API is identical on both versions; underneath, `start_torque_control()` on an FER
-starts the zero-velocity joint generator described above. The measurement against the
-callback API is in [Benchmarks](./benchmarks.md) and the how-to is
+starts the zero-velocity joint generator described above. The how-to is
 [Drive the loop yourself](../howto/active-control.md).

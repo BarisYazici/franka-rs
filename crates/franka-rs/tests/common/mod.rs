@@ -242,9 +242,8 @@ pub fn connect_with_version(
 
 /// The joint configuration the FER (FCI v5) simulator starts in.
 ///
-/// Measured, not assumed. The first state of `franka-sim:panda-v5` started with
-/// `--protocol v5 --robot panda` and `PANDA_MJCF=.../franka_emika_panda/panda_nohand.xml`
-/// reports
+/// The first state of the FER simulator (`--protocol v5 --robot panda`, Menagerie's
+/// `franka_emika_panda/panda_nohand.xml`) reports
 ///
 /// ```text
 /// q = [-0.00089105, -0.00000051, 0.00022151, -1.56999978, -0.00000376, 1.56999964, 0.78500486]

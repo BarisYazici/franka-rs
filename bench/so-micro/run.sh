@@ -11,8 +11,8 @@
 # Read the `steady state` block for the Rust-versus-C++ comparison. The `duty cycled`
 # blocks below it show what the *same* calls read as when they run first in a 1 kHz cycle
 # after a ~1 ms idle wait: on a laptop-class part that inflates them several-fold, and by
-# an amount that depends on how much unrelated work ran first. See the "Model wrapper
-# follow-up" section of the full FER benchmark write-up, kept privately.
+# an amount that depends on how much unrelated work ran first. See the measurement trap on
+# the book's benchmarks page.
 #
 # Build:
 #   cmake -S bench/so-micro/cpp -B bench/so-micro/cpp/build -DCMAKE_BUILD_TYPE=Release

@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use nalgebra::Matrix3;
 
+use super::position::VelocityLimit;
 use super::rotation::{
     angle_between, checked_pose, distance, exp, from_quaternion, log, pose_from, rotation_of,
     to_quaternion, translation_of, unit_quaternion,
@@ -17,11 +18,12 @@ use super::rotation::{
 use super::runner::Step;
 use super::torque::{PoseTracker, TorqueLoop};
 use super::{
-    check_posture, joint_position_limits, spawn, Backend, Handle, ImpedanceOptions, Runner, Shared,
-    TargetControlOptions,
+    check_posture, joint_position_limits, spawn, Backend, FieldBound, Handle, ImpedanceOptions,
+    LiveTuning, Runner, Shared, TargetControlOptions, TuningUpdate, DERIVED_GAINS_MESSAGE,
+    NO_TUNING_MESSAGE,
 };
 use crate::control_types::CartesianPose;
-use crate::error::FrankaResult;
+use crate::error::{FrankaError, FrankaResult};
 use crate::lowpass_filter::MAX_CUTOFF_FREQUENCY;
 use crate::math_utils::orthonormalized_rotation;
 use crate::model::Model;
@@ -37,7 +39,8 @@ use crate::wire::robot::codec::FciVersion;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CartesianSent {
     /// The pose that went to the robot (after the backstop), or with [`Backend::Impedance`]
-    /// the desired pose the IK follows; column-major.
+    /// the desired pose the IK follows; column-major. On a cycle the joint velocity cap cut,
+    /// the desired pose before the cut: `q_goal` and `dq_goal` are what was commanded.
     pub pose: [f64; 16],
     /// The orientation of `pose` as a unit quaternion, `[x, y, z, w]`.
     pub orientation: [f64; 4],
@@ -60,17 +63,88 @@ pub struct CartesianSent {
     pub backstop_angular_alteration: f64,
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
+    /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
+    /// forward, under the joint velocity cap and after
+    /// [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set; zeros on the
+    /// first cycle, while holding and with [`Backend::RobotController`]. This is the value the
+    /// law and the recorder both see, not the raw difference.
+    pub dq_goal: [f64; 7],
+    /// The fraction of the generator's step the goal carried on a cycle it fell short and the
+    /// generator was restarted from the goal: held at a joint position limit, cut to
+    /// [`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction)
+    /// of the joint velocity limits, or both. Exactly 1 on every other cycle, and with
+    /// [`Backend::RobotController`].
+    pub cap_scale: f64,
+    /// Per joint, the bound of the IK's box the goal was held on: 0 none, -1 / +1 the lower /
+    /// upper position bound (the margin, or the braking toward it), -2 / +2 the velocity bound;
+    /// zeros with [`Backend::RobotController`].
+    pub pinned: [i8; 7],
     /// The torques sent, Nm, clamped to the torque limits; zeros with
     /// [`Backend::RobotController`].
     pub tau: [f64; 7],
-    /// The IK's residual toward `pose` after this cycle's iterations, m plus rad in one norm;
-    /// 0 with [`Backend::RobotController`].
+    /// The velocity envelope's share of `tau`, Nm, before the clamp: the barrier opposing every
+    /// joint measured faster than
+    /// [`ImpedanceOptions::velocity_barrier_fraction`](super::ImpedanceOptions::velocity_barrier_fraction)
+    /// of its limit, less the law's torque along a joint's motion faded out above the fade's
+    /// start ([`FADE_BAND`](super::FADE_BAND)); zeros below it and with
+    /// [`Backend::RobotController`].
+    pub tau_envelope: [f64; 7],
+    /// The position envelope's share of `tau`, Nm, before the clamp: the spring pushing a joint
+    /// measured inside the position barrier's onset out, less the law's torque toward a limit
+    /// faded out inside
+    /// [`ImpedanceOptions::joint_position_margin`](super::ImpedanceOptions::joint_position_margin);
+    /// `tau` is the clamped sum of the law, `tau_envelope` and this. Zeros away from the limits
+    /// and with [`Backend::RobotController`].
+    pub tau_position: [f64; 7],
+    /// The IK's residual toward `pose` after this cycle's iterations, the norm of the position
+    /// error, m, and the orientation error weighted by
+    /// [`IkOptions::rotation_weight`](super::IkOptions::rotation_weight); 0 with
+    /// [`Backend::RobotController`].
     pub ik_error: f64,
+    /// The IK's active-set passes this cycle, over its iterations; 0 with
+    /// [`Backend::RobotController`].
+    pub ik_passes: u32,
+    /// How hard the residual pushes on the goal's position pins, in the weighted task units of
+    /// `ik_error` (m) per cycle: the largest residual along a pinned joint's unit Jacobian
+    /// column, counted only into its bound; 0 with [`Backend::RobotController`].
+    pub stall_pressure: f64,
+    /// Whether the IK's goal is stalled at a joint position limit, the flag on
+    /// `stall_pressure` with its hysteresis; while it or a position pin after it holds, the
+    /// generator is restarted from the goal every cycle without its velocity into the limit.
+    /// Always false with [`Backend::RobotController`].
+    pub stalled: bool,
+    /// The largest raw step the cycle's IK solves asked for, rad: its norm with the nullspace
+    /// bias in and before the per-joint box clip. While `ik_blend` is above 0 each iteration
+    /// solves twice, and a position stage's norm is its own, before the blend scales it down.
+    /// 0 with [`Backend::RobotController`].
+    pub ik_step: f64,
+    /// How much of that same solve's `ik_step` the box took off, rad; 0 with
+    /// [`Backend::RobotController`].
+    pub ik_step_clipped: f64,
+    /// The IK's priority blend `β` this cycle: 0 the weighted solve, 1 position first (see
+    /// `stalled`); 0 with [`Backend::RobotController`].
+    pub ik_blend: f64,
+    /// Whether the generator was held at a wall this cycle: the IK stalled, or a wall still
+    /// within its life. Always false with [`Backend::RobotController`].
+    pub held: bool,
+    /// Per block (translation, rotation), cycles since that block was last pushed on a wall,
+    /// and -1 when it claims no wall; `[-1, -1]` with [`Backend::RobotController`].
+    ///
+    /// A block takes a wall only when the free joints' remainder in it exceeds the stall's wall
+    /// share of what the pins push, and keeps it for a while after. On this path, where
+    /// position first drives the translation residual down to micrometres, the translation age
+    /// normally stays -1 and only the rotation's varies.
+    pub wall_age: [i8; 2],
     /// How far, m, the leash pulled the generator's anchor back from the previous desired
     /// position toward the measured one: zero while the arm follows, positive while it is
     /// held back ([`Leash`](super::Leash)); 0 with [`Backend::RobotController`].
+    ///
+    /// What the leash took off, not the lead itself: 0 whenever the pose is inside the leash --
+    /// the common case -- so a recording of nothing but zeros says only that the arm kept up.
+    /// The leash scales both blocks together, so an orientation beyond its own leash pulls the
+    /// position back with it and this reads positive inside the translation leash.
     pub leash_alteration: f64,
-    /// The same for the orientation, rad.
+    /// The same for the orientation, rad, and zero on the same terms.
     pub leash_angular_alteration: f64,
 }
 
@@ -83,6 +157,9 @@ pub type CartesianObserver = Box<dyn FnMut(&RobotState, &CartesianSent) + Send>;
 /// scalar part last) or the rotation block of a column-major pose as in `O_T_EE`.
 pub struct CartesianTargetControl {
     inner: Handle<7>,
+    /// Why this session has no live tuning, `None` when it has: the reason is known at
+    /// [`start`] and nowhere else, since an unseeded slot cannot say which of the two it was.
+    no_tuning: Option<&'static str>,
 }
 
 impl CartesianTargetControl {
@@ -160,6 +237,56 @@ impl CartesianTargetControl {
         self.inner.state()
     }
 
+    /// Moves the law's parameters while the loop runs: applies every field `update` carries and
+    /// returns the [`bounds`](FieldBound) that had to clamp one, so a caller can show a slider
+    /// snapping. Callable from any thread at any rate; the loop reads the result on its next
+    /// cycle and crosses to it under each field's [`policy`](FieldBound::policy).
+    ///
+    /// The update is all or nothing and then clamped into [`LiveTuning::BOUNDS`]; what it does
+    /// not carry, it does not touch. A change is never a step in the torque: the fields that
+    /// multiply a nonzero state cross over [`SLEW_TAU`](super::SLEW_TAU), and
+    /// [`TuningPolicy::remaining`](super::TuningPolicy::remaining) says how much of a crossing
+    /// is still to come.
+    ///
+    /// Nor is it ever a step in the command. [`budget`](LiveTuning::budget) and
+    /// [`rotation_budget`](LiveTuning::rotation_budget) reach the generator, whose velocity and
+    /// acceleration are raised on the cycle the update arrives and lowered as a ramp at the next
+    /// order's limit, because a narrower budget clamps the generator's stored state rather than
+    /// re-planning it ([`TuningPolicy::StepUpGateDown`](super::TuningPolicy::StepUpGateDown)).
+    /// So a lowered budget takes `(current - target) / rate` seconds to be wholly in force; the
+    /// jerks step, either way.
+    ///
+    /// # Errors
+    /// [`crate::error::FrankaError::InvalidArgument`] naming the field if a value is not finite
+    /// or is a zero that means something other than "softer", with nothing written;
+    /// [`crate::error::FrankaError::InvalidOperation`] with [`super::ENDED_MESSAGE`] once the
+    /// loop has ended, with [`super::NO_TUNING_MESSAGE`] on a [`Backend::RobotController`]
+    /// session, whose tracking is the robot's own, or with [`super::DERIVED_GAINS_MESSAGE`] on
+    /// one whose gains a single Cartesian stiffness cannot rebuild.
+    pub fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>> {
+        self.tunable()?;
+        self.inner.tune(update)
+    }
+
+    /// The tuning targets in force, the session's own options until something tunes them.
+    ///
+    /// # Errors
+    /// [`crate::error::FrankaError::InvalidOperation`] with [`super::NO_TUNING_MESSAGE`] or
+    /// [`super::DERIVED_GAINS_MESSAGE`] on a session that has no live tuning, as
+    /// [`tune`](Self::tune) describes.
+    pub fn tuning(&self) -> FrankaResult<LiveTuning> {
+        self.tunable()?;
+        self.inner.tuning()
+    }
+
+    /// Whether this session has live tuning at all, with why not if it has not.
+    fn tunable(&self) -> FrankaResult<()> {
+        match self.no_tuning {
+            Some(why) => Err(FrankaError::InvalidOperation(why.to_string())),
+            None => Ok(()),
+        }
+    }
+
     /// Whether the loop is still running; `false` after it ended for any reason.
     pub fn is_running(&self) -> bool {
         self.inner.is_running()
@@ -170,6 +297,20 @@ impl CartesianTargetControl {
     /// robot aborted the motion or a deviation guard fired.
     pub fn stop(self) -> FrankaResult<()> {
         self.inner.stop()
+    }
+}
+
+#[cfg(test)]
+impl CartesianTargetControl {
+    /// The handle `start` builds on `shared` for a session whose seed came back as `seed`.
+    pub(super) fn on(shared: Arc<Shared<7>>, seed: Result<LiveTuning, &'static str>) -> Self {
+        CartesianTargetControl {
+            inner: Handle {
+                shared,
+                thread: None,
+            },
+            no_tuning: seed.err(),
+        }
     }
 }
 
@@ -237,8 +378,21 @@ pub(super) fn sent(step: &Step<6, 7>, pose: [f64; 16]) -> CartesianSent {
         backstop_alteration: 0.0,
         backstop_angular_alteration: 0.0,
         q_goal: [0.0; 7],
+        dq_goal: [0.0; 7],
+        cap_scale: 1.0,
+        pinned: [0; 7],
         tau: [0.0; 7],
+        tau_envelope: [0.0; 7],
+        tau_position: [0.0; 7],
         ik_error: 0.0,
+        ik_passes: 0,
+        stall_pressure: 0.0,
+        stalled: false,
+        ik_step: 0.0,
+        ik_step_clipped: 0.0,
+        ik_blend: 0.0,
+        held: false,
+        wall_age: [-1, -1],
         leash_alteration: 0.0,
         leash_angular_alteration: 0.0,
     }
@@ -298,22 +452,33 @@ pub(super) fn start(
     )?;
     let shared = Arc::new(Shared::<7>::default());
     let loop_shared = Arc::clone(&shared);
-    let priority = options.realtime_priority;
+    let scheduling = options.scheduling();
+    let tuning = match &options.backend {
+        Backend::Impedance(impedance) => seed(&options, impedance),
+        Backend::RobotController => Err(NO_TUNING_MESSAGE),
+    };
     let inner = match options.backend {
         Backend::RobotController => spawn(
             THREAD,
             robot,
             shared,
-            priority,
+            scheduling,
             move |robot: &Robot, started| pose_loop(robot, started, options, loop_shared),
         )?,
         Backend::Impedance(impedance) => {
             let model = Arc::new(robot.load_model()?);
+            // Before the thread, so the loop's first read of the slot is the seed the loop was
+            // built with and no cycle runs with anything else. The user thread is the slot's
+            // only writer for the session's whole life; the loop never writes it. A seed that
+            // is not faithful is not published at all, and the session then has no live tuning.
+            if let Ok(seed) = tuning {
+                shared.tuning.publish(seed.to_words());
+            }
             spawn(
                 THREAD,
                 robot,
                 shared,
-                priority,
+                scheduling,
                 move |robot: &Robot, started| {
                     let limit_rate = options.limit_rate;
                     let version = robot.fci_version();
@@ -323,7 +488,34 @@ pub(super) fn start(
             )?
         }
     };
-    Ok(CartesianTargetControl { inner })
+    Ok(CartesianTargetControl {
+        inner,
+        no_tuning: tuning.err(),
+    })
+}
+
+/// What the session's live tuning starts at -- the law as `impedance` has it and the plan's two
+/// budgets -- or why it has none. The loop and the slot are seeded from this one place, so the
+/// loop's first read of the slot finds exactly what it already holds and nothing is applied
+/// until something is tuned.
+///
+/// A seed is refused when [`LiveTuning::gains`] does not rebuild `impedance`'s own gains. The
+/// operator's Cartesian stiffness is one number and the law's are twelve, derived from it by
+/// [`ImpedanceGains::scaled_cartesian`](super::ImpedanceGains::scaled_cartesian), and the apply
+/// step rebuilds all twelve whenever *any* field moves. On a gains set that derivation cannot
+/// reproduce -- [`DROID`](super::ImpedanceGains::DROID), whose translational damping is 37
+/// against the scaled preset's 50 and 90 -- the first retune of an unrelated field would rewrite
+/// them in a single cycle, and the slew could not soften it, because the stiffness it watches
+/// never moved. A session `LiveTuning` cannot represent is left with no live tuning rather than
+/// quietly retuned into one it can.
+pub(super) fn seed(
+    options: &TargetControlOptions,
+    impedance: &ImpedanceOptions,
+) -> Result<LiveTuning, &'static str> {
+    let seed = LiveTuning::from_options(impedance, options.limits, options.rotation_limits);
+    (seed.gains() == impedance.gains)
+        .then_some(seed)
+        .ok_or(DERIVED_GAINS_MESSAGE)
 }
 
 /// The [`Backend::Impedance`] loop of this interface: a [`PoseTracker`] on the six-axis
@@ -343,18 +535,24 @@ pub(super) fn torque_loop(
         options.settle,
         chart,
     )?;
+    let velocity = VelocityLimit::of(version);
     let tracker = PoseTracker::new(
         &options,
         &impedance,
         Arc::clone(&model),
         joint_position_limits(version),
+        velocity,
     );
+    // The loop reads the slot only where `start` seeded it, and the two agree because both ask
+    // the same question of the same options.
+    let tuning = seed(&options, &impedance).ok();
     Ok(TorqueLoop::new(
         runner,
         model,
         impedance,
         tracker,
         options.observer,
+        tuning,
     ))
 }
 
@@ -394,7 +592,7 @@ fn pose_loop(
             let echo = placement(&state.O_T_EE_c);
             let start = *start.get_or_insert(echo);
             let strayed = strayed(state, &start, max_deviation, max_angular_deviation);
-            let step = runner.cycle(state, slot_values(&echo.0, &echo.1), strayed);
+            let step = runner.cycle(state, slot_values(&echo.0, &echo.1), strayed, false);
 
             let (mut backstop_alteration, mut backstop_angular_alteration) = (0.0, 0.0);
             let pose = if step.hold {

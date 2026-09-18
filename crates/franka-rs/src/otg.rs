@@ -39,11 +39,11 @@
 //! that is exactly braking to its target) keeps its minimum duration.
 //!
 //! # In a control loop
-//! Three rules, learnt from a run on a real FER in which the first version of the bridge in
-//! `examples/nonrealtime_commander.rs` was clamped by the rate limiter behind it and then
-//! orbited at the velocity cap for twenty seconds. The limits are **per axis**: two axes at
-//! full acceleration have a vector norm `sqrt 2` above it, so a budget that is a norm (which is
-//! what `limit_rate_cartesian_pose` bounds) needs [`OtgLimits::per_axis_for_norm`]. Step **one
+//! Three rules, without which a bridge such as `examples/nonrealtime_commander.rs` is clamped
+//! by the rate limiter behind it and then orbits at the velocity cap. The limits are
+//! **per axis**: two axes at full acceleration have a vector norm `sqrt 2` above it, so a
+//! budget that is a norm (which is what `limit_rate_cartesian_pose` bounds) needs
+//! [`OtgLimits::per_axis_for_norm`]. Step **one
 //! nominal cycle per command** (`DELTA_T`), not the measured period: the robot and the rate
 //! limiter check every packet against a 1 ms budget, so a 2 ms step after a lost packet is a
 //! doubled velocity to them. And **re-anchor on the robot's echo of the position** every
@@ -92,6 +92,13 @@ impl OtgLimits {
             max_acceleration: self.max_acceleration * factor,
             max_jerk: self.max_jerk * factor,
         }
+    }
+
+    /// Whether all three are finite and positive, which is what a generator needs of them:
+    /// the one check [`Otg::new`] and [`Otg::set_limits`] share.
+    fn valid(self) -> bool {
+        let ok = |x: f64| x.is_finite() && x > 0.0;
+        ok(self.max_velocity) && ok(self.max_acceleration) && ok(self.max_jerk)
     }
 }
 
@@ -162,9 +169,7 @@ impl Otg {
     /// [`FrankaError::InvalidArgument`] if `position` is not finite or a limit is not finite
     /// and positive.
     pub fn new(position: f64, limits: OtgLimits) -> FrankaResult<Self> {
-        let ok = |x: f64| x.is_finite() && x > 0.0;
-        let valid = ok(limits.max_velocity) && ok(limits.max_acceleration) && ok(limits.max_jerk);
-        if !(valid && position.is_finite()) {
+        if !(limits.valid() && position.is_finite()) {
             return Err(FrankaError::InvalidArgument(format!(
                 "otg: limits must be finite and positive and the position finite, got \
                  {limits:?} at {position}"
@@ -227,6 +232,40 @@ impl Otg {
         self.velocity = velocity.clamp(-v_max, v_max);
         self.acceleration = acceleration.clamp(-a_max, a_max);
         Ok(())
+    }
+
+    /// Replaces the limits the generator plans under, keeping its position, velocity,
+    /// acceleration and target exactly as they are: the next [`step`](Self::step) re-plans
+    /// under the new ones, and this call itself moves nothing.
+    ///
+    /// **Lowering a limit below the state the generator is already in is the caller's
+    /// problem.** Nothing here clamps -- but [`set_state`](Self::set_state), which
+    /// [`set_position`](Self::set_position) runs every cycle under the third of the
+    /// [three rules](self), clamps the stored velocity and acceleration into the limits, and
+    /// the end of every [`step`](Self::step) clamps them again. A velocity truncated by `dv`
+    /// in one cycle is an acceleration of `dv / dt` in the command -- a thousand times `dv` at
+    /// 1 kHz -- which is a discontinuity, not a re-plan. So a caller lowering a limit under a
+    /// moving generator **walks it down**: `max_velocity` no faster than the `max_acceleration`
+    /// in force, and `max_acceleration` no faster than `max_jerk`, which holds each clamp to
+    /// one cycle of the next order and so to the generator's own bound. Raising may step: the
+    /// state is already inside the wider limits, and the plan is re-derived from it anyway.
+    ///
+    /// # Errors
+    /// [`FrankaError::InvalidArgument`], with the limits unchanged, if one of them is not
+    /// finite and positive.
+    pub fn set_limits(&mut self, limits: OtgLimits) -> FrankaResult<()> {
+        if !limits.valid() {
+            return Err(FrankaError::InvalidArgument(format!(
+                "otg: limits must be finite and positive, got {limits:?}"
+            )));
+        }
+        self.limits = limits;
+        Ok(())
+    }
+
+    /// The limits the generator is planning under.
+    pub fn limits(&self) -> OtgLimits {
+        self.limits
     }
 
     /// Puts the generator at rest at `position`, with the target there too.
@@ -505,6 +544,25 @@ impl<const N: usize> MultiOtg<N> {
         }
         for (i, axis) in self.axes.iter_mut().enumerate() {
             axis.set_state(p[i], v[i], a[i])?;
+        }
+        Ok(())
+    }
+
+    /// Replaces every axis's limits, all or nothing, keeping every axis's state; see
+    /// [`Otg::set_limits`] for what a caller owes a generator that is already moving.
+    ///
+    /// # Errors
+    /// [`FrankaError::InvalidArgument`], with **every** axis's limits unchanged, if one of
+    /// them is not finite and positive.
+    pub fn set_limits(&mut self, limits: [OtgLimits; N]) -> FrankaResult<()> {
+        if limits.iter().any(|l| !l.valid()) {
+            return Err(FrankaError::InvalidArgument(format!(
+                "otg: limits must be finite and positive, got {limits:?}"
+            )));
+        }
+        // Checked whole first, so no axis is left holding a limit a later one refused.
+        for (axis, l) in self.axes.iter_mut().zip(limits) {
+            axis.limits = l;
         }
         Ok(())
     }

@@ -65,11 +65,11 @@ libfranka's in `tests/wire_sizes.rs`.
 `franka::Gripper`. The one caveat: only one `read_once()` should be in flight at a time,
 since concurrent callers would race to claim the same UDP datagram.
 
-## Notes from the field
+## Notes
 
-- **An FER's hand may not be on the FCI at all.** On the two FERs used for the hardware
-  validation the Franka Hands were wired to direct CAN rather than the TCP gripper
-  protocol, and port 1338 was closed. Check before assuming `Gripper::new` will connect.
+- **Check that the hand is on the FCI.** A hand not connected through the robot's gripper
+  server leaves port 1338 closed; `Gripper::new` then fails with `FrankaError::Network`
+  ("Connection to FCI refused …"), even with FCI enabled.
 - `examples/grasp_object.rs` is the port of libfranka's example of that name
   (`grasp_object <robot-hostname> <object-width>`, always homing first) and the quickest
   end-to-end check of a hand.

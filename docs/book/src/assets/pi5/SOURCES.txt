@@ -1,0 +1,42 @@
+# Pi 5 controller assets — 18 September 2026 revision
+
+These files are the selected assembly and enclosure exports used by the franka-rs
+hardware guide. Original mesh/CAD bytes are retained. The manifest records their hashes,
+byte counts, and source modification timestamps. No G-code is included.
+
+## Source and accuracy
+
+- Raspberry Pi 5: simplified/tessellated official Raspberry Pi Ltd STEP model,
+  https://datasheets.raspberrypi.com/rpi5/RaspberryPi5-step.zip . The MIT license and
+  manufacturer's accuracy disclaimer are retained in RASPBERRY-PI-LICENSE.txt.
+- Active Cooler: project model based on the official mechanical drawing,
+  https://datasheets.raspberrypi.com/cooling/raspberry-pi-active-cooler-mechanical-drawing.pdf .
+- P02 / EP-0219 adapter: project model based on 52Pi drawings and product photographs,
+  https://wiki.52pi.com/index.php?title=EP-0219 . The adapter is the modeled reference;
+  identification of the physical build was not confirmed in the original notes.
+- Intel I350-T2 V2: project model based on Intel's product brief and measured card/bracket dimensions,
+  https://cdrdv2-public.intel.com/325511/Intel%20Ethernet%20Server%20Adapter%20I350-T2-T4.pdf .
+  PCB length 135 mm and overall length 150 mm informed the revised enclosure. The bracket sheet and
+  fold depth are measured; bracket width, fold ends, port heights and component locations
+  still include estimates.
+- Cables and camera housings: stylized project models, not manufacturer CAD.
+- Enclosure: franka-rs project design for the above geometry. The current revision adds a slot and
+  supports for the bracket's folded edge, retaining the 0.6 mm nozzle layout, card
+  insertion/tilt clearance changes and strengthened port wall. CAD checks are not
+  physical fit or thermal validation.
+- The electronics PNGs illustrate the earlier assembly layout; the electronics GLBs
+  and enclosure renders include the revised bracket geometry.
+
+GLB files use metres and Y-up. STL files are intended as millimetres, in print orientation.
+STEP files contain the editable enclosure solids. The 3MF contains geometry/layout, with
+no supplied machine-specific G-code or tested slicer profile.
+
+## Notices
+
+The Raspberry Pi geometry remains subject to the accompanying MIT notice. Manufacturer
+names identify the modeled components; these project models and this enclosure are not
+manufacturer-provided designs or endorsements. Retain this provenance and the Raspberry
+Pi notice when redistributing the assembly models.
+
+The website viewer uses Three.js 0.147.0, vendored from the published npm package. Its
+MIT license is retained at site/vendor/three/LICENSE in the generated website.

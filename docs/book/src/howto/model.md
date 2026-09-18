@@ -87,7 +87,7 @@ yourself](./active-control.md); the joint impedance variant for an FER is
 `examples/fer_joint_impedance.rs`.
 
 Cost: evaluating all five dynamic and kinematic calls a model-based controller makes takes
-about 3 µs offline and 11–15 µs inside a 1 kHz loop on a laptop-class CPU. The in-loop
+about 3 µs offline and about 11 µs inside a 1 kHz loop on a laptop-class CPU. The in-loop
 figure is higher because a duty-cycled loop starts each cycle on a core that has just
 idled; see [Benchmarks](../reference/benchmarks.md) for the numbers and that caveat.
 

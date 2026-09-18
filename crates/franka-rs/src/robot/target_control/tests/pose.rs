@@ -37,6 +37,7 @@ fn pose_cycle(
         &RobotState::default(),
         slot_values(position, rotation),
         false,
+        false,
     );
     if !step.hold {
         *position = [step.position[0], step.position[1], step.position[2]];

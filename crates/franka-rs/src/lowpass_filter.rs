@@ -118,7 +118,10 @@ pub fn cartesian_low_pass_filter(
 }
 
 /// Filter gain, shared by both filters: `dt / (dt + 1 / (2 pi f_c))`.
-fn gain(sample_time: f64, cutoff_frequency: f64) -> f64 {
+///
+/// `pub(crate)` so a realtime caller that has already validated its inputs can use the one
+/// formula without the fallible wrapper's error path; there must not be a second copy of it.
+pub(crate) fn gain(sample_time: f64, cutoff_frequency: f64) -> f64 {
     sample_time / (sample_time + (1.0 / (2.0 * std::f64::consts::PI * cutoff_frequency)))
 }
 

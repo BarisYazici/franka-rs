@@ -19,8 +19,8 @@
 //! produce too. What test 1 pins is the client's side of `stop()` -- prompt return, an error,
 //! a surviving session -- plus the exact wording of both possible errors.
 //!
-//! Two properties of the `franka-sim:panda-v5` image shape this file, both established by
-//! reading its container logs and its bundled sources (see `docs/book/src/reference/simulator-gaps.md`):
+//! Two properties of the `franka-sim:panda-v5` image shape this file (see
+//! `docs/book/src/reference/simulator-gaps.md`):
 //!
 //! 1. Its `StopMove` handler answers the running motion's `Move` with **`kSuccess`** instead
 //!    of `kPreempted`. The newer `franka-sim:dev` image answers `kPreempted`, which is what
@@ -51,9 +51,9 @@ use franka_sim_test::SimConfig;
 /// every commanded step against `state.q_d`, so a first command placed at the *measured* `q`
 /// asks for a step of whatever the tracking error happens to be, and the limiter answers with
 /// a few cycles clipped to the FER's `kMaxJointJerk` -- which this simulator image rejects
-/// against the FR3's smaller one (finding 2 in the module docs). That made this helper fail
-/// about half the time when it ran under `--enforce-motion-limits` after a reflex, where the
-/// gap between `q` and `q_d` is largest. Starting at `q_d` makes the first step zero and the
+/// against the FR3's smaller one (property 2 in the module docs), intermittently so under
+/// `--enforce-motion-limits` after a reflex, where the gap between `q` and `q_d` is largest.
+/// Starting at `q_d` makes the first step zero and the
 /// motion deterministic; it is also what libfranka's own `MotionGenerator` does.
 fn cosine_joint_move(robot: &franka::Robot) -> franka::FrankaResult<()> {
     let start = robot.read_once()?.q_d;
@@ -97,14 +97,14 @@ fn cosine_joint_move(robot: &franka::Robot) -> franka::FrankaResult<()> {
 ///   `sim_v5_motions.rs`) moves `q` by ~0.37 mrad every cycle, fifty times the ~7.5 urad that
 ///   7500 rad/s^3 of jerk covers in 1 ms;
 /// * so the client emits exactly `rate_limiting::fer::MAX_JOINT_JERK[0]` and the simulator rejects it
-///   against the FR3's 5000. From the container log of this very test:
+///   against the FR3's 5000. The container log reads:
 ///   `joint_motion_generator_acceleration_discontinuity: q_c joint 1 = 7500 rad/s^3,
 ///   limit 5000 rad/s^3`.
 ///
 /// With the limiter off the client sends the constant setpoint unchanged, the simulator's
 /// motion-generator checks difference a constant to zero, and the measured 0.36 rad/s is well
-/// inside the 2.619 rad/s its envelope allows there. Measured: 500/500 cycles on three
-/// consecutive runs, against 2 cycles with the limiter on. So this isolates "did the motion
+/// inside the 2.619 rad/s its envelope allows there: all 500 cycles run, against 2 with the
+/// limiter on. So this isolates "did the motion
 /// run?" from the jerk-table gap that would otherwise decide the verdict.
 fn hold_at_current_pose(robot: &franka::Robot) -> franka::FrankaResult<()> {
     let mut hold: Option<[f64; 7]> = None;
@@ -214,8 +214,8 @@ fn stop_without_a_motion_is_harmless() {
 ///    `automatic_error_recovery` clears it.
 ///
 /// The FER's velocity limit is *flat*, unlike the FR3's position-dependent envelope: 2.175
-/// rad/s on joints 1-4 (`rate_limiting::fer::MAX_JOINT_VELOCITY`, which subtracts
-/// `kLimitEps` and three lost packets' worth of acceleration and lands at about 2.129 rad/s).
+/// rad/s on joints 1-4 (`rate_limiting::fer::MAX_JOINT_VELOCITY`, which subtracts `kLimitEps`
+/// and three lost packets' worth of acceleration and lands at about 2.129 rad/s).
 /// The FR3 test trips its reflex with a 2.0 rad/s ramp *near the joint limit*, where the FR3
 /// envelope has narrowed; on an FER 2.0 rad/s is legal everywhere, so this ramps to 3.0 rad/s
 /// instead. The commanded position is capped short of the FER's 2.8973 rad joint-1 limit so
@@ -224,8 +224,8 @@ fn stop_without_a_motion_is_harmless() {
 /// The velocity is ramped in over **2 s**, not the FR3 test's 0.5 s, for the reason test 4
 /// documents: this image checks against the FR3's `MAX_JOINT_JERK = 5000 - 1e-3` rad/s^3, and
 /// a 2.5 rad/s ramp reached in 0.5 s puts exactly 5000 rad/s^3 of jerk into the first cycle,
-/// so the motion was aborted for `joint_motion_generator_acceleration_discontinuity` before it
-/// ever got fast enough to break a velocity limit (observed). Over 2 s the first cycle carries
+/// so the motion is aborted for `joint_motion_generator_acceleration_discontinuity` before it
+/// ever gets fast enough to break a velocity limit. Over 2 s the first cycle carries
 /// 1500 rad/s^3 and the acceleration is a flat 1.5 rad/s^2, both well inside even the FR3
 /// numbers, leaving the velocity as the only thing that goes out of bounds.
 ///
@@ -368,9 +368,8 @@ fn velocity_violation_trips_a_reflex_and_recovery_clears_it() {
 ///
 /// The demand here is a step: `q_c` jumps 0.5 rad on joint 1 in the first cycle, with
 /// `limit_rate = true` and no low-pass filter, so the limiter is guaranteed to saturate rather
-/// than incidentally saturating on the tracking error (which is what made an earlier version
-/// of this test, built on libfranka's point-to-point `MotionGenerator`, pass about half the
-/// time). Measured, from the container log:
+/// than incidentally saturating on the tracking error, which would make the outcome depend on
+/// the run. The container log reads:
 ///
 /// ```text
 /// WARNING franka_sim.motion_limits: motion limit violated:

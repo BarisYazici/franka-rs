@@ -12,16 +12,23 @@ build-dir = "../../target/book"
 create-missing = false
 
 [output.html]
-default-theme = "rust"
+# The light theme is restyled in theme/guide.css to match the landing page; the dark
+# themes keep mdBook's palettes, with ayu (the automatic dark choice) warmed to match.
+default-theme = "light"
 preferred-dark-theme = "ayu"
+additional-css = ["theme/guide.css"]
+# Collapsible sidebar groups. Without it every group is open; nothing else depends on it.
+additional-js = ["theme/guide.js"]
 git-repository-url = "https://github.com/BarisYazici/franka-rs"
 edit-url-template = "https://github.com/BarisYazici/franka-rs/edit/main/docs/book/{path}"
-# Part titles carry the structure; running chapter numbers across four parts would not.
+# Part titles carry the structure; running chapter numbers across the parts would not.
 no-section-label = true
+sidebar-header-nav = false
 
+# Nested chapters (the Raspberry Pi steps) start folded; the one you are on opens.
 [output.html.fold]
 enable = true
-level = 1
+level = 0
 
 # The 0.2.0 book was a flat list of pages; links to those names exist in the wild (README,
 # changelog, crates.io). Keep them working.

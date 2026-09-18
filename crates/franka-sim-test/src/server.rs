@@ -97,17 +97,14 @@ impl SimServer {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // The FER image is not published, so "no such image" is the expected failure on
-            // any machine but the one it was built on. Say what to do about it instead of
+            // a machine without a local build. Say what to do about it instead of
             // leaving a bare `docker run` error; these tests fail loudly by design rather
             // than skipping, because a silently skipped v5 suite is worse than a red one.
             let hint = if config.protocol == Protocol::V5 {
                 format!(
-                    "\nhint: the FER / FCI v5 image is not published anywhere. This run \
-                     wanted `{image_name}` (override with FRANKA_SIM_FER_IMAGE; \
-                     FRANKA_SIM_IMAGE names the FR3 image and is deliberately ignored here). \
-                     Build it (recipe kept privately, outside this repository):\n  docker \
-                     build -t {DEFAULT_FER_IMAGE} <franka-sim panda-v5 checkout>\nor point \
-                     FRANKA_SIM_ADDR at an already-running v5 server."
+                    "\nhint: no FER / FCI v5 image is published. Tag a v5-capable \
+                     franka-sim build as `{DEFAULT_FER_IMAGE}` or set FRANKA_SIM_FER_IMAGE \
+                     to its tag, or point FRANKA_SIM_ADDR at a running v5 server."
                 )
             } else {
                 format!(

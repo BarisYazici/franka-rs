@@ -9,10 +9,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Root of the libfranka 0.20.4 source tree whose build directory holds libfranka.so.
-# Same defaults as tools/model-reference and bench/cpp.
+# Same defaults as bench/cpp.
 set(LIBFRANKA_DIR "$ENV{HOME}/libfranka"
     CACHE PATH "libfranka 0.20.4 source root")
-set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_DIR}/build-rt-ignore"
+set(LIBFRANKA_BUILD_DIR "${LIBFRANKA_DIR}/build"
     CACHE PATH "libfranka 0.20.4 build directory containing libfranka.so")
 
 # Pinocchio / Eigen include paths, taken verbatim from tools/model-reference/CMakeLists.txt:

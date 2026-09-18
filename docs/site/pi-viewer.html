@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi 5 controller — 3D assembly</title>
+<link rel="stylesheet" href="pi-viewer.css">
+</head>
+<body>
+<header><a href="../getting-started/pi-enclosure.html">← Hardware guide and downloads</a><h1>Inside the Pi controller</h1><p>Inspect the reference assembly. The electronics models include estimated dimensions; check real parts before printing.</p></header>
+<main>
+<div class="toolbar" role="group" aria-label="Model">
+<button type="button" data-model="enclosure" aria-pressed="true">Enclosure</button>
+<button type="button" data-model="assembly" aria-pressed="false">Electronics</button>
+<button type="button" data-model="exploded" aria-pressed="false">Exploded</button>
+<button type="button" id="reset">Reset view</button>
+</div>
+<div class="viewer" id="viewer">
+<img id="poster" src="../assets/pi5/enclosure.png" alt="Rendered enclosure with ventilation and accessible Pi ports.">
+</div>
+<p id="status" role="status" aria-live="polite">Loading interactive view…</p>
+<p class="help">Drag to rotate · scroll or pinch to zoom · right-drag to pan. Keyboard: focus the view, then use arrow keys to rotate, +/− to zoom, or R to reset.</p>
+<p><a id="download" href="../assets/pi5/enclosure-scene.glb" download>Download this model (GLB)</a> · <a href="../getting-started/pi-enclosure.html">STL, 3MF and STEP downloads</a></p>
+<noscript><p>The illustration and downloads work without JavaScript. Enable JavaScript for the interactive viewer.</p></noscript>
+</main>
+<script src="vendor/three/three.min.js"></script>
+<script src="vendor/three/GLTFLoader.js"></script>
+<script src="vendor/three/OrbitControls.js"></script>
+<script src="pi-viewer.js"></script>
+</body>
+</html>

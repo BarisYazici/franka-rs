@@ -5,6 +5,379 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The Python node client gives queued state callbacks up to 250 ms to catch up after a
+  long local streamer stall, preventing a false disconnect on the next tick. Repeated
+  stalls cannot extend that deadline; normal node-silence detection and explicit
+  session-end handling remain unchanged.
+
+### Changed
+
+- **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
+  is now an `Option<Workspace>` defaulting to `None`, and `ArmConfig::workspace` is optional in
+  the TOML. The retired default -- x 0.2..0.8, y -0.5..0.5, z 0..0.8 in the base frame --
+  assumed a forward-facing bench and refused good poses anywhere else, and the box had no off
+  switch: `max_lead` and `max_lead_rotation` are disabled by a zero, but a zero is a legitimate
+  coordinate, so "no box" could only be written as an absurdly large one. A config that names a
+  box still gets exactly that box, and an inverted or non-finite one is still refused. With no
+  box a target is still bounded by the step and lead limits, the rate bucket, the leash and the
+  session's own deviation guard. `Workspace` moved from `config` to `guard`, beside the check
+  that enforces it.
+
+### Added
+
+- A live-tuning guide and node parameter protocol reference, including accepted-versus-applied
+  values, feedforward configuration, confirmation gates and session lifetime. A portable
+  two-arm node example retains the shipped defaults and shows optional CPU pinning and Hands.
+  The tuning panel instructions now use a dedicated environment and a standalone preset path.
+
+- **Live tuning: a running Cartesian session takes a change to the law and the plan, and
+  `franka-node` serves it over Zenoh.** `LiveTuning` is the set of parameters an operator may
+  move while the arm is engaged -- the joint springs and dampers, one Cartesian stiffness the
+  twelve-word preset is derived from, the IK's damping and nullspace gain, the velocity
+  feedforward's weight and cutoff, and the two budgets -- and `LiveTuning::BOUNDS` is how far
+  each of its twenty-five scalars may be moved. `CartesianTargetControl::tune` applies a partial
+  `TuningUpdate` all or nothing, clamps it to that table and returns the bounds that bit;
+  `tuning` reads the targets back. A change is never a step in the torque or in the command: the
+  fields that multiply a generally-nonzero state cross over `SLEW_TAU` (0.3 s), the budget's
+  velocity and acceleration are raised whole and lowered as a ramp at the next order's limit
+  (`TuningPolicy::StepUpGateDown`, whose `rate_word` names which word that limit is), and the
+  rest step. `TuningPolicy::remaining` and `descent` say what is left of a crossing from the
+  clock alone, so nothing is published back out of the realtime thread; the cycle itself holds
+  no `exp`, no allocation and no match on a policy. A session whose gains one Cartesian
+  stiffness cannot rebuild, or whose tracking is the robot's own, has no live tuning rather than
+  a partial one. `Otg::set_limits` and `MultiOtg::set_limits` are what carry a budget to a
+  running generator, with the caller's obligation -- never lower a limit below the state -- in
+  the OTG's rules as a fourth.
+- **`franka/<arm>/params/{schema,get,set}` and `params/current` on the node.** The schema is
+  *serialised from* `LiveTuning::BOUNDS`: every bound, default, unit, policy, danger flag,
+  slider range and log scale a panel renders is the row the arm is actually clamped to, so a
+  client cannot draw a slider the arm would refuse, and the damping floor no per-field row can
+  express is published beside them as a `relations` rule. `derived` adds what the library cannot
+  know and a client must not guess -- the leash, the gate's lead and step limits, the rates, the
+  connected arm's joint velocity limits and the Cartesian preset the one stiffness slider
+  scales. A `set` is partial and all or nothing, checked for shape by the node and for domain by
+  the library, refused with `stale` against a `base_version` that has moved on and with
+  `needs_confirm` where a value crosses a threshold that widens what the arm may do; the reply
+  echoes the clamped values so an operator learns a bound exists. The values are the session's
+  own: with no session there is nothing to tune and `get` answers with what the next one will
+  start at, and a session ending puts them back to the TOML's, deliberately, because an
+  experiment nobody saved is not one a new session should inherit.
+  `cargo run -p franka-node --example params_schema` dumps that schema without a robot, which
+  is what `tools/tuning-panel`'s mock owner serves instead of a copy of the numbers.
+
+- **A continuous weight and a bandwidth bound on the impedance law's velocity feedforward**
+  (`ImpedanceOptions::velocity_feedforward_gain`, `velocity_feedforward_cutoff`,
+  `MIN_FEEDFORWARD_CUTOFF`): the damping term is now `Kd (g dq_goal - dq)`, and `dq_goal` may
+  pass a first-order low-pass before it is fed forward. `velocity_feedforward` off is exactly
+  `g = 0`, and the default cutoff leaves the path bit-identical to before, so no existing
+  configuration changes. The feedforward is what carries the joint reference's own ripple into
+  the torque; bounding its bandwidth keeps the lead without the ripple, where the boolean could
+  only drop both. With the feedforward off the damping acts on the absolute velocity, so holding
+  speed `v` costs a standing error of `(Kqd / Kq) v` -- which a leash on the command then turns
+  into a speed limit, the reason the weight is continuous rather than a switch.
+- **`franka-node` config keys for the impedance law and the IK**: `ik_damping`,
+  `ik_nullspace_gain`, `velocity_feedforward`, `velocity_feedforward_gain`,
+  `velocity_feedforward_cutoff`, `cutoff_frequency`, `joint_stiffness` and `joint_damping`, all
+  defaulting to the library's values and applied to both session kinds. A Cartesian session's
+  joint gains are soft by design -- the Cartesian spring does the work -- which is wrong for an
+  arm driven mostly by its joint law, and there was no way to say so without a rebuild.
+
+- **`franka-description`** (`crates/franka-description`, no dependencies, `no_std`): the FR3
+  and FER link meshes, the Franka Hand and its finger from franka_description (Apache-2.0,
+  commit `7aeeddc`) as built-in glTF binaries, decimated to about 15 % of their triangles
+  (30 % for the hand, the finger whole) by `tools/franka-meshes/convert.py --decimate`
+  (meshoptimizer's quadric collapse; p99 surface deviation 0.21 to 1.00 mm across the
+  decimated meshes, the worst the FER's link3). FR3 734 kB, FER 464 kB. `Robot`, `MeshSet` (`links`,
+  `hand`, `finger`), `FR3`, `FER`, `MeshSet::for_robot`, `SOURCE_COMMIT`, `TRIANGLE_RATIO`;
+  `NOTICE` carries franka_description's notice and `LICENSE-franka_description` its LICENSE;
+  the root `NOTICE` carries the notice too and points at that LICENSE.
+- **Built-in meshes in `franka-rerun`**, feature `builtin-meshes` (default): replays and
+  recordings draw the arm with the robot's `franka-description` meshes out of the box, about
+  0.7 MB of static mesh per arm in an `.rrd`. `franka-rerun csv|log --meshes DIR` still draws
+  other files and `--no-meshes` none; `FlightOptions::meshes` is a `MeshChoice` (`Builtin`,
+  `Dir`, `Off`), and `Meshes::builtin`. franka-node's `record_meshes` is an optional
+  override, `"none"` turns the meshes off.
+- **`franka-node-client`, the Python client of franka-node** (`crates/franka-node/python`,
+  import `franka_node`): pure Python over `eclipse-zenoh` and numpy, one wheel released with the
+  crates under the workspace version. `Node`, `Arm` (lease on `with`, `home`, `stop`, `recover`,
+  `on_state`), `cartesian_targets`/`joint_targets` sessions with the `franka` verbs (`move_to`,
+  `move_by`, `follow`, `target`, `state`, `wait`, `stop`) whose streamer thread paces goals
+  under the node's `max_step` and `max_lead` and keeps the session alive, `Gripper` (`move`,
+  `grasp`, `homing`, `stop`, `state`), and `NodeError`, `Refused`, `NodeTimeout`,
+  `SessionEnded`, `ProtocolError`. `crates/franka-node/tests/wire.json` is the wire layout
+  machine-readable, checked against the Rust types and the client's; the client runs against
+  the node binary and franka-sim in CI.
+- **`franka-rerun`, `franka-node` and `franka-cam` on crates.io**, released with `franka-rs`
+  under one workspace version. A `v*` tag also attaches prebuilt `franka-node` and
+  `franka-cam` tarballs (aarch64 gnu and static musl, x86_64 gnu; built with `record`) to the
+  GitHub release, which `cargo binstall franka-node` installs.
+- **Joint velocity cap, fade and barrier of target control's torque backend.** No joint of
+  the goal moves faster than `ImpedanceOptions::joint_velocity_fraction` (0.7) of the arm's
+  velocity limit (`target_control::max_joint_velocity`, by the negotiated FCI version): a
+  faster step is scaled as a whole, keeping its direction, and the generator is re-anchored
+  on its own end-of-cycle velocity scaled the same way (keeping only the acceleration that
+  brakes) so it does not wind up. A joint measured faster than `velocity_barrier_fraction`
+  (0.85) of its limit meets `VELOCITY_BARRIER_GAIN` (20 Nm per rad/s) of damping on the
+  excess, at most its torque limit, before the clamp; between the cap and the barrier's
+  onset (`FADE_BAND`, 0.15 of the limit) the law's own torque along a joint's motion fades
+  out, so a joint catching up on its lag cannot cancel the barrier. `CartesianSent` and
+  `JointSent` carry `dq_goal`, `cap_scale` and `tau_envelope` (the velocity envelope's share
+  of `tau`). The goal is capped before a fast turn of the hand near a wrist singularity
+  reaches `joint_velocity_violation`; an ignored test replays a recorded teleoperation
+  session with the cap on and off (`tests/replay.rs`), and a simulator test turns a nearly
+  aligned wrist fast (`tests/sim_target_control/velocity_cap.rs`). `franka_rerun::TorqueLog`
+  and `Recorder::push_torque_at` record `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`
+  and `joints/tau_envelope`; franka-node takes `joint_velocity_fraction` and
+  `velocity_barrier_fraction` per arm and records them every cycle.
+- **Joint position limit guard of target control's torque backend.** The Cartesian IK solves
+  each step inside a per-joint box instead of clamping it: the joint velocity cap, and toward
+  each limit a braking envelope, per arm, that brings the goal to rest a margin inside it
+  (`ImpedanceOptions::joint_position_margin`, 0.05 rad, in [0.035, 0.5]). A primal active set,
+  warm-started, at most 12 passes, fixed-size and allocation-free, gives the exact
+  box-constrained damped least-squares step, so the free joints take over what a pinned one
+  cannot. The posture is clamped 0.3 rad beyond the margin and its pull fades out as the nearest
+  joint closes on the margin. The orientation rows are weighted by the new
+  `IkOptions::rotation_weight` (0.1 m/rad): with several joints pinned the tool's position is
+  held, the rotation stops at the wall and the elbow does not swing, where the clamp stopped the
+  rotation and walked the elbow. While the goal is stalled, position comes first, µm off (the
+  translation solved alone, then the orientation with it held, the translation rows weighed 30
+  times against it), eased in and out over 0.5 s. A stall flag on the pins' pressure (on above
+  2e-5 weighted m per cycle, off on 20 of the last 40 cycles in which no position pin pushes
+  at all)
+  restarts the generator with the velocity into the wall removed per block and the rest cut to
+  what the goal's step carried, so it
+  neither winds up behind a wall nor lags a reversal. What went out is the goal's own step, and
+  the generator is re-anchored as far ahead of the goal as it was, never further than its own
+  step: the IK's lag behind it stays, so the goal velocity does not saw at the cap, and a goal
+  closing a lag does not drag the desired along. A `stop()` held at a wall the target lies
+  beyond counts as landed once the goal is within the settle tolerance of the target on every
+  other axis and has come no tolerance closer to it for the time a generator needs from rest to
+  cover two (0.1 s at the default budget). The
+  joint interface scales its step into the same box. At the measured arm the law's torque toward
+  a limit fades out over
+  `POSITION_FADE_BAND` (0.02 rad) inside the margin, and beyond it a spring of
+  `POSITION_BARRIER_STIFFNESS` (12.5 /rad × the torque clamp, at most the clamp, ramped in over
+  500 cycles) pushes the joint out; the velocity barrier's onset and fade start drop to the
+  braking envelope there. On the FR3 the box, the backstop, the restart, the fade and the
+  barrier use the robot specifications' position-dependent joint velocity envelope instead of
+  the flat limits, the step's limits taken where it ends and the loop's at the arm and a cycle
+  on (the recorded FR3 faults follow the specifications' parameters, not those of the deprecated
+  `rate_limiting::compute_{lower,upper}_limits_joint_velocity`, which are unchanged); Franka
+  publishes no such envelope for the FER and recorded FER sessions ran a joint at 2.26 times an
+  assumed one without a reflex, so there the robot's limit stays the published flat one and only
+  the guard's braking narrows toward a position limit. That braking profile is
+  `sqrt(k x + c²) − c` with `k = 2a`, under `sqrt(2 a x)`: `a` is the FR3's published `ddq_dec`
+  on that arm and half the FER's published joint acceleration limit on the FER, which unlike the
+  FR3 constants stays inside the FER's own rating on every joint. The velocity barrier's gain is
+  lowered in proportion under a torque clamp below the preset. `CartesianSent` and `JointSent`
+  carry `pinned` (0 free, ∓1 position, ∓2 velocity bound) and `tau_position` (the position
+  envelope's share of `tau`), `CartesianSent` also `stall_pressure`, `stalled` and `ik_passes`;
+  `franka_rerun::TorqueLog` records them as `joints/pinned`, `joints/tau_position`, `ik/stall`
+  and `ik/passes`, and franka-node takes `joint_position_margin` per arm, its joint gate
+  refusing targets inside it. Self-collision is not modelled, and the spring is sized for a 0.02
+  rad overshoot of the margin. Hardware evidence: in teleoperation on an FER with the torque
+  backend a goal clamped 0.02 rad inside joint 4's or joint 2's limit let the arm run up to 20
+  mrad past it, onto the limit, and turns of the hand near wrist limits stalled while the elbow
+  swung; the guard itself is tested on the model and a simulated plant, not yet on a robot.
+- **`franka-node`** (`crates/franka-node`): a Zenoh node in front of
+  Cartesian target control. One process owns one or more robots and, per arm, runs the
+  impedance backend on the library's realtime thread; clients publish 80-byte pose or joint
+  targets at any rate on `franka/<arm>/target`, read the arm's state at 100 Hz on
+  `franka/<arm>/state` and drive `acquire`/`enable`/`stop`/`release`/`recover`/`home` through
+  queryables. A per-arm
+  thread is the single writer of the target seqlock; targets are gated (lease holder, order,
+  finite, unit quaternion, step, lead, rate, and a workspace box when a config names one --
+  there is none by default) before they reach it; a client's liveliness
+  token and a target-staleness watchdog stop the arm when the commander goes away. Config in
+  TOML, a `client` example, unit tests and a simulator test (`tests/sim_node.rs`).
+  - Joint targets and `home`: `enable` takes `"mode": "joints"` for a session on
+    `start_joint_target_control` (targets are `q`, gated per joint by `max_step_joint` and the
+    arm's joint limits; the state's `target` carries `q` with the joints flag), and `home`
+    drives the arm to the ready pose at a `speed` of the limits, answering when it has
+    arrived; an early end (stop, lost lease, timeout, shutdown) decelerates in place. Config
+    keys `max_step_joint`, `joint_budget_fraction`, `joint_max_deviation`; the library's
+    `target_control::joint_position_limits` is public.
+  - A status topic, `franka/node/<name>/status`: JSON once a second with the node's name,
+    version and uptime and, per arm, the phase, holder, mode and the accepted, refused,
+    dropped and decode-failure counters, read from atomics the arm thread stores into with
+    every state tick (`ArmStats`, `transport::status_publisher`). A systemd unit and install
+    notes in `crates/franka-node/deploy/`, and a book page, *Serve arms over Zenoh*, with a
+    Python commander and the Raspberry Pi build.
+  - Episode recording behind the cargo feature `record` (pulls `franka-rerun`, Rust 1.96):
+    with `record_dir` set, every session (`enable` in either mode, `home`) is one
+    `<arm>-<UTC stamp>.rrd` written by a `franka_rerun::Recorder` in the loop's observer,
+    with the accepted and refused targets logged from the arm thread under
+    `commander/target/*` and `events`; the status gains `recording`, the open file's name.
+    `Recorder`'s constructors take `impl Into<Arc<Model>>` so one model serves many
+    recordings, and `franka_rerun` re-exports `rerun`.
+  - The gripper is recorded with the arm: width, commanded width, grasped, moving and fault go
+    into the session's `.rrd` under `gripper/*` at the 20 Hz the gripper state is published, so a
+    replay has the hand beside the arm that carried it. The flight recorder's default layout
+    gained a tab for them and one for `<arm>/cam/*`, the entities a camera node records into the
+    same episode; an explicit blueprint turns the viewer's automatic layout off, so an entity no
+    view names would otherwise be in the file and not on screen.
+  - An `episode` topic, `franka/<arm>/episode`: one JSON line at a session's start and end
+    with the arm, the session's `recording_id`, the `.rrd` file name and the node's clock,
+    and the id again in the status as `episode`. With the `record` feature the id is the
+    Rerun `RecordingId` of the arm's own file (its stem), so a recorder in another process
+    writes a file under the same id and a viewer loads them as one recording.
+  - The target watchdog is fed by arrival, not acceptance: `stop_after_ms` now measures from
+    the last target that reached the guard's content checks from the lease holder in order
+    (`Reason::from_the_commander`), and `hold_after_ms` still measures from the last *accepted*
+    one, so `holding` keeps its meaning. A commander whose targets are all being refused --
+    parked at the workspace wall, rate limited, outrunning the arm, or pushing against a hand
+    on it -- was treated exactly like one that had died: the session stopped, which blocks the
+    arm thread for the library's settle and lands in Idle needing a fresh `enable`. Targets
+    that are not the commander's (wrong kind, not the holder, out of order) are still no sign
+    of life, so a silent commander is stopped whatever else is on the topic.
+  - A lead limit and an anchor flag, for a commander a human drives. `max_step` bounds a
+    distance per message and never looks at the arm, so a commander faster than the generator
+    walks the target ahead without limit and the arm coasts the whole accumulated lead when the
+    commander stops. `max_lead` (0.05 m) and `max_lead_rotation` (0.26 rad) bound how far an
+    accepted Cartesian target may be from the measured pose, `0` disabling either, with
+    `Reason::Lead` and `Reason::LeadRotation` counted and logged like every other refusal; a
+    refusal still spends no token and advances nothing. `TargetMsg.flags` bit 0
+    (`TARGET_ANCHOR`) has that target's step measured from the arm instead of from the previous
+    accepted target, which is how a stream that jumped — a re-latched clutch, a moved tracking
+    frame, an arm a hand has pushed off its target — gets back in; it lifts no limit, so an
+    anchored target is bounded by the smaller of `max_step` and `max_lead` of where the arm is
+    and anchoring every message is the most conservative way to command the node, not a way
+    around it; with either lead limit at 0 the flag is ignored rather than left unbounded. A
+    lead limit must be 0 or clear of `leash`, below which it would refuse the tracking error a
+    healthy commander already has. The message's size and layout are unchanged and an unknown
+    flag bit is ignored.
+  - `node` and `cam` are refused as arm names (`RESERVED_ARM_NAMES`): `franka/node/*` is the
+    status topic and `franka/cam/*` belongs to a camera node.
+  - `[zenoh] mode = "client"` dials the routers in `connect` and listens on nothing, which is
+    how a node behind NAT serves a commander that is not on its network; `peer`, the default,
+    is unchanged. A client with no router named is a config error. The TLS transport is compiled
+    in, and `[zenoh] zenoh_config` names a Zenoh file to start from, so the certificates of a
+    `tls/` endpoint, authentication and access control are configuration rather than code; the
+    table's own keys are applied on top of that file.
+  - Grippers: a `Gripper` trait (`command`, `grasp`, `home`, `stop`, `state`; metres) and
+    `FrankaHand`, the Franka Hand over `franka::Gripper` on a worker and a reader thread. Per
+    arm, `franka/<arm>/gripper/target` takes a 40-byte `GripperMsg` (width or grasp) from
+    the lease holder in any phase, `franka/<arm>/gripper/state` carries a 40-byte
+    `GripperStateMsg` at 20 Hz, and `cmd/gripper_home` (the holder's, answered when homed)
+    and `cmd/gripper_stop` (anyone's) join the verbs; the status gains `gripper`. Config
+    keys `gripper = "hand"` and `gripper_speed`. The node is now `franka_node::run(config,
+    factory)` with a `GripperFactory`, so a binary of its own can add drivers; the client
+    example gains `gripper <width>`, `gripper grasp <width> <force>` and `gripper home`.
+- **`franka-cam`** (`crates/franka-cam`): the wire and the configuration
+  of a Zenoh camera node that publishes V4L2 frames with their capture timestamps next to the
+  arm node. `CameraMsg` is a 36-byte header (`"<BBHHHIQQQ"`) carrying the format, the frame
+  size, the driver's sequence number and the capture, dequeue and wall clocks, followed by the
+  frame; a frame of a format whose length the header fixes is refused when it does not match.
+  `CamConfig` reads `[zenoh]` and one `[[camera]]` table per camera. The capture path is there
+  too: raw V4L2 ioctls with the struct layouts and ioctl numbers asserted against
+  `videodev2.h`, an mmap stream that refuses a queue stamped with anything but
+  `CLOCK_MONOTONIC`, one thread per camera at normal priority pinned to the config's `cpu`, one
+  allocation per frame handed to Zenoh, sequence gaps counted as dropped by the driver, and a
+  reopen with backoff when the device disappears. Per camera, `franka/cam/<name>/frame` at the
+  camera's rate and, with `preview_fps`, every nth frame on `franka/cam/<name>/preview` for a
+  consumer that must not pull the full rate; `franka/cam/<name>/state` and
+  `franka/node/<name>/status` once a second. `[zenoh]` takes the arm node's keys, including
+  `mode = "client"` and `zenoh_config`, so a camera behind NAT can feed a consumer that is not on
+  its network over TLS. A camera's `cpu` may not name an isolated core, because those belong to
+  the realtime loops.
+
+  Frames go into the arm's episode behind the `record` feature: a camera with a `record_with`
+  follows that arm's `franka/<arm>/episode`, and on a session's start opens
+  `<record_dir>/<recording_id>-<arm>-cam.rrd` under the same Rerun `RecordingId` and application id as
+  the arm's own file, so a viewer loads the two as one recording. Frames are logged as encoded
+  images under `<arm>/cam/<name>`, where that arm's camera tab is rooted, at the robot time the
+  arm's `state` topic maps them to, through a bounded channel and a writer thread, so the capture
+  thread neither blocks on Rerun nor copies a frame between episodes. All the cameras of one arm
+  share its file. A camera on another host does not record, because two monotonic clocks have no
+  common origin; a format other than MJPEG is
+  refused; and what an open episode could not record is counted in the state topic's
+  `record_dropped`.
+- **One recording for two arms.** A collector names an episode and every arm of it writes into
+  one Rerun recording, synchronised on the host's clock.
+  - `enable` and `home` take `"episode": "<name>"`, `[A-Za-z0-9_-]{1,128}`: the session's
+    `recording_id` is that name, the arm's file is `<name>-<arm>.rrd`, and the episode topic
+    publishes it, so two arms enabled with one name write two files a viewer loads as one
+    recording -- no coordination and no timing heuristic in the node. Without a name nothing
+    changes. A name of another shape is refused with the reason and starts nothing. The client
+    example takes `--episode NAME`.
+  - **`franka_rerun::HOST_TIMELINE`**, `host_time`: every row of a live recording carries the
+    host's `CLOCK_MONOTONIC` beside `robot_time`, stamped in `Recorder::push` where the record is
+    taken (still no allocation there, which `tests/flight.rs` proves). Two arms are two
+    controllers, so their `robot_time`s are unrelated; `host_time` is the axis they agree on, and
+    the layout of a named episode opens on it. An offline replay carries `robot_time` alone.
+  - **`franka_rerun::Prefix`**, `FlightOptions::prefix`: every entity of a recording goes under a
+    name (`L/joints/q`), the node's being the arm's. `scene`, `meshes`, the styles and the
+    blueprints take it; `franka-rerun log --prefix NAME` does the same for a replay.
+  - `flight::send_blueprint` takes a `Layout`, the prefixes of every robot in the recording and
+    the timeline the time panel opens on, and lays out those views per robot; every arm of a node
+    sends the same one, so a shared recording is laid out whichever arm's blueprint the viewer
+    reads first. `RecorderOptions::layout` carries it.
+  - `franka-cam`'s file is `<recording_id>-<arm>-cam.rrd`, so two cameras following different arms
+    of one episode do not collide, and a frame is logged on `host_time` (its own exposure stamp)
+    as well as on the arm's `robot_time`. A frame the arm's clock pairs cannot map is now written
+    on `host_time` alone rather than dropped.
+  - `ee/orientation`: the measured and the commanded end effector rotation as quaternions `xyzw`
+    at every cycle, each continued in sign from the last, for an exporter that needs the
+    orientation at the rate the rest of the state is at (the 3D scene's pose stays decimated).
+  - `Recorder::push_at` takes a host stamp the caller has already read, so the node's observer
+    reads the clock once per cycle and stamps the recorder's row and its own `commander/target/*`
+    and `gripper/*` rows with the same instant.
+- **`franka::realtime::monotonic_ns`**, the host's `CLOCK_MONOTONIC` in nanoseconds. The node's
+  `monotonic_ns`, and with it every `t_node_ns` on the wire, now reads that clock instead of an
+  `Instant` measured from the process's start, so a second process on the same host puts its
+  own samples on the same timeline. `franka_rerun::APPLICATION_ID` names the Rerun application
+  id every stream of that crate opens, and `Recorder::to_file_with_id` opens a file under a
+  given `RecordingId`, which is what lets two processes write one recording.
+- **CPU pinning of the target-control loop.** `TargetControlOptions` /
+  `JointTargetControlOptions` gain `cpu: Option<usize>` (`with_cpu`): the loop thread pins
+  itself to that core with `sched_setaffinity` right after raising its priority, through the
+  new `franka::realtime::pin_current_thread_to_cpu`; a failure is `FrankaError::Realtime`
+  under `RealtimeConfig::Enforce` and ignored under `Ignore`. `franka-node` passes the arm's
+  `cpu` key through.
+- **Seven diagnostic channels of the torque backend.** `CartesianSent` gains `ik_step` and
+  `ik_step_clipped` (the cycle's largest raw IK step norm and what the per-joint box clipped
+  off it, rad), `ik_blend` (the priority blend, 0 the weighted solve, 1 position first), `held`
+  (the goal held at a wall) and `wall_age` (cycles since each block's wall was last pushed on,
+  -1 for no wall). `franka_rerun::TorqueLog` carries them beside `ee_velocity`, `ik_error` and
+  `leash`, and the recorder writes `ik/{step, blend, held, error}` and `ee/{velocity, leash}`,
+  plus `ee/orientation/commanded` (`flight::COMMANDED_ORIENTATION`), the rotation of the pose
+  the command carries, which is what the torque backend fills where `state.O_T_EE_c` is zero.
+  The default layout names every one of them. The addition is additive: an older recording opens
+  unchanged, and a record pushed without a `TorqueLog` writes none of the new series.
+
+### Changed
+
+- The minimum Rust version is 1.89, what `nalgebra` 0.35 already required; 1.85 was stale.
+- The torque backend caps the goal at 0.7 of each joint's velocity limit by default.
+  `IkOptions::max_step` (10 rad/s) is removed; the cap bounds the IK's step instead.
+- New public fields break struct literals: `ImpedanceOptions` gains
+  `joint_velocity_fraction` and `velocity_barrier_fraction`; `CartesianSent` and `JointSent`
+  gain `dq_goal`, `cap_scale` and `tau_envelope`.
+- A `joint_velocity_fraction` above `velocity_barrier_fraction` (0.85) fails `validate`
+  unless the barrier fraction is raised too.
+- `IkOptions::limit_margin` is removed; `ImpedanceOptions::joint_position_margin` (0.05 rad)
+  replaces the 0.02 rad clamp. `ImpedanceOptions` gains that field, `IkOptions` gains
+  `rotation_weight`, `CartesianSent` gains `pinned`, `tau_position`, `ik_passes`,
+  `stall_pressure` and `stalled`, `JointSent` gains `pinned` and `tau_position`, and
+  `franka_rerun::TorqueLog` the recorded ones: struct literals break.
+- The Cartesian IK weighs orientation by `rotation_weight` 0.1 m/rad instead of 1, also in free
+  space; set it to 1 for the previous trade. `ik_error` and `IkOptions::tolerance` are the
+  weighted norm (1e-6 is 1 µm or 10 µrad).
+- `cap_scale` is the fraction of the generator's step the goal carried on a cycle a joint limit,
+  position or velocity, cut it, and exactly 1 on every other cycle.
+- With the impedance backend a joint target or posture is refused inside `joint_position_margin`
+  of a joint limit (`JOINT_LIMIT_INSET`, 0.02 rad, with the robot's controller).
+- `CartesianSent` gains `ik_step`, `ik_step_clipped`, `ik_blend`, `held` and `wall_age`, and
+  `franka_rerun::TorqueLog` gains `ee_velocity`, `ik_step`, `ik_blend`, `held`, `wall_age`,
+  `ik_error` and `leash`: adding a field is semver-visible because neither is
+  `#[non_exhaustive]`, and both stay exhaustive on purpose so that a downstream test can still
+  build one field by field. `TorqueLog::default()` leaves `wall_age` at 0, which reads as a
+  wall; a producer with no walls sets `[-1; 2]` itself.
+
 ## [0.3.0] - 2026-09-10
 
 ### Added
@@ -47,9 +420,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `backend` (`'impedance'` | `'robot'`), `cartesian_stiffness`, `cartesian_damping` (6
   values, or one float for the translational three), `joint_stiffness`, `joint_damping`,
   `torque_limits`, `posture`, `torque_cutoff`, `velocity_feedforward`, `leash` and
-  `project_joint_gains`. Run on franka-sim and on two real FERs (2026-09-10: stepped and
-  rotating targets, joint targets, stops, and push tests that measured the felt stiffness,
-  the leash and the force a fast push reaches); not yet on an FR3. See
+  `project_joint_gains`. See
   [The impedance backend](docs/book/src/reference/impedance.md).
 
 ### Changed
@@ -85,7 +456,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recorder's hook). `TargetSlot<N>` is the seqlock underneath, public. `MultiOtg::with_limits`
   builds a generator with per-axis limits and `realtime::set_current_thread_scheduler_priority`
   raises a thread to a chosen priority. Tested on franka-sim
-  (`tests/sim_target_control.rs`) and run on a real FER and an FR3.
+  (`tests/sim_target_control.rs`).
 - **Cartesian target control carries an orientation.** `CartesianTargetControl::set_pose`
   (column-major, as `O_T_EE`; a rotation block within 1e-3 of orthonormal is repaired, one
   further off refused), `set_target(position, quaternion)` and `set_orientation(quaternion)`
@@ -108,9 +479,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   stalled targets becomes a C2 command that never exceeds its velocity, acceleration and jerk
   limits, does not overshoot a reachable target, lands exactly and stays there; optional axis
   synchronisation, `set_position` to re-anchor on the robot's echo, `per_axis_for_norm` for
-  a budget that is a norm. Dependency-free and allocation-free. Its first outing on a real FER
-  ended in the rate limiter behind it orbiting at the velocity cap, which the module
-  documentation explains and two replay tests pin down.
+  a budget that is a norm. Dependency-free and allocation-free. The module documentation
+  gives the rules that keep a rate limiter behind it from orbiting at the velocity cap, and
+  two replay tests pin them down.
 - **`nonrealtime_commander` example**: a scripted (or stdin) commander sets Cartesian
   targets through `start_cartesian_target_control` (`--bridged`, `--budget V,A,J`), or
   hands them to a bare `control_cartesian_pose` to provoke a reflex (`--raw`); `--log`
@@ -129,9 +500,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`robot.model()`), `franka.rotated`, and `FrankaError` / `ControlException`. A Cartesian
   target carries an optional unit quaternion, a delta an optional rotation vector. The
   1 kHz loop stays on its Rust thread and never takes the GIL. PyO3 0.29, abi3 for
-  Python 3.9+; tested against franka-sim in CI's `python-bindings` job and run on a Panda
-  (`crates/franka-py/examples/policy_loop.py`; `rotate.py` and the `quickstart.ipynb`
-  notebook are the other two examples). See [Python](docs/book/src/getting-started/python.md).
+  Python 3.9+; tested against franka-sim in CI's `python-bindings` job. Examples:
+  `crates/franka-py/examples/policy_loop.py`, `rotate.py` and the `quickstart.ipynb`
+  notebook. See [Python](docs/book/src/getting-started/python.md).
   `.github/workflows/release.yml` builds the wheels and publishes them and the crate on a
   `v*` tag.
 - **`automatic_error_recovery` example**: command-line recovery that prints the robot mode

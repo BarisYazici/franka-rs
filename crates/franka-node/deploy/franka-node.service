@@ -1,0 +1,25 @@
+[Unit]
+Description=franka-node: Zenoh node in front of franka-rs target control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Set User= to the account that runs the node (an unedited copy fails to start on purpose).
+# Under systemd the Limit* lines below, not pam_limits, set the limits Franka's realtime
+# setup recommends (rtprio, memlock); the node's own threads run at normal priority.
+User=CHANGE_ME
+Group=realtime
+ExecStart=/usr/local/bin/franka-node /etc/franka-node/node.toml
+# The node logs at info by default; refusals with their reasons need debug:
+# Environment=RUST_LOG=debug
+Restart=on-failure
+RestartSec=2
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+# SIGINT is how the node stops every arm before it exits. Arms stop one after the other,
+# each within the library's 5 s stop timeout.
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

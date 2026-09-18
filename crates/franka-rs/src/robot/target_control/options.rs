@@ -2,19 +2,13 @@
 
 use super::cartesian::{CartesianObserver, CartesianSent};
 use super::joint::{JointObserver, JointSent};
-use super::{validate_common, Backend, ImpedanceOptions, Settle};
+use super::{validate_common, Backend, ImpedanceOptions, Scheduling, Settle};
 use crate::control_types::ControllerMode;
 use crate::error::{FrankaError, FrankaResult};
 use crate::otg::{MultiOtg, OtgLimits};
-use crate::rate_limiting;
 use crate::robot::control_loop::rate_limits;
 use crate::robot_state::RobotState;
 use crate::wire::robot::codec::FciVersion;
-
-/// The FR3's flat joint velocity caps, rad/s: the `<limit velocity>` of its URDF, which is
-/// what the position-dependent envelope of `compute_upper_limits_joint_velocity` saturates
-/// at away from the joint limits.
-const FR3_MAX_JOINT_VELOCITY: [f64; 7] = [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26];
 
 /// The fraction of the robot's joint limits [`JointTargetControlOptions::default`] budgets.
 pub const DEFAULT_LIMIT_FRACTION: f64 = 0.2;
@@ -24,9 +18,9 @@ pub const DEFAULT_LIMIT_FRACTION: f64 = 0.2;
 pub struct TargetControlOptions {
     /// The translational budget as a *norm*: m/s, m/s^2, m/s^3. The generator gets
     /// [`OtgLimits::per_axis_for_norm`]`(3)` of it and the backstop the norm itself.
-    /// Default 0.3, 0.5, 20: measured on a real FER, the robot's joint-space continuity check
-    /// refuses 2.5 m/s^2 near the ready pose and its collision threshold trips above about
-    /// 1 m/s^2, so the default sits well below both.
+    /// Default 0.3, 0.5, 20: near an FER's ready pose the robot's joint-space continuity check
+    /// refuses 2.5 m/s^2 and its collision threshold trips above about 1 m/s^2, so the default
+    /// sits well below both.
     pub limits: OtgLimits,
     /// The rotational budget as a *norm*: rad/s, rad/s^2, rad/s^3; the generator gets
     /// libfranka's pose-interface factor (0.99) of its `per_axis_for_norm(3)`, the backstop
@@ -55,6 +49,10 @@ pub struct TargetControlOptions {
     pub limit_rate: bool,
     /// `SCHED_FIFO` priority for the loop thread; `None` is the highest, as in `Robot::new`.
     pub realtime_priority: Option<i32>,
+    /// The CPU the loop thread is pinned to after raising its priority
+    /// ([`crate::realtime::pin_current_thread_to_cpu`]); `None`, the default, leaves it to
+    /// the scheduler.
+    pub cpu: Option<usize>,
     /// Called every cycle on the realtime thread; see [`CartesianObserver`].
     pub observer: Option<CartesianObserver>,
 }
@@ -79,6 +77,7 @@ impl Default for TargetControlOptions {
             settle: Settle::default(),
             limit_rate: true,
             realtime_priority: None,
+            cpu: None,
             observer: None,
         }
     }
@@ -96,6 +95,7 @@ impl std::fmt::Debug for TargetControlOptions {
             .field("settle", &self.settle)
             .field("limit_rate", &self.limit_rate)
             .field("realtime_priority", &self.realtime_priority)
+            .field("cpu", &self.cpu)
             .field("observer", &self.observer.is_some())
             .finish()
     }
@@ -156,6 +156,12 @@ impl TargetControlOptions {
         self
     }
 
+    /// Sets the CPU the loop thread is pinned to (`None`: not pinned).
+    pub fn with_cpu(mut self, cpu: Option<usize>) -> Self {
+        self.cpu = cpu;
+        self
+    }
+
     /// Installs the observer.
     pub fn with_observer(
         mut self,
@@ -186,9 +192,16 @@ impl TargetControlOptions {
         validate_common(
             self.max_deviation,
             self.settle,
-            self.realtime_priority,
+            self.scheduling(),
             &self.backend,
         )
+    }
+
+    pub(super) fn scheduling(&self) -> Scheduling {
+        Scheduling {
+            priority: self.realtime_priority,
+            cpu: self.cpu,
+        }
     }
 }
 
@@ -218,6 +231,10 @@ pub struct JointTargetControlOptions {
     pub limit_rate: bool,
     /// `SCHED_FIFO` priority for the loop thread; `None` is the highest, as in `Robot::new`.
     pub realtime_priority: Option<i32>,
+    /// The CPU the loop thread is pinned to after raising its priority
+    /// ([`crate::realtime::pin_current_thread_to_cpu`]); `None`, the default, leaves it to
+    /// the scheduler.
+    pub cpu: Option<usize>,
     /// Called every cycle on the realtime thread; see [`JointObserver`].
     pub observer: Option<JointObserver>,
 }
@@ -232,6 +249,7 @@ impl Default for JointTargetControlOptions {
             settle: Settle::default(),
             limit_rate: true,
             realtime_priority: None,
+            cpu: None,
             observer: None,
         }
     }
@@ -247,21 +265,18 @@ impl std::fmt::Debug for JointTargetControlOptions {
             .field("settle", &self.settle)
             .field("limit_rate", &self.limit_rate)
             .field("realtime_priority", &self.realtime_priority)
+            .field("cpu", &self.cpu)
             .field("observer", &self.observer.is_some())
             .finish()
     }
 }
 
 impl JointTargetControlOptions {
-    /// `fraction` of `version`'s joint limits: the FR3's flat velocity caps or the FER's
-    /// `MAX_JOINT_VELOCITY`, and the version's `MAX_JOINT_ACCELERATION` and
-    /// `MAX_JOINT_JERK`.
+    /// `fraction` of `version`'s joint limits: [`max_joint_velocity`](super::max_joint_velocity)
+    /// and the version's `MAX_JOINT_ACCELERATION` and `MAX_JOINT_JERK`.
     pub fn scaled_limits(version: FciVersion, fraction: f64) -> [OtgLimits; 7] {
         let rate = rate_limits(version);
-        let velocity = match version {
-            FciVersion::V5 => rate_limiting::fer::MAX_JOINT_VELOCITY,
-            FciVersion::V10 => FR3_MAX_JOINT_VELOCITY,
-        };
+        let velocity = super::max_joint_velocity(version);
         std::array::from_fn(|i| OtgLimits {
             max_velocity: velocity[i] * fraction,
             max_acceleration: rate.max_joint_acceleration[i] * fraction,
@@ -311,6 +326,12 @@ impl JointTargetControlOptions {
         self
     }
 
+    /// Sets the CPU the loop thread is pinned to (`None`: not pinned).
+    pub fn with_cpu(mut self, cpu: Option<usize>) -> Self {
+        self.cpu = cpu;
+        self
+    }
+
     /// Installs the observer.
     pub fn with_observer(
         mut self,
@@ -331,8 +352,15 @@ impl JointTargetControlOptions {
         validate_common(
             self.max_deviation,
             self.settle,
-            self.realtime_priority,
+            self.scheduling(),
             &self.backend,
         )
+    }
+
+    pub(super) fn scheduling(&self) -> Scheduling {
+        Scheduling {
+            priority: self.realtime_priority,
+            cpu: self.cpu,
+        }
     }
 }

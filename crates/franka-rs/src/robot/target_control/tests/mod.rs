@@ -1,17 +1,37 @@
 //! The shared scaffolding: the mock arm, the recording observer. The generator runner in
-//! [`runner`], the pose path in [`pose`], the impedance law in [`impedance`], the option
-//! validation in [`options`], the rotation arithmetic in [`rotation`], the torque loops in
-//! [`torque_cartesian`] and [`torque_joint`] on the helpers of [`torque`].
+//! [`runner`], the pose path in [`pose`], the impedance law in [`impedance`], the joint
+//! velocity envelope in [`velocity`], the option validation in [`options`], the live-tuning
+//! bounds in [`tuning`], their gate in [`tuning_update`], the crossing to them in
+//! [`tuning_slew`], the slot they arrive through in [`tuning_slot`], the loop that applies
+//! them in [`tuning_loop`] and the generator's end of them in [`tuning_loop::budget`], the
+//! rotation arithmetic in
+//! [`rotation`], the torque loops in [`torque_cartesian`] and [`torque_joint`] on the helpers
+//! of [`torque`].
 
+mod active_set;
+mod bench_ik;
+mod envelope;
 mod ik;
 mod impedance;
+mod limit_plant;
 mod options;
+mod plant;
 mod pose;
+mod position;
+mod replay;
 mod rotation;
 mod runner;
 mod torque;
 mod torque_cartesian;
 mod torque_joint;
+mod torque_position;
+mod torque_velocity;
+mod tuning;
+mod tuning_loop;
+mod tuning_slew;
+mod tuning_slot;
+mod tuning_update;
+mod velocity;
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::sync::{Arc, Mutex};
@@ -68,14 +88,11 @@ impl Arm {
     fn drag_along_x(&mut self, dx: f64) {
         let mut pose = self.pose();
         pose[12] += dx;
-        let options = IkOptions {
-            max_step: 1.0,
-            ..IkOptions::default()
-        };
-        let mut ik = Ik::new(
+        let mut ik = Ik::as_run(
             Arc::clone(&self.model),
-            options,
+            IkOptions::default(),
             rate_limiting::fer::JOINT_POSITION_LIMITS,
+            [1e3; 7],
             self.state.q,
             self.state.F_T_EE,
             self.state.EE_T_K,

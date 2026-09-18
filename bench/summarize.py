@@ -115,7 +115,7 @@ def hardware_section(add, hardware_runs, stage, meta):
     """
     host = stage.get("host") or meta.get("host") or "?"
     # Which arm this was: the FR3 the harness was written for, or whatever `meta.json`
-    # names (the FER campaign records `robot`).
+    # names in `robot`.
     robot = meta.get("robot") or "FR3"
     add(f"## {robot} hardware ({host})")
     add("")

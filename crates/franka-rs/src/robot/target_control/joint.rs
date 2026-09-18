@@ -5,11 +5,12 @@
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
+use super::position::{JointLimits, VelocityLimit};
 use super::runner::{identity, Step};
 use super::torque::{JointTracker, TorqueLoop};
 use super::{
-    check_joint_limits, check_posture, joint_position_limits, spawn, Backend, Handle,
-    ImpedanceOptions, JointTargetControlOptions, Runner, Shared, DEFAULT_LIMIT_FRACTION,
+    check_joint_limits, check_posture, joint_limit_inset, joint_position_limits, spawn, Backend,
+    Handle, ImpedanceOptions, JointTargetControlOptions, Runner, Shared, DEFAULT_LIMIT_FRACTION,
 };
 use crate::control_types::JointPositions;
 use crate::error::FrankaResult;
@@ -19,6 +20,7 @@ use crate::otg::OtgLimits;
 use crate::rate_limiting::limit_rate_joint_positions;
 use crate::robot::Robot;
 use crate::robot_state::RobotState;
+use crate::wire::robot::codec::FciVersion;
 
 /// What one cycle sent, for the observer.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,9 +41,33 @@ pub struct JointSent {
     pub backstop_alteration: f64,
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
+    /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
+    /// forward, under the joint velocity cap; zeros while holding and with
+    /// [`Backend::RobotController`].
+    pub dq_goal: [f64; 7],
+    /// The scale this cycle's goal step was cut by to stay in the joint limits' box: under
+    /// [`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction)
+    /// of the joint velocity limits, and braking to stop at
+    /// [`ImpedanceOptions::joint_position_margin`](super::ImpedanceOptions::joint_position_margin).
+    /// Exactly 1 when it was not, and with [`Backend::RobotController`].
+    pub cap_scale: f64,
+    /// Per joint, the bound that cut the step: 0 none, -1 / +1 the lower / upper position bound,
+    /// -2 / +2 the velocity bound; zeros with [`Backend::RobotController`].
+    pub pinned: [i8; 7],
     /// The torques sent, Nm, clamped to the torque limits; zeros with
     /// [`Backend::RobotController`].
     pub tau: [f64; 7],
+    /// The velocity envelope's share of `tau`, Nm, before the clamp: the barrier opposing every
+    /// joint measured faster than
+    /// [`ImpedanceOptions::velocity_barrier_fraction`](super::ImpedanceOptions::velocity_barrier_fraction)
+    /// of its limit, less the law's torque along a joint's motion faded out above the fade's
+    /// start ([`FADE_BAND`](super::FADE_BAND)); zeros below it and with
+    /// [`Backend::RobotController`].
+    pub tau_envelope: [f64; 7],
+    /// The position envelope's share of `tau`, Nm, before the clamp; see
+    /// [`CartesianSent::tau_position`](super::CartesianSent::tau_position). Zeros with
+    /// [`Backend::RobotController`].
+    pub tau_position: [f64; 7],
     /// The most, rad, the leash pulled any joint of the generator's anchor back from the
     /// previous goal toward the measured position: zero while the arm follows, positive while
     /// it is held back ([`Leash`](super::Leash)); 0 with [`Backend::RobotController`].
@@ -53,9 +79,16 @@ pub struct JointSent {
 pub type JointObserver = Box<dyn FnMut(&RobotState, &JointSent) + Send>;
 
 /// The handle of a running joint target control; see the [module documentation](super).
+///
+/// It has no live tuning, and no `tune`: [`LiveTuning`](super::LiveTuning) describes the
+/// Cartesian interface's law and plan -- a Cartesian stiffness this interface has none of, and a
+/// budget as a norm, where this one plans per joint. A joint session therefore runs the options
+/// it was started with for its whole life.
 pub struct JointTargetControl {
     inner: Handle<7>,
     limits: ([f64; 7], [f64; 7]),
+    /// How far inside `limits` a target must lie.
+    inset: f64,
 }
 
 impl JointTargetControl {
@@ -64,12 +97,14 @@ impl JointTargetControl {
     ///
     /// # Errors
     /// [`crate::error::FrankaError::InvalidArgument`] if a value is not finite or outside the
-    /// arm's joint position limits inset by [`JOINT_LIMIT_INSET`](super::JOINT_LIMIT_INSET),
+    /// arm's joint position limits inset by [`JOINT_LIMIT_INSET`](super::JOINT_LIMIT_INSET) (with
+    /// [`Backend::Impedance`], by its
+    /// [`joint_position_margin`](ImpedanceOptions::joint_position_margin) where that is larger),
     /// [`crate::error::FrankaError::InvalidOperation`] with [`super::ENDED_MESSAGE`] once the
     /// loop has ended for any reason.
     pub fn set_joints(&self, q: [f64; 7]) -> FrankaResult<()> {
         if q.iter().all(|v| v.is_finite()) {
-            check_joint_limits(&q, &self.limits, "target")?;
+            check_joint_limits(&q, &self.limits, self.inset, "target")?;
         }
         self.inner.set_target(q)
     }
@@ -113,7 +148,12 @@ pub(super) fn sent(step: &Step<7, 7>, q: [f64; 7]) -> JointSent {
         acceleration: step.acceleration,
         backstop_alteration: 0.0,
         q_goal: [0.0; 7],
+        dq_goal: [0.0; 7],
+        cap_scale: 1.0,
+        pinned: [0; 7],
         tau: [0.0; 7],
+        tau_envelope: [0.0; 7],
+        tau_position: [0.0; 7],
         leash_alteration: 0.0,
     }
 }
@@ -127,18 +167,19 @@ pub(super) fn start(
     options.validate()?;
     let joint_limits = joint_position_limits(robot.fci_version());
     check_posture(&options.backend, &joint_limits)?;
+    let inset = joint_limit_inset(&options.backend);
     let limits = options.limits.unwrap_or_else(|| {
         JointTargetControlOptions::scaled_limits(robot.fci_version(), DEFAULT_LIMIT_FRACTION)
     });
     let shared = Arc::new(Shared::<7>::default());
     let loop_shared = Arc::clone(&shared);
-    let priority = options.realtime_priority;
+    let scheduling = options.scheduling();
     let inner = match options.backend {
         Backend::RobotController => spawn(
             THREAD,
             robot,
             shared,
-            priority,
+            scheduling,
             move |robot: &Robot, started| {
                 position_loop(robot, started, options, limits, loop_shared)
             },
@@ -149,11 +190,20 @@ pub(super) fn start(
                 THREAD,
                 robot,
                 shared,
-                priority,
+                scheduling,
                 move |robot: &Robot, started| {
                     let limit_rate = options.limit_rate;
-                    torque_loop(options, limits, impedance, model, loop_shared, started)?
-                        .run(robot, limit_rate)
+                    let version = robot.fci_version();
+                    torque_loop(
+                        options,
+                        limits,
+                        impedance,
+                        model,
+                        version,
+                        loop_shared,
+                        started,
+                    )?
+                    .run(robot, limit_rate)
                 },
             )?
         }
@@ -161,27 +211,41 @@ pub(super) fn start(
     Ok(JointTargetControl {
         inner,
         limits: joint_limits,
+        inset,
     })
 }
 
 /// The [`Backend::Impedance`] loop of this interface: a [`JointTracker`] on the seven-joint
-/// runner under `limits`.
+/// runner under `limits`, boxed in the version's joint limits.
 pub(super) fn torque_loop(
     options: JointTargetControlOptions,
     limits: [OtgLimits; 7],
     impedance: ImpedanceOptions,
     model: Arc<Model>,
+    version: FciVersion,
     shared: Arc<Shared<7>>,
     started: SyncSender<()>,
 ) -> FrankaResult<TorqueLoop<7, 7, JointTracker>> {
     let runner = Runner::new(shared, started, limits, options.settle, identity)?;
-    let tracker = JointTracker::new(&options);
+    let velocity = VelocityLimit::of(version);
+    let limits = JointLimits {
+        position: joint_position_limits(version),
+        margin: impedance.joint_position_margin,
+        fraction: impedance.joint_velocity_fraction,
+        velocity,
+    };
+    let tracker = JointTracker::new(&options, limits);
+    // No live tuning: `LiveTuning`'s budget is a Cartesian norm, which this interface plans
+    // nothing with, and the fields of it this tracker would keep a copy of -- the IK's, the
+    // feedforward's filter -- it has none of. Its slot stays unseeded and its handle offers no
+    // setter, so the loop reads nothing per cycle.
     Ok(TorqueLoop::new(
         runner,
         model,
         impedance,
         tracker,
         options.observer,
+        None,
     ))
 }
 
@@ -211,7 +275,7 @@ fn position_loop(
         |state: &RobotState, _period| {
             let start = *start.get_or_insert(state.q_d);
             let strayed = max_abs_difference(&state.q, &start) > max_deviation;
-            let step = runner.cycle(state, state.q_d, strayed);
+            let step = runner.cycle(state, state.q_d, strayed, false);
 
             let mut q = step.position;
             let mut backstop_alteration = 0.0;

@@ -335,7 +335,7 @@ int main(int argc, char** argv) {
   size_t count = 0;
 
   try {
-    // RealtimeConfig::kIgnore: this box is not PREEMPT_RT (no /sys/kernel/realtime), so
+    // RealtimeConfig::kIgnore: the benchmark host is not PREEMPT_RT (no /sys/kernel/realtime), so
     // realtime priority is applied externally with `chrt -f 80`.
     franka::Robot robot(host, franka::RealtimeConfig::kIgnore);
     setDefaultBehavior(robot);

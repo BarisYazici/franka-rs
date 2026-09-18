@@ -72,6 +72,9 @@ pub const DEFAULT_GRAVITY_EARTH: [f64; 3] = [0.0, 0.0, -9.81];
 /// description of each casting; see `docs/book/src/reference/model.md`.
 pub const FER_URDF: &str = include_str!("../../tests/data/fer.urdf");
 
+/// The FR3 URDF from franka_description that the tests and `franka-rerun` replays use.
+pub const FR3_URDF: &str = include_str!("../../tests/data/fr3.urdf");
+
 /// The seven joints, the flange, the end effector and the stiffness frame.
 ///
 /// Port of `franka::Frame` (`include/franka/model.h`); the variants are in the

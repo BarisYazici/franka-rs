@@ -26,13 +26,16 @@ fn default_options_are_valid_and_documented() {
     assert_eq!(cartesian.settle, Settle::default());
     assert!(cartesian.limit_rate);
     assert_eq!(cartesian.realtime_priority, None);
+    assert_eq!(cartesian.cpu, None);
     assert!(cartesian.observer.is_none());
     let debug = format!("{cartesian:?}");
     assert!(debug.contains("observer: false") && debug.contains("backend: Impedance("));
+    assert!(debug.contains("cpu: None"));
 
     let joint = JointTargetControlOptions::default();
     assert!(joint.validate().is_ok());
     assert_eq!(joint.limits, None);
+    assert_eq!(joint.cpu, None);
     assert_eq!(joint.backend, Backend::Impedance(ImpedanceOptions::joint()));
     assert_eq!(joint.max_deviation, 1.0);
     assert!(joint.limit_rate);
@@ -97,12 +100,16 @@ fn cartesian_options_reject_bad_fields() {
         let options = TargetControlOptions::default().with_realtime_priority(Some(priority));
         assert!(is_invalid_argument(options.validate(), "realtime_priority"));
     }
+    let cpu = TargetControlOptions::default().with_cpu(Some(usize::MAX));
+    assert!(is_invalid_argument(cpu.validate(), "cpu must be below"));
     let fine = TargetControlOptions::default()
         .with_realtime_priority(Some(80))
+        .with_cpu(Some(2))
         .with_controller_mode(ControllerMode::JointImpedance)
         .with_limit_rate(false)
         .with_observer(|_, _| {});
     assert!(fine.validate().is_ok());
+    assert_eq!(fine.cpu, Some(2));
     assert!(fine.observer.is_some());
 }
 
@@ -119,6 +126,12 @@ fn joint_options_reject_bad_fields() {
         priority.validate(),
         "realtime_priority"
     ));
+    let cpu = JointTargetControlOptions::default().with_cpu(Some(1024));
+    assert!(is_invalid_argument(cpu.validate(), "cpu must be below"));
+    assert_eq!(
+        JointTargetControlOptions::default().with_cpu(Some(3)).cpu,
+        Some(3)
+    );
 }
 
 #[test]
@@ -150,24 +163,54 @@ fn scaled_joint_limits_follow_the_version() {
 }
 
 #[test]
+fn max_joint_velocity_follows_the_version() {
+    assert_eq!(
+        max_joint_velocity(FciVersion::V5),
+        rate_limiting::fer::MAX_JOINT_VELOCITY
+    );
+    assert_eq!(
+        max_joint_velocity(FciVersion::V10),
+        [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26]
+    );
+    // The FER's stop short of the nominal 2.175 and 2.61 rad/s by libfranka's margins.
+    let fer = max_joint_velocity(FciVersion::V5);
+    for (i, expected) in [(0, 2.129), (4, 2.564), (6, 2.549)] {
+        assert!(
+            (fer[i] - expected).abs() < 1e-5,
+            "joint {}: {}",
+            i + 1,
+            fer[i]
+        );
+    }
+    // The joint interface's scaled limits are fractions of the same table.
+    for version in [FciVersion::V5, FciVersion::V10] {
+        let scaled = JointTargetControlOptions::scaled_limits(version, 0.3);
+        let limits = max_joint_velocity(version);
+        for i in 0..7 {
+            assert!((scaled[i].max_velocity - 0.3 * limits[i]).abs() < 1e-12);
+        }
+    }
+}
+
+#[test]
 fn joint_targets_and_postures_outside_the_inset_limits_are_refused_naming_the_joint() {
     for version in [FciVersion::V5, FciVersion::V10] {
         let limits = joint_position_limits(version);
         let ready = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785];
-        assert!(check_joint_limits(&ready, &limits, "target").is_ok());
+        assert!(check_joint_limits(&ready, &limits, JOINT_LIMIT_INSET, "target").is_ok());
         // The inset boundary itself is allowed; a hair past it is not.
         let mut q = ready;
         q[0] = limits.1[0] - JOINT_LIMIT_INSET;
-        assert!(check_joint_limits(&q, &limits, "target").is_ok());
+        assert!(check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target").is_ok());
         q[0] += 1e-9;
         assert!(is_invalid_argument(
-            check_joint_limits(&q, &limits, "target"),
+            check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target"),
             "target puts joint 1"
         ));
         q = ready;
         q[3] = limits.0[3];
         assert!(is_invalid_argument(
-            check_joint_limits(&q, &limits, "posture"),
+            check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "posture"),
             "posture puts joint 4"
         ));
         // The posture of an impedance backend is checked at the start, other backends have none.
@@ -181,4 +224,30 @@ fn joint_targets_and_postures_outside_the_inset_limits_are_refused_naming_the_jo
         assert!(check_posture(&Backend::Impedance(ImpedanceOptions::joint()), &limits).is_ok());
         assert!(check_posture(&Backend::RobotController, &limits).is_ok());
     }
+}
+
+#[test]
+fn the_impedance_backend_refuses_targets_and_postures_inside_its_margin() {
+    let limits = joint_position_limits(FciVersion::V5);
+    let impedance = ImpedanceOptions::joint().with_joint_position_margin(0.1);
+    let backend = Backend::Impedance(impedance);
+    assert_eq!(joint_limit_inset(&backend), 0.1);
+    assert_eq!(
+        joint_limit_inset(&Backend::RobotController),
+        JOINT_LIMIT_INSET
+    );
+    let default = Backend::Impedance(ImpedanceOptions::joint());
+    assert_eq!(joint_limit_inset(&default), 0.05);
+    let mut q = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785];
+    q[3] = limits.0[3] + 0.1;
+    let with = |q| Backend::Impedance(impedance.with_posture(Some(q)));
+    assert!(check_posture(&with(q), &limits).is_ok());
+    q[3] -= 1e-9;
+    assert!(is_invalid_argument(
+        check_posture(&with(q), &limits),
+        "0.1 rad inside"
+    ));
+    let result = check_joint_limits(&q, &limits, joint_limit_inset(&backend), "target");
+    assert!(is_invalid_argument(result, "target puts joint 4"));
+    assert!(check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target").is_ok());
 }
