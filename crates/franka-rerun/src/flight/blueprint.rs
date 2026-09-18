@@ -5,12 +5,55 @@
 use rerun::blueprint::components::PanelState;
 use rerun::blueprint::{
     Blueprint, BlueprintActivation, BlueprintPanel, Grid, Horizontal, SelectionPanel,
-    Spatial3DView, Tabs, TextLogView, TimePanel, TimeSeriesView, Vertical,
+    Spatial2DView, Spatial3DView, Tabs, TextLogView, TimePanel, TimeSeriesView, Vertical,
 };
 use rerun::RecordingStream;
 
 use super::cartesian::{AXES, DERIVATIVES_PREFIX, POSITION_PREFIX, TARGET_PREFIX, TARGET_SPEED};
-use crate::{Result, TIMELINE};
+use super::ORIENTATION;
+use crate::{Prefix, Result, TIMELINE};
+
+/// What a recording's layout has to name: one set of views per robot writing into it, and the
+/// timeline its time panel opens on.
+///
+/// A blueprint sent at all turns the viewer's automatic layout off, so an entity no view names
+/// is in the file and not on screen: every arm of a shared recording has to be in here, and
+/// every arm sends the same [`Layout`] so that it does not matter which one the viewer sees
+/// first. Views of an arm that never ran are empty, which is better than missing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layout {
+    /// The entity prefix of every robot the recording holds, in the order they are laid out.
+    pub arms: Vec<Prefix>,
+    /// The timeline the time panel opens on. [`crate::TIMELINE`] for one robot;
+    /// [`crate::HOST_TIMELINE`] for several, the only axis on which two controllers' clocks
+    /// agree.
+    pub timeline: String,
+}
+
+impl Default for Layout {
+    /// One unprefixed robot on `robot_time`: what a replay of one log wants.
+    fn default() -> Layout {
+        Layout::single(Prefix::none())
+    }
+}
+
+impl Layout {
+    /// One robot under `prefix`, on `robot_time`.
+    pub fn single(prefix: Prefix) -> Layout {
+        Layout {
+            arms: vec![prefix],
+            timeline: TIMELINE.to_string(),
+        }
+    }
+
+    /// The same layout with the time panel on `timeline`.
+    pub fn on_timeline(self, timeline: &str) -> Layout {
+        Layout {
+            timeline: timeline.to_string(),
+            ..self
+        }
+    }
+}
 
 fn plot(name: &str, origin: &str) -> TimeSeriesView {
     TimeSeriesView::new(name).with_origin(origin)
@@ -18,76 +61,136 @@ fn plot(name: &str, origin: &str) -> TimeSeriesView {
 
 /// One plot per axis with the raw target (when a commander logged one) over the sent and the
 /// measured position -- two entities composed into one view.
-fn axis_plots() -> [TimeSeriesView; 3] {
+fn axis_plots(prefix: &Prefix) -> [TimeSeriesView; 3] {
     AXES.map(|axis| {
-        TimeSeriesView::new(axis).with_origin("/").with_contents([
-            format!("+ /{POSITION_PREFIX}/{axis}"),
-            format!("+ /{TARGET_PREFIX}/{axis}"),
-        ])
+        TimeSeriesView::new(prefix.label(axis))
+            .with_origin("/")
+            .with_contents([
+                format!("+ {}", prefix.rooted(&format!("{POSITION_PREFIX}/{axis}"))),
+                format!("+ {}", prefix.rooted(&format!("{TARGET_PREFIX}/{axis}"))),
+            ])
     })
 }
 
-fn derivative_plots() -> [TimeSeriesView; 3] {
-    ["speed", "acceleration", "jerk"]
-        .map(|name| plot(name, &format!("{DERIVATIVES_PREFIX}/{name}")))
+fn derivative_plots(prefix: &Prefix) -> [TimeSeriesView; 3] {
+    ["speed", "acceleration", "jerk"].map(|name| {
+        plot(
+            &prefix.label(name),
+            &prefix.path(&format!("{DERIVATIVES_PREFIX}/{name}")),
+        )
+    })
 }
 
-fn events() -> TextLogView {
-    TextLogView::new("events").with_origin("events")
+fn events(prefix: &Prefix) -> TextLogView {
+    TextLogView::new(prefix.label("events")).with_origin(prefix.path("events"))
 }
 
-/// Sends `top` over the event log as the active, default blueprint, with the time panel on
-/// `robot_time`.
-fn send(rec: &RecordingStream, top: Horizontal) -> Result<()> {
-    let root = Vertical::new([top.into(), events().into()]).with_row_shares([4.0, 1.0]);
+/// Sends `root` as the active, default blueprint, with the time panel on `timeline`.
+fn send(rec: &RecordingStream, root: Vertical, timeline: &str) -> Result<()> {
     Blueprint::new(root)
-        .with_time_panel(TimePanel::new().with_timeline(TIMELINE))
+        .with_time_panel(TimePanel::new().with_timeline(timeline))
         .send(rec, BlueprintActivation::default())?;
     Ok(())
 }
 
-/// The default layout: the 3D scene on the left; the joint, end effector and flag plots on
-/// the right (commanded and measured `q` share one plot, the torques and the flags are tabs,
-/// the position has the per-axis plots and the derivatives of a Cartesian command as tabs
-/// behind it); the event log along the bottom; the time panel on `robot_time`.
-pub fn send_blueprint(rec: &RecordingStream) -> Result<()> {
-    let q = TimeSeriesView::new("q vs q_d")
-        .with_origin("joints")
-        .with_contents(["+ $origin/q", "+ $origin/q_d"]);
+/// One arm's views: the 3D scene on the left, with the arm's cameras behind it as a tab;
+/// the joint, end effector and flag plots on the right (commanded and measured `q` share
+/// one plot, the torques and the flags are tabs, the gripper is a tab of the flags, the position
+/// has the orientation, the per-axis plots and the derivatives of a Cartesian command as tabs
+/// behind it); the arm's event log along the bottom. Under a prefix every view's name carries
+/// it, so two arms' plots are told apart by their titles and not only by their row.
+///
+/// The views name entities this crate does not write: `gripper/*` comes from the node that owns
+/// the hand and `cam/*` from a camera node recording into the same episode. Both are under the
+/// arm's prefix, so an arm's camera tab shows the cameras recording with that arm alone.
+fn arm_views(prefix: &Prefix) -> Vertical {
+    let q = TimeSeriesView::new(prefix.label("q vs q_d"))
+        .with_origin(prefix.path("joints"))
+        .with_contents(["+ $origin/q", "+ $origin/q_d", "+ $origin/q_goal"]);
     let torques = Tabs::new([
-        plot("tau_ext", "joints/tau_ext").into(),
-        plot("contact link", "contact/link").into(),
-        plot("tau_J", "joints/tau_J").into(),
-        plot("tau_J_d", "joints/tau_J_d").into(),
+        plot(&prefix.label("tau_ext"), &prefix.path("joints/tau_ext")).into(),
+        plot(&prefix.label("contact link"), &prefix.path("contact/link")).into(),
+        plot(&prefix.label("tau_J"), &prefix.path("joints/tau_J")).into(),
+        plot(&prefix.label("tau_J_d"), &prefix.path("joints/tau_J_d")).into(),
+        plot(
+            &prefix.label("tau_envelope"),
+            &prefix.path("joints/tau_envelope"),
+        )
+        .into(),
     ]);
+    // The gripper shares a tab strip with the flags: a session without a hand simply leaves it
+    // empty, and one with a hand has the width and the grasp beside the arm's own contacts.
+    let flag = |name: &str, entity: &str| {
+        plot(
+            &prefix.label(name),
+            &prefix.path(&format!("flags/{entity}")),
+        )
+        .into()
+    };
     let flags = Tabs::new([
-        plot("joint contact", "flags/joint_contact").into(),
-        plot("joint collision", "flags/joint_collision").into(),
-        plot("cartesian contact", "flags/cartesian_contact").into(),
-        plot("cartesian collision", "flags/cartesian_collision").into(),
+        flag("joint contact", "joint_contact"),
+        flag("joint collision", "joint_collision"),
+        flag("cartesian contact", "cartesian_contact"),
+        flag("cartesian collision", "cartesian_collision"),
+        plot(&prefix.label("gripper"), &prefix.path("gripper")).into(),
     ]);
     // `+ $origin` alone: the six-series entity, not its per-axis children.
-    let all_axes = plot("position", POSITION_PREFIX).with_contents(["+ $origin"]);
+    let all_axes =
+        plot(&prefix.label("position"), &prefix.path(POSITION_PREFIX)).with_contents(["+ $origin"]);
+    let orientation = plot(&prefix.label("orientation"), &prefix.path(ORIENTATION));
     let position = Tabs::new(
-        std::iter::once(all_axes.into())
-            .chain(axis_plots().map(Into::into))
-            .chain(derivative_plots().map(Into::into)),
+        [all_axes.into(), orientation.into()]
+            .into_iter()
+            .chain(axis_plots(prefix).map(Into::into))
+            .chain(derivative_plots(prefix).map(Into::into)),
     );
+    let velocities = Tabs::new([
+        plot(&prefix.label("dq"), &prefix.path("joints/dq")).into(),
+        plot(&prefix.label("dq_goal"), &prefix.path("joints/dq_goal")).into(),
+        plot(&prefix.label("cap scale"), &prefix.path("joints/cap_scale")).into(),
+    ]);
     let plots = Grid::new([
         q.into(),
         torques.into(),
-        plot("F_ext", "ee/F_ext").into(),
+        plot(&prefix.label("F_ext"), &prefix.path("ee/F_ext")).into(),
         position.into(),
-        plot("dq", "joints/dq").into(),
+        velocities.into(),
         flags.into(),
     ])
     .with_grid_columns(2);
-    let top = Horizontal::new([
-        Spatial3DView::new("arm").with_origin("world").into(),
-        plots.into(),
-    ])
-    .with_column_shares([2.0, 3.0]);
-    send(rec, top)
+    // The arm's cameras, when a camera node recorded frames under `<arm>/cam/<name>`.
+    // A recording without them shows an empty tab rather than nothing at all, which is the only
+    // way the arm's blueprint can make room for a file it does not write itself.
+    let scene = Tabs::new([
+        Spatial3DView::new(prefix.label("arm"))
+            .with_origin(prefix.path("world"))
+            .into(),
+        Spatial2DView::new(prefix.label("cameras"))
+            .with_origin(prefix.path("cam"))
+            .into(),
+    ]);
+    let top = Horizontal::new([scene.into(), plots.into()]).with_column_shares([2.0, 3.0]);
+    Vertical::new([top.into(), events(prefix).into()]).with_row_shares([4.0, 1.0])
+}
+
+/// The default layout: one arm's views (the 3D scene and the cameras, the plots, the event log)
+/// for every arm of `layout`, stacked and sharing the height equally; the time panel on
+/// [`Layout::timeline`].
+pub fn send_blueprint(rec: &RecordingStream, layout: &Layout) -> Result<()> {
+    let arms: Vec<Prefix> = if layout.arms.is_empty() {
+        vec![Prefix::none()]
+    } else {
+        layout.arms.clone()
+    };
+    let root = match arms.as_slice() {
+        [one] => arm_views(one),
+        several => Vertical::new(
+            several
+                .iter()
+                .map(|prefix| arm_views(prefix).with_name(prefix.name()).into()),
+        ),
+    };
+    send(rec, root, &layout.timeline)
 }
 
 /// The layout for a live Cartesian commander, made for watching: the 3D scene over the
@@ -96,9 +199,9 @@ pub fn send_blueprint(rec: &RecordingStream) -> Result<()> {
 /// the sent position against the limits and `F_ext` down the second; the blueprint and
 /// selection panels collapsed. Send it after the recorder's own blueprint; the last one
 /// sent is the one the viewer opens.
-pub fn send_commander_blueprint(rec: &RecordingStream) -> Result<()> {
-    let [x, y, z] = axis_plots();
-    let [speed, acceleration, jerk] = derivative_plots();
+pub fn send_commander_blueprint(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
+    let [x, y, z] = axis_plots(prefix);
+    let [speed, acceleration, jerk] = derivative_plots(prefix);
     let plots = Grid::new([
         x.into(),
         speed.into(),
@@ -106,13 +209,19 @@ pub fn send_commander_blueprint(rec: &RecordingStream) -> Result<()> {
         acceleration.into(),
         z.into(),
         jerk.into(),
-        plot("raw target speed", TARGET_SPEED).into(),
-        plot("F_ext", "ee/F_ext").into(),
+        plot(
+            &prefix.label("raw target speed"),
+            &prefix.path(TARGET_SPEED),
+        )
+        .into(),
+        plot(&prefix.label("F_ext"), &prefix.path("ee/F_ext")).into(),
     ])
     .with_grid_columns(2);
     let left = Vertical::new([
-        Spatial3DView::new("arm").with_origin("world").into(),
-        events().into(),
+        Spatial3DView::new(prefix.label("arm"))
+            .with_origin(prefix.path("world"))
+            .into(),
+        events(prefix).into(),
     ])
     .with_row_shares([3.0, 1.0]);
     let root = Horizontal::new([left.into(), plots.into()]).with_column_shares([2.0, 3.0]);

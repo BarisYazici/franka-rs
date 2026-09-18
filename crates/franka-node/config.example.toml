@@ -1,0 +1,45 @@
+name = "node1"
+
+[zenoh]
+mode = "peer"                        # or "client": dial the routers in connect, listen on nothing
+listen = ["tcp/0.0.0.0:7447#iface=eth0"]
+connect = []
+scouting_interface = "eth0"          # optional; "auto" when absent
+lease_ms = 1000                      # transport.link.tx.lease, keepalive is lease/4
+# zenoh_config = "/etc/franka/zenoh.json5"   # a Zenoh file to start from: TLS material, auth, ACLs
+
+[[arm]]
+name = "fr3"
+host = "172.16.0.2"
+realtime = "enforce"                 # or "ignore"
+state_hz = 100
+hold_after_ms = 200
+stop_after_ms = 2000
+collision_force = 40.0               # set_collision_behavior_simple(torque, force)
+collision_torque = 40.0
+budget = [0.3, 0.5, 20.0]            # OtgLimits for translation (norm)
+rotation_budget = [0.5, 1.0, 20.0]
+cartesian_stiffness = 750.0          # ImpedanceGains, N/m; rotational = stiffness/50
+max_deviation = 0.3                  # m the measured pose may stray from its start before the loop ends
+max_angular_deviation = 0.5          # rad, the same guard on the orientation
+leash = { translation = 0.025, rotation = 0.15 }   # m, rad the desired pose may run ahead of the measured
+max_step = 0.05                      # m per target from the previous accepted one
+max_step_rotation = 0.26             # rad per target
+max_step_joint = 0.2                 # rad per joint per target in a joints session
+max_lead = 0.05                      # m a target may lead the measured pose; 0 disables,
+                                     # otherwise must exceed leash.translation
+max_lead_rotation = 0.26             # rad, the same on the orientation; 0 disables
+joint_budget_fraction = 0.2          # of the arm's joint limits, (0, 1]; a joints session's budget
+joint_max_deviation = 1.0            # rad a joint may stray from its start in a joints session
+joint_velocity_fraction = 0.7        # of the arm's joint velocity limits the goal may move at, (0, 1]
+velocity_barrier_fraction = 0.85     # a joint measured faster meets a damping barrier, [the above, 1];
+                                     # the law's push along a joint's motion fades out from the lower
+                                     # of the above and this less 0.15 to this
+workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
+rate_hz = 250.0                      # targets per second per client, bucket of twice that
+realtime_priority = 80               # optional
+# gripper = "hand"                   # optional: the Franka Hand at host, FCI port 1338
+gripper_speed = 0.1                  # m/s of every gripper move and grasp
+# cpu = 2                            # optional: pin the loop thread to this core (isolcpus)
+# record_dir = "/var/lib/franka-node"   # optional, needs --features record: one .rrd per session
+# record_meshes = "/opt/franka-meshes"  # optional: meshes other than the built-in, or "none"

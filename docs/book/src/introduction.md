@@ -36,8 +36,8 @@ budget.</sub>
   `unsafe` in the crate is confined to the scheduler and socket system calls and to the
   opt-in loader for the model an FER serves. It cross-compiles to aarch64.
 - **Checked against the reference.** Wire layouts, rate limiting, low-pass filtering and
-  error text are checked against libfranka's sources. Loop timing, measured side by side on
-  real FR3 and FER arms, is the same as libfranka's; the model agrees to 1e-14.
+  error text are checked against libfranka's sources. Loop timing, measured side by side
+  against the simulator, is the same as libfranka's; the model agrees to 1e-14.
 
 ## Start here
 
@@ -53,13 +53,13 @@ budget.</sub>
 
 ## Status
 
-Version 0.3. Both protocol versions, every control interface, target control from Rust
-and Python, the gripper and the flight recorder have run on real arms; the dates and
-figures are in [Benchmarks and hardware validation](./reference/benchmarks.md). The
-impedance backend of target control, new in 0.3.0 and the default, has run on franka-sim
-and on two real FERs, not yet on an FR3. Not there yet: a `ros2_control` hardware
-interface, the vacuum gripper, and a published simulator image for the FER. The
-[changelog](./changelog.md) lists what changed in each release.
+Version 0.4, released with the Zenoh nodes, covers both protocol versions, every control
+interface, target control from Rust and Python, the gripper and the flight recorder. The
+impedance backend of target control, new in 0.3.0 and the default, is not yet validated on
+an FR3.
+Not there yet: a `ros2_control` hardware interface, the vacuum gripper, and a published
+simulator image for the FER. The [changelog](./changelog.md) lists what changed in each
+release.
 
 `franka-rs` is an unofficial project and is not affiliated with Franka Robotics GmbH;
 Franka, Franka Emika, Panda and FR3 are their trademarks. The crate is Apache-2.0, like

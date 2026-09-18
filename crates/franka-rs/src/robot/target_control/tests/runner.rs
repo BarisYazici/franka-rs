@@ -8,6 +8,7 @@ use super::super::runner::identity;
 use super::super::*;
 use super::is_invalid_argument;
 use crate::otg::OtgLimits;
+use crate::rate_limiting::DELTA_T;
 use crate::wire::robot::codec::FciVersion;
 
 pub(super) const LIMITS: OtgLimits = OtgLimits {
@@ -217,7 +218,7 @@ fn the_stop_lands_through_a_float32_echo_with_reference_noise() {
     let mut k = 0u32;
     let sent = run_to_finish(&mut runner, &shared, [0.4, 0.0, 0.5], settle, |p| {
         k += 1;
-        let noise = if k % 3 == 0 { 3e-8 } else { -2e-8 };
+        let noise = if k.is_multiple_of(3) { 3e-8 } else { -2e-8 };
         p.map(|x| f64::from(x as f32) + noise)
     });
     let last = sent[sent.len() - 1];
@@ -278,4 +279,61 @@ fn the_handle_rejects_targets_once_the_loop_has_ended() {
     handle.set_target([4.0, 5.0, 6.0]).unwrap();
     assert_eq!(handle.target(), [4.0, 5.0, 6.0]);
     assert!(handle.stop().is_ok(), "no thread to join is a regular end");
+}
+
+#[test]
+fn a_restart_between_cycles_is_where_the_next_step_starts() {
+    let (mut runner, shared, _first) = runner(Settle::default());
+    let state = RobotState::default();
+    let mut echo = [0.0; 3];
+    runner.cycle(&state, echo, false);
+    shared.slot.publish([0.2, 0.0, 0.0]);
+    for _ in 0..400 {
+        echo = runner.cycle(&state, echo, false).position;
+    }
+    // At full acceleration toward 0.3 m/s: cut to 0.03, as a capped goal would be. The step
+    // starts from rest in acceleration: one cycle of jerk, not of acceleration, on top.
+    runner.restart_at_velocity([0.03, 0.0, 0.0]);
+    let step = runner.cycle(&state, echo, false);
+    let jerk = LIMITS.max_jerk * DELTA_T;
+    let most = 0.03 + 0.5 * jerk * DELTA_T;
+    assert!(
+        step.velocity[0] > 0.03 && step.velocity[0] <= most + 1e-12,
+        "{:?}",
+        step.velocity
+    );
+    assert!(
+        step.acceleration[0].abs() <= jerk + 1e-12,
+        "{:?}",
+        step.acceleration
+    );
+    assert!(step.position[0] - echo[0] <= most * DELTA_T + 1e-12);
+}
+
+#[test]
+fn a_restart_keeps_a_braking_acceleration() {
+    let (mut runner, shared, _first) = runner(Settle::default());
+    let state = RobotState::default();
+    let mut echo = [0.0; 3];
+    runner.cycle(&state, echo, false);
+    shared.slot.publish([0.2, 0.0, 0.0]);
+    for _ in 0..400 {
+        echo = runner.cycle(&state, echo, false).position;
+    }
+    // Reversed: 60 ms later the generator brakes at its full acceleration, still moving on.
+    shared.slot.publish([0.0; 3]);
+    let mut step = runner.cycle(&state, echo, false);
+    for _ in 0..60 {
+        echo = step.position;
+        step = runner.cycle(&state, echo, false);
+    }
+    assert!(
+        step.velocity[0] > 0.1 && step.acceleration[0] < -0.49,
+        "{:?}",
+        step.acceleration
+    );
+    runner.restart_at_velocity(step.velocity);
+    let next = runner.cycle(&state, step.position, false);
+    assert!(next.acceleration[0] < -0.49, "{:?}", next.acceleration);
+    assert!(next.velocity[0] < step.velocity[0] - 0.49 * DELTA_T);
 }

@@ -135,8 +135,4 @@ fixed-size histogram. It is the example to run with someone standing next to the
 robot generation is the callback only. The public API is identical on both versions;
 underneath, `start_torque_control()` on an FER runs a joint-velocity generator commanding
 zeros alongside the external controller, because FCI v5 has no torque-only mode (see
-[FER / Panda specifics](../reference/fer.md)). Measured on a real FER, `ActiveControl` is
-equivalent to the callback API within noise: interval p50 999.2 against 999.1 µs over 10 s
-runs, comparable p99, maximum and CPU; see
-[Benchmarks and hardware validation](../reference/benchmarks.md). Both impedance examples ran
-on a real FER through this path on 2026-09-07 with no reflex.
+[FER / Panda specifics](../reference/fer.md)).

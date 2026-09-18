@@ -3,11 +3,12 @@
 [Target control](../howto/target-control.md) tracks the generator's setpoints with torques of
 its own by default. This page is the derivation: where the law comes from, why it is a joint
 law with a Cartesian term rather than the other way round, what the joint gains do to the
-stiffness you feel, how the Cartesian interface gets a joint goal, how the generator is
-anchored without an echo, what happens at the handover, and how it differs from the
-operational-space law of the `cartesian_impedance_active_control` example. The options and
-defaults are on the how-to page; the code is `robot/target_control/impedance.rs`,
-`torque.rs` and `ik.rs`.
+stiffness you feel, how the Cartesian interface gets a joint goal, how the goal and the arm
+are kept under the joint velocity limits, how the generator is anchored without an echo,
+what happens at the handover, and how it differs from the operational-space law of the
+`cartesian_impedance_active_control` example. The options and defaults are on the how-to
+page; the code is `robot/target_control/impedance.rs`, `torque.rs`, `ik.rs` and
+`velocity.rs`.
 
 ## The law and its provenance
 
@@ -92,8 +93,7 @@ with `J_g` the zero Jacobian at `q_goal` (not at the measured `q`), `λ` = 0.05 
 that keeps the step finite at a singularity, and the second term a drift toward `posture`
 (the start configuration unless set) at `k_null` = 1 /s, capped at 0.5 rad/s so that a far
 posture is approached rather than jumped at, projected into the nullspace so it never moves
-the end effector. If any joint of the step exceeds `max_step` (0.01 rad, so 10 rad/s) the
-whole step is scaled so that the largest component equals it; then the result is clamped to
+the end effector. The result is clamped to
 the joint position limits (`rate_limiting::JOINT_POSITION_LIMITS` for the FR3,
 `rate_limiting::fer::JOINT_POSITION_LIMITS` for the FER, from the URDFs in the repository)
 inset by `limit_margin` (0.02 rad), and iteration stops below `tolerance` (1e-6). A `posture`
@@ -102,8 +102,69 @@ outside those inset limits, like a joint target outside them, is refused with
 generator moves the pose by at most 0.3 mm a cycle under the default budget, so a step or
 three from the previous solution keeps the residual near zero (`tolerance` ends the iteration
 early on a landed target); the observer sees the residual as `CartesianSent::ik_error`. A
-pose out of reach or through a singularity leaves a residual and `q_goal` moves toward it at
-most `max_step` a cycle instead of jumping, so the impedance never gets a step to track.
+pose out of reach or through a singularity leaves a residual and `q_goal` moves toward it
+under the joint velocity cap instead of jumping (next section), so the impedance never gets
+a step to track.
+
+## The joint velocity envelope
+
+Nothing in the law bounds a joint's velocity: near a wrist singularity a modest turn of the hand
+asks joints 5 and 7 to spin in opposite directions, about 2 rad/s of joint per rad/s of hand once
+their axes are 30° apart. Teleoperated near such a pose, an FER can end in
+`joint_velocity_violation` while the generator is well inside
+its own budget and the arm follows the goal it is given.
+
+**The cap.** Every cycle the goal's step `Δq = q_goal − q_goal_prev` is scaled as a whole by
+`s = min(1, min_i cap_i · 1 ms / |Δq_i|)`, `cap_i = joint_velocity_fraction × limit_i` (0.7 by
+default), before the finite difference that is `dq_goal`. Uniform scaling keeps the joint-space
+direction, so the end effector slows along its path instead of leaving it. When `s < 1` the
+generator's next cycle starts from what went out, not from its own plan: its velocity is its
+end-of-cycle velocity scaled by `s`, not the step's mean (which sits above the end velocity
+whenever the plan brakes inside the step, and would replan past the target), and its
+acceleration is kept only where it brakes -- zeroed where it would speed the axis back up. The
+leash's next reference is the capped goal too: the model's forward kinematics of `q_goal` on the
+Cartesian interface, `q_goal` itself on the joint one. Without the re-anchor the generator would
+keep planning from the velocity it wanted and arrive late, then decelerate from a speed the arm
+never had. A stop's hold on the joint interface is not capped: that goal only moves with an arm
+moved by hand, a leash ahead of it.
+
+**The fade.** A joint lagging its capped goal catches up faster than the goal moves, and
+unchecked that catch-up pull cancels the barrier below. So above `min(cap_i, onset_i −
+FADE_BAND × limit_i)` of *measured* speed (never below rest), the law's torque along the
+joint's motion -- the Coriolis term included -- fades out linearly to none at the barrier's
+onset; torque against the motion is never scaled. The `min` floors the start `FADE_BAND`
+(0.15) under the onset regardless of the cap, because a narrower band adds more gain than the
+loop tolerates: at the default cap 0.7 the band is exactly `[0.70, 0.85]` of the limit, the
+same band a cap of 0.8 gets once floored, and both settle; fading instead from a cap of 0.8
+straight to the onset -- a third of that band -- rings on a 0.03 kg m² wrist (`tests/velocity.rs`).
+
+**The barrier.** Above `velocity_barrier_fraction × limit_i` (0.85 by default) of *measured*
+velocity the loop adds `−20 (|dq_i| − onset_i) sign(dq_i)` Nm, at most the joint's torque
+limit, after the fade and before the clamp, the low-pass and the rate limiter. The gain is set
+by stability, not by strength: the torque is computed from the velocity measured one cycle
+before it acts and low-passed at 100 Hz, so a joint of effective inertia `I` damped with a
+total `K` -- the law's own joint damping plus the barrier's, where it is active -- is stable
+while `K × 1 ms / I` stays under 1; the rate limiter only slows the barrier's onset. The link
+alone is light (0.003 kg m² on the FER's joint 7) but the drive's reflected inertia is not
+(MuJoCo's FR3 carries 0.074 kg m² of armature on the wrist), and the `JOINT` preset's 15 Nm
+s/rad on joint 7 is stable on an FER; the Cartesian preset puts at most about 6 Nm s/rad on a
+wrist joint at 1200 N/m, so the barrier's 20 keeps `K` under 26. Offline, on a 0.04 kg m² wrist
+behind the crate's own filter and rate limiter, a joint damped at 3 Nm s/rad and pushed 11 Nm
+from outside holds 2.36 rad/s while the push is on, against a 2.55 rad/s limit (3.67 without
+the barrier), and once released comes to rest with nothing ringing on, while 15 Nm s/rad on a
+0.01 kg m² wrist rings in the same harness (`tests/velocity.rs`). The stability bound assumes
+that one cycle of delay; it says nothing about the push itself and does not claim to bound
+it -- the velocity still overshoots the limit while the push is applied, before the barrier
+settles it back under.
+
+**Tested.** An ignored acceptance test (`tests/replay.rs`) replays a teleoperation recording
+of your own through the real loop with the cap on and off, and asserts that the goal stays
+within the cap every cycle, the cap is active in at most 0.5 % of the engaged time, and lag
+and tracking error stay within 5 ms and 5 % of the uncapped run. On
+franka-sim 1.1.6, a 0.8 rad turn of the hand with joints 5 and 7 20° apart (joint 6 at
+2.8 rad) under a 4 rad/s rotation budget: the cap cut the goal in 88 cycles, peak
+`|dq| / limit` 0.819, also with the CPU loaded, back within 3.94e-3 rad
+(`tests/sim_target_control/velocity_cap.rs`).
 
 ## Anchoring without an echo: the leash
 
@@ -133,10 +194,12 @@ and on the joint interface each joint's goal clamped to within `leash.joint` (0.
 the measured joint, the feedforward velocity being the finite difference of that leashed
 goal. While the arm follows, `s = 1` and the anchor *is* the previous desired, so the
 generator runs from its own output and its budget is the whole budget, as before. Held back,
-the desired stays within the leash of the arm, so the spring force on whoever holds it is
-bounded by the felt stiffness times the leash: roughly 25 to 30 N at the default gains at
-the ready pose (990 to 1180 N/m × 0.025 m on the FER model), 18.75 N with `project_joint_gains`
-(750 × 0.025).
+the desired stays within the leash of the arm, so the spring force on whoever holds it
+plateaus: roughly 40 to 50 N at the default gains in an FER's `O_F_ext_hat_K`,
+however far past the leash the arm is pushed (the felt stiffness times the leash, 990 to
+1180 N/m × 0.025 m on the FER model, would give 25 to 30 N, and 750 × 0.025 = 18.75 N is the
+translational spring alone with `project_joint_gains`; the robot's estimate shows more).
+Gentle pushes read well under 30 N; a hard, fast push briefly exceeds 60 N.
 On the joint interface it is the torque clamp, not the leash, that bounds the torque: the
 `JOINT` preset's 600 Nm/rad × 0.1 rad is 60 Nm on joints 1 to 4, under their 86 Nm clamp but
 far over the 20 Nm joint threshold the examples set, which such a joint reaches at 0.033 rad
@@ -172,31 +235,15 @@ torques are near zero, so the robot's controller takes over from rest, as it doe
 a 5 cm step lands 0.5 to 0.8 mm from the target. The law itself, `impedance_torques`, is
 public at the crate root for a loop of your own.
 
-## Measured on two FERs (2026-09-10)
+## What a spring does not do
 
-Both Pandas of the earlier campaigns, system 4.2.1, `PREEMPT_RT` host, `FRANKA_REALTIME=enforce`,
-default gains, collision thresholds 40 N unless stated. No run ended in a reflex except the one
-that was meant to find the threshold.
-
-| run | result |
-|---|---|
-| 5 s at rest, then `stop()` | first-cycle torque under 0.04 Nm, peak 0.22 Nm, tracking 0.13 mm (L) / 0.23 mm (R), `stop()` 0.44 s |
-| the commander's 19 s stepped sequence | no reflex, IK residual under 1e-6, leash never bound, peak torque 4.4 Nm; tracking error at the holds 4.6 mm (L) / 2.8 mm (R), moving p95 9.6 / 8.7 mm; the robot's own controller on the same sequence: 3.7 mm at the holds, 4.4 mm moving |
-| the same at Kx 1500 N/m (damping 75) | 2.7 mm at the holds, 6.3 mm moving |
-| the sequence with the ±15° yaw sweep | no reflex, same tracking figures |
-| joint targets (Python, `JOINT` preset, 20 % budget) | a 0.2 rad step on joint 1 landed within 0.6 mrad, a three-joint step within 4 mrad (joint 6), `stop()` mid-motion 0.9 s, arm `Idle` |
-| a 4 cm circle at 5, 10 and 30 Hz (Python) | rate-independent, 8 to 10 mm p50 along the slow circle, back at the start within 7 to 9 mm |
-| push tests, 40 N thresholds | two light pushes: 16.6 mm for 12 N, felt stiffness 725 N/m along the push, back within 2 mm in 0.3 s; a fast push reached 50 N in 250 ms at 25 mm and tripped `cartesian_reflex` |
-| push tests from the other side, 60 N thresholds | 24.8 N at 22.8 mm quasi-static (about 1090 N/m felt), the leash held the error at exactly 25.0 mm under 45 to 47 N at 0.26 m/s, no reflex; a push that dragged the hand 12 cm and turned the wrist past 0.5 rad ended the loop through the deviation guard, the arm held in place |
-
-Two things the numbers settle. The tracking error at rest scales with 1/K (4.6 mm at 750,
-2.7 mm at 1500) and the robot's own external-force estimate reads 3 to 4 N at those holds:
-a constant residual force of the arm (load or friction) that the robot's own impedance
-controller deflects under as well; a spring has no integrator, so users who need millimetre
-placement raise the stiffness. And the leash bounds the *position* error, not the force: a
-fast push adds the damping term (50 to 90 N s/m times the speed), which is why 45 to 50 N
-appeared at 0.25 m/s. A cap on the reaction force, spring and damper together, is the
-follow-up. The FR3 was not reachable that day.
+A spring has no integrator. The tracking error at a hold is the arm's residual force (load or
+friction) over the stiffness, as it is under the robot's own impedance controller, so it
+halves when the stiffness doubles; millimetre placement needs a higher stiffness. And the
+leash bounds the *position* error, not the force: a fast push adds the damping term (50 to
+90 N s/m times the speed), so there is no dedicated cap on the reaction force, spring and
+damper together, beyond the torque clamp.
+The backend is not yet validated on an FR3.
 
 ## Compared with the operational-space law
 

@@ -19,13 +19,16 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use franka::{Model, Record, RobotCommandLog, RobotState};
 use rerun::{RecordingStream, RecordingStreamBuilder};
 
-use crate::flight::{send_blueprint, FlightLogger, FlightOptions, Summary};
+use crate::flight::{
+    send_blueprint, FlightLogger, FlightOptions, Layout, Stamped, Summary, TorqueLog,
+};
 use crate::{Result, RobotKind};
 
 /// The recorder's tuning.
@@ -39,6 +42,10 @@ pub struct RecorderOptions {
     /// How the records are drawn. The default decimates the 3D scene to every 10th record
     /// so the viewer keeps up; the series carry every record.
     pub flight: FlightOptions,
+    /// The layout sent when the stream opens. `None`, the default, lays out this recorder's
+    /// own [`FlightOptions::prefix`] alone on `robot_time`; a recording several robots write
+    /// into needs one naming all of them, or the views of the others are missing.
+    pub layout: Option<Layout>,
 }
 
 impl Default for RecorderOptions {
@@ -50,6 +57,7 @@ impl Default for RecorderOptions {
                 every: 10,
                 ..FlightOptions::default()
             },
+            layout: None,
         }
     }
 }
@@ -69,7 +77,7 @@ pub struct Stats {
 pub struct Recorder {
     /// The recording, for [`Recorder::stream`].
     rec: RecordingStream,
-    sender: SyncSender<Record>,
+    sender: SyncSender<Stamped>,
     pushed: AtomicUsize,
     dropped: AtomicUsize,
     thread: Option<JoinHandle<std::result::Result<Summary, String>>>,
@@ -88,11 +96,27 @@ impl Recorder {
     /// Records into the `.rrd` at `path`.
     pub fn to_file(
         path: &std::path::Path,
-        model: Model,
+        model: impl Into<Arc<Model>>,
         kind: RobotKind,
         options: RecorderOptions,
     ) -> Result<Recorder> {
-        let rec = RecordingStreamBuilder::new("franka_rs").save(path)?;
+        let rec = RecordingStreamBuilder::new(crate::APPLICATION_ID).save(path)?;
+        Recorder::with_stream(rec, model, kind, options)
+    }
+
+    /// Records into the `.rrd` at `path` under the Rerun `RecordingId` `recording_id`, so
+    /// another file written with the same id and [`crate::APPLICATION_ID`] loads as part of the
+    /// same recording. Otherwise [`Recorder::to_file`], which lets the SDK pick the id.
+    pub fn to_file_with_id(
+        path: &std::path::Path,
+        recording_id: &str,
+        model: impl Into<Arc<Model>>,
+        kind: RobotKind,
+        options: RecorderOptions,
+    ) -> Result<Recorder> {
+        let rec = RecordingStreamBuilder::new(crate::APPLICATION_ID)
+            .recording_id(recording_id)
+            .save(path)?;
         Recorder::with_stream(rec, model, kind, options)
     }
 
@@ -102,11 +126,12 @@ impl Recorder {
     /// as the SDK's connection warnings, not as an error.
     pub fn to_viewer(
         addr: &str,
-        model: Model,
+        model: impl Into<Arc<Model>>,
         kind: RobotKind,
         options: RecorderOptions,
     ) -> Result<Recorder> {
-        let rec = RecordingStreamBuilder::new("franka_rs").connect_grpc_opts(proxy_url(addr))?;
+        let rec = RecordingStreamBuilder::new(crate::APPLICATION_ID)
+            .connect_grpc_opts(proxy_url(addr))?;
         Recorder::with_stream(rec, model, kind, options)
     }
 
@@ -115,7 +140,7 @@ impl Recorder {
     pub fn to_viewer_and_file(
         addr: &str,
         path: &std::path::Path,
-        model: Model,
+        model: impl Into<Arc<Model>>,
         kind: RobotKind,
         options: RecorderOptions,
     ) -> Result<Recorder> {
@@ -125,32 +150,42 @@ impl Recorder {
         let RedapUri::Proxy(uri) = url.parse::<RedapUri>()? else {
             return Err(format!("{url}: not a viewer proxy URL").into());
         };
-        let rec = RecordingStreamBuilder::new("franka_rs")
+        let rec = RecordingStreamBuilder::new(crate::APPLICATION_ID)
             .set_sinks((GrpcSink::new(uri), FileSink::new(path)?))?;
         Recorder::with_stream(rec, model, kind, options)
     }
 
     /// Spawns a `rerun` viewer from `PATH` and streams to it.
-    pub fn spawn(model: Model, kind: RobotKind, options: RecorderOptions) -> Result<Recorder> {
-        let rec = RecordingStreamBuilder::new("franka_rs").spawn()?;
+    pub fn spawn(
+        model: impl Into<Arc<Model>>,
+        kind: RobotKind,
+        options: RecorderOptions,
+    ) -> Result<Recorder> {
+        let rec = RecordingStreamBuilder::new(crate::APPLICATION_ID).spawn()?;
         Recorder::with_stream(rec, model, kind, options)
     }
 
     /// Records into any stream, e.g. one with several sinks. Sends the flight recorder's
     /// blueprint first; the static setup (series styles, the base and end effector axes, the
     /// meshes) goes out with the background thread's first batch, so a live viewer shows the
-    /// arm as soon as the first records arrive, whatever the sink.
+    /// arm as soon as the first records arrive, whatever the sink. `model` is a `Model` or an
+    /// `Arc<Model>` shared with other recorders (`Model` is not `Clone`).
     pub fn with_stream(
         rec: RecordingStream,
-        model: Model,
+        model: impl Into<Arc<Model>>,
         kind: RobotKind,
         options: RecorderOptions,
     ) -> Result<Recorder> {
         if options.capacity == 0 {
             return Err("RecorderOptions::capacity must be at least 1".into());
         }
-        send_blueprint(&rec)?;
-        let (sender, receiver) = mpsc::sync_channel::<Record>(options.capacity);
+        let layout = options
+            .layout
+            .clone()
+            .unwrap_or_else(|| Layout::single(options.flight.prefix.clone()));
+        send_blueprint(&rec, &layout)?;
+        let model = model.into();
+        let (sender, receiver) = mpsc::sync_channel::<Stamped>(options.capacity);
         let thread_rec = rec.clone();
         let thread = std::thread::Builder::new()
             .name("franka-rerun-recorder".into())
@@ -159,7 +194,7 @@ impl Recorder {
                 let rec = thread_rec;
                 let mut logger = FlightLogger::new(&rec, &model, kind, options.flight)
                     .map_err(|e| e.to_string())?;
-                let mut batch: Vec<Record> = Vec::with_capacity(options.capacity);
+                let mut batch: Vec<Stamped> = Vec::with_capacity(options.capacity);
                 loop {
                     std::thread::sleep(options.interval);
                     let mut disconnected = false;
@@ -193,12 +228,51 @@ impl Recorder {
     /// Hands one cycle to the background thread: the state received and the command sent
     /// for it (`None` when the cycle sent nothing). Never blocks and never allocates; a full
     /// channel drops the record and counts it.
+    ///
+    /// The host's `CLOCK_MONOTONIC` is read here, on the calling thread, which is the control
+    /// loop's: that is what the row's [`crate::HOST_TIMELINE`] time is, and it is honest only
+    /// where the record is taken, not where it is written. `clock_gettime` on
+    /// `CLOCK_MONOTONIC` is a vDSO read, no allocation and no syscall.
     pub fn push(&self, state: &RobotState, command: Option<RobotCommandLog>) {
+        self.push_at(state, command, franka::realtime::monotonic_ns());
+    }
+
+    /// [`Recorder::push`] with the host clock already read, for a caller that stamps something
+    /// else of its own with the same instant. Same guarantees: no blocking, no allocation.
+    pub fn push_at(&self, state: &RobotState, command: Option<RobotCommandLog>, host_ns: u64) {
+        self.send(Stamped::at(
+            Record {
+                state: *state,
+                command,
+            },
+            host_ns,
+        ));
+    }
+
+    /// [`Recorder::push_at`] with what target control's torque backend made of the cycle,
+    /// logged under `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale` and
+    /// `joints/tau_envelope`. Same guarantees: no blocking, no allocation.
+    pub fn push_torque_at(
+        &self,
+        state: &RobotState,
+        command: Option<RobotCommandLog>,
+        torque: TorqueLog,
+        host_ns: u64,
+    ) {
+        let mut record = Stamped::at(
+            Record {
+                state: *state,
+                command,
+            },
+            host_ns,
+        );
+        record.torque = Some(torque);
+        self.send(record);
+    }
+
+    /// Counts the record and hands it over, or counts it dropped.
+    fn send(&self, record: Stamped) {
         self.pushed.fetch_add(1, Ordering::Relaxed);
-        let record = Record {
-            state: *state,
-            command,
-        };
         if let Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) =
             self.sender.try_send(record)
         {
@@ -209,7 +283,8 @@ impl Recorder {
     /// A handle on the recording, for logging extra entities into it from a thread that is
     /// **not** the realtime one (the SDK allocates and may block): `stream.set_duration_secs(
     /// TIMELINE, t)` then `stream.log(...)`, on the same `robot_time` timeline as everything
-    /// else. Handles are cheap `Arc` clones; what is logged through one before
+    /// else. Set [`crate::HOST_TIMELINE`] as well, or the rows are invisible while the viewer
+    /// is on that timeline. Handles are cheap `Arc` clones; what is logged through one before
     /// [`Recorder::finish`] is flushed with the rest.
     pub fn stream(&self) -> RecordingStream {
         self.rec.clone()

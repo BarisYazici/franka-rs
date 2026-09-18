@@ -100,20 +100,11 @@ fn nominal_gripper_workflow() {
 
 /// Grasping a virtual object placed between the fingers (`--gripper-object-width 0.04`).
 ///
-/// Also exercises a grasp request beyond the gripper's stroke (0..0.08 m). Whether the sim
+/// Also exercises a grasp request beyond the gripper's stroke (0..0.08 m). Whether a server
 /// answers `kFail` (`Err(FrankaError::Command)`) or `kUnsuccessful` (`Ok(false)`) is not
-/// specified anywhere, so only the behaviour actually observed is asserted. Running this against
-/// `franka-sim:dev` (container logs, `franka_sim.gripper.server`) shows:
-///
-/// ```text
-/// ERROR franka_sim.gripper.server: Gripper command 2 failed: grasp width 0.09 m is outside the
-/// 0..0.08 m stroke
-/// ```
-///
-/// i.e. the sim raises an exception validating the request width against the stroke *before*
-/// running the grasp, which its TCP handler catches and reports as `kFail` -- not
-/// `kUnsuccessful`. So this asserts `Err(FrankaError::Command("libfranka gripper: Command
-/// failed!"))`.
+/// specified. franka-sim validates the request width against the stroke *before* running the
+/// grasp and reports the rejection as `kFail`, so this asserts
+/// `Err(FrankaError::Command("libfranka gripper: Command failed!"))`.
 #[test]
 fn grasp_with_object_between_the_fingers() {
     let sim = common::sim(SimConfig::nominal().with_gripper_object(0.04));
@@ -132,8 +123,7 @@ fn grasp_with_object_between_the_fingers() {
         state.width
     );
 
-    // Beyond the gripper's stroke (0..0.08 m): observed as `kFail` (`Err(Command)`), not
-    // `kUnsuccessful` -- see the doc comment above for how this was determined.
+    // Beyond the gripper's stroke (0..0.08 m): `kFail` (`Err(Command)`), not `kUnsuccessful`.
     let error = gripper
         .grasp(0.09, 0.05, 10.0, 0.005, 0.005)
         .expect_err("out-of-stroke grasp should fail, matching the observed kFail status");

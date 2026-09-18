@@ -23,7 +23,8 @@
 //! sent to a [`franka_rerun::Recorder`] (`--live ADDR` streams to a viewer already listening
 //! there, `rerun --port 9876` say; `--out FILE` writes an `.rrd`; both together do both) --
 //! one `push`, no Rerun call and no allocation on the realtime thread -- and its background
-//! thread draws the flight recording: the arm (with `--meshes DIR`, Franka's link meshes),
+//! thread draws the flight recording: the arm with Franka's link meshes (`--meshes DIR` for
+//! other files than the built-in ones),
 //! `ee/position/{x,y,z}` sent against measured, `ee/derivatives/{speed,acceleration,jerk}`
 //! against the limits. The commander logs its own side at the moment it publishes, stamped
 //! with the robot time the observer keeps in an atomic: `commander/target/{x,y,z}`,
@@ -55,7 +56,7 @@ use franka::{
     CartesianSent, FrankaError, FrankaResult, Robot, RobotCommandLog, RobotState,
     TargetControlOptions,
 };
-use franka_rerun::{flight, Recorder, RecorderOptions, RobotKind, TIMELINE};
+use franka_rerun::{flight, MeshChoice, Recorder, RecorderOptions, RobotKind, TIMELINE};
 use rerun::{TextLog, TextLogLevel};
 use script::BOX;
 use sink::{log_target, Clock, LiveCommander};
@@ -110,7 +111,10 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
     let options = RecorderOptions {
         flight: flight::FlightOptions {
             every: 10,
-            meshes: args.meshes.clone(),
+            meshes: args
+                .meshes
+                .clone()
+                .map_or_else(MeshChoice::default, MeshChoice::Dir),
             ..flight::FlightOptions::default()
         },
         ..RecorderOptions::default()
@@ -122,8 +126,10 @@ fn run(args: &Args) -> Result<bool, Box<dyn std::error::Error>> {
         (None, None) => unreachable!("parse_args requires one"),
     });
     let rec = recorder.stream();
-    flight::send_commander_blueprint(&rec)?;
-    flight::log_target_styles(&rec)?;
+    // One arm, one recording: the unprefixed entity paths the commander layout names.
+    let prefix = franka_rerun::Prefix::none();
+    flight::send_commander_blueprint(&rec, &prefix)?;
+    flight::log_target_styles(&rec, &prefix)?;
     match args.mode {
         Mode::Bridged => println!("Mode: bridged, budget {:?}", args.limits),
         Mode::Raw => println!("Mode: raw, no generator, no rate limiting, expect a reflex"),

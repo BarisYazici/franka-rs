@@ -29,11 +29,10 @@ robot.set_collision_behavior(
 
 Those are the thresholds of libfranka's `examples_common.cpp`, and the `generate_*` examples
 use them. `nonrealtime_commander` sets libfranka's current example thresholds instead
-(12 to 20 Nm per joint, 20 N and 25 Nm at the end effector), because on one FER the robot's
-force estimate
-`O_F_ext_hat_K` crossed 10 N at about 0.25 m/s of commanded speed, and above roughly 1 m/s²
-of commanded acceleration it crossed 20 N: for fast target steps the collision thresholds,
-not the kinematic limits, were the binding constraint. Measured on one arm, not a
+(12 to 20 Nm per joint, 20 N and 25 Nm at the end effector), because an FER's force estimate
+`O_F_ext_hat_K` crosses 10 N at about 0.25 m/s of commanded speed, and above roughly 1 m/s²
+of commanded acceleration it crosses 20 N: for fast target steps the collision thresholds,
+not the kinematic limits, are the binding constraint. The figures are approximate, not a
 specification. The two Cartesian impedance examples set 100 Nm and 100 N so that the arm can
 be pushed around; keep the user stop in hand there. Target control's default backend is a
 spring too and sets no thresholds itself: at its default stiffness a 2.7 cm push reaches
@@ -73,8 +72,8 @@ robot runs inverse kinematics on every commanded Cartesian pose and checks the c
 the joint motion it implies, which the Cartesian limits do not bound. A pose stream inside
 the Cartesian limits can still be refused with
 `cartesian_motion_generator_joint_velocity_discontinuity`: near the ready pose joint 2 moves
-about 3.2 rad per metre of x, so 2.5 m/s² was refused and 1.5 m/s² passed on an FER, and on
-an FR3 the refusal came in the cycle a joint crossed 10 rad/s². Details in
+about 3.2 rad per metre of x, so 2.5 m/s² is refused and 1.5 m/s² passes on an FER, and on
+an FR3 the refusal comes in the cycle a joint crosses 10 rad/s². Details in
 [FER / Panda specifics](../reference/fer.md) and
 [Online trajectory generation](../reference/otg.md).
 

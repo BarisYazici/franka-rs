@@ -1,21 +1,23 @@
 //! Differential inverse kinematics of the Cartesian torque backend: from the previous joint
 //! goal, a few damped-least-squares steps toward the desired pose, a posture bias through the
-//! nullspace, a cap on the step and a clamp inside the joint position limits. The joint goal
-//! so follows the pose stream continuously and, where the pose is unreachable or singular,
-//! lags instead of jumping.
+//! nullspace, the step scaled as a whole under the joint velocity cap, and a clamp inside the
+//! joint position limits. The joint goal so follows the pose stream continuously and, where
+//! the pose is unreachable or singular, lags instead of jumping.
 
 use std::sync::Arc;
 
 use nalgebra::{Matrix3, SMatrix, SVector, Vector3};
 
 use super::rotation::{log, rotation_of, translation_of};
+use super::velocity::cap_step;
 use crate::error::{FrankaError, FrankaResult};
 use crate::model::{Frame, Model};
 
 /// Options of the Cartesian backend's differential inverse kinematics: every cycle, from the
 /// previous joint goal, up to `iterations` damped-least-squares steps toward the pose, a
-/// posture bias through the nullspace, the step capped at `max_step` and clamped inside the
-/// joint limits.
+/// posture bias through the nullspace, the step scaled under the joint velocity cap
+/// ([`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction))
+/// and clamped inside the joint limits.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IkOptions {
     /// `λ` of the damped least squares `Jᵀ (J Jᵀ + λ² I)⁻¹`. Default 0.05.
@@ -30,10 +32,6 @@ pub struct IkOptions {
     /// How far, rad, inside the joint position limits the solution is kept, its start (the
     /// measured configuration) included. Default 0.02.
     pub limit_margin: f64,
-    /// The most, rad, any joint of the solution moves in one cycle: a larger step is scaled
-    /// down as a whole, so an unreachable or singular pose is approached at a bounded rate
-    /// instead of jumped at. Default 0.01 (10 rad/s).
-    pub max_step: f64,
 }
 
 /// The most, rad/s, the posture bias moves any joint: the pull `nullspace_gain × distance`
@@ -49,30 +47,27 @@ impl Default for IkOptions {
             iterations: 3,
             tolerance: 1e-6,
             limit_margin: 0.02,
-            max_step: 0.01,
         }
     }
 }
 
 impl IkOptions {
     /// # Errors
-    /// [`FrankaError::InvalidArgument`] unless `damping` and `max_step` are finite and
-    /// positive, `nullspace_gain`, `tolerance` and `limit_margin` finite and non-negative, and
-    /// `iterations` at least one.
+    /// [`FrankaError::InvalidArgument`] unless it has a finite, positive damping, finite and
+    /// non-negative nullspace_gain, tolerance and limit_margin, and at least one iteration.
     pub fn validate(&self) -> FrankaResult<()> {
         let positive = |x: f64| x.is_finite() && x > 0.0;
         let non_negative = |x: f64| x.is_finite() && x >= 0.0;
         let valid = positive(self.damping)
-            && positive(self.max_step)
             && non_negative(self.nullspace_gain)
             && non_negative(self.tolerance)
             && non_negative(self.limit_margin)
             && self.iterations > 0;
         if !valid {
             return Err(FrankaError::InvalidArgument(format!(
-                "target control: ik needs a finite, positive damping and max_step, finite and \
-                 non-negative nullspace_gain, tolerance and limit_margin, and at least one \
-                 iteration, got {self:?}"
+                "target control: ik needs a finite, positive damping, finite and non-negative \
+                 nullspace_gain, tolerance and limit_margin, and at least one iteration, got \
+                 {self:?}"
             )));
         }
         Ok(())
@@ -87,6 +82,10 @@ pub(super) struct Ik {
     upper: [f64; 7],
     f_t_ee: [f64; 16],
     ee_t_k: [f64; 16],
+    /// The velocity cap, rad/s per joint.
+    max_velocity: [f64; 7],
+    /// The scale the last step was cut by under the cap, 1 when it was not.
+    cap_scale: f64,
     q: [f64; 7],
 }
 
@@ -95,6 +94,7 @@ impl Ik {
         model: Arc<Model>,
         options: IkOptions,
         limits: ([f64; 7], [f64; 7]),
+        max_velocity: [f64; 7],
         q0: [f64; 7],
         f_t_ee: [f64; 16],
         ee_t_k: [f64; 16],
@@ -115,6 +115,8 @@ impl Ik {
             upper,
             f_t_ee,
             ee_t_k,
+            max_velocity,
+            cap_scale: 1.0,
             q: std::array::from_fn(|i| q0[i].clamp(lower[i], upper[i])),
         }
     }
@@ -122,8 +124,7 @@ impl Ik {
     /// One cycle toward `pose` (column-major, as `O_T_EE`); returns the solution and the
     /// residual pose error norm. The first step always runs and carries the posture bias (a
     /// rate, integrated over `dt` once per call); the remaining steps refine the pose until
-    /// the residual is below `tolerance`; the whole move is then capped at `max_step` on its
-    /// largest joint.
+    /// the residual is below `tolerance`; the whole move is then scaled under the velocity cap.
     pub(super) fn step(
         &mut self,
         pose: &[f64; 16],
@@ -170,28 +171,35 @@ impl Ik {
                 self.q[i] = next[i].clamp(self.lower[i], self.upper[i]);
             }
         }
-        let largest = (0..7).fold(0.0f64, |m, i| m.max((self.q[i] - from[i]).abs()));
-        if largest > self.options.max_step {
-            // Scaled as a whole toward `from`, which is within the limits, so it stays there.
-            let scale = self.options.max_step / largest;
-            for (q, from) in self.q.iter_mut().zip(&from) {
-                *q = from + scale * (*q - from);
-            }
+        let max_step = self.max_velocity.map(|v| v * dt);
+        // Scaled toward `from`, which is within the limits, so it stays there.
+        self.cap_scale = cap_step(&from, &mut self.q, &max_step);
+        if self.cap_scale < 1.0 {
             residual = self.error(&p_des, &r_des).norm();
         }
         (self.q, residual)
     }
 
-    #[cfg(test)]
+    /// The scale the last [`step`](Self::step) was cut by to stay under the velocity cap; 1
+    /// when it was not.
+    pub(super) fn cap_scale(&self) -> f64 {
+        self.cap_scale
+    }
+
+    /// The end effector's pose at `q`, column-major.
+    pub(super) fn pose_of(&self, q: &[f64; 7]) -> [f64; 16] {
+        self.model
+            .pose_q(Frame::EndEffector, q, &self.f_t_ee, &self.ee_t_k)
+    }
+
+    /// The solution of the last step, where the next one starts.
     pub(super) fn q(&self) -> [f64; 7] {
         self.q
     }
 
     /// `[p_des - p(q); log(R_des R(q)ᵀ)]`, base frame.
     fn error(&self, p_des: &Vector3<f64>, r_des: &Matrix3<f64>) -> SVector<f64, 6> {
-        let fk = self
-            .model
-            .pose_q(Frame::EndEffector, &self.q, &self.f_t_ee, &self.ee_t_k);
+        let fk = self.pose_of(&self.q);
         let p = p_des - Vector3::from(translation_of(&fk));
         let turn = log(&(r_des * rotation_of(&fk).transpose()));
         SVector::<f64, 6>::new(p[0], p[1], p[2], turn[0], turn[1], turn[2])

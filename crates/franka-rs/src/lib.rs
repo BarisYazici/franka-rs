@@ -43,7 +43,7 @@
 //! use franka::{ControllerMode, JointPositions, RealtimeConfig, Robot, DEFAULT_CUTOFF_FREQUENCY};
 //!
 //! # fn main() -> franka::FrankaResult<()> {
-//! let robot = Robot::new("192.168.0.1", RealtimeConfig::Enforce)?;
+//! let robot = Robot::new("172.16.0.2", RealtimeConfig::Enforce)?;
 //! let initial = robot.read_once()?.q_d;
 //! let mut time = 0.0;
 //! robot.control_joint_positions(

@@ -17,8 +17,8 @@ use super::rotation::{
 use super::runner::Step;
 use super::torque::{PoseTracker, TorqueLoop};
 use super::{
-    check_posture, joint_position_limits, spawn, Backend, Handle, ImpedanceOptions, Runner, Shared,
-    TargetControlOptions,
+    check_posture, joint_position_limits, max_joint_velocity, spawn, Backend, Handle,
+    ImpedanceOptions, Runner, Shared, TargetControlOptions,
 };
 use crate::control_types::CartesianPose;
 use crate::error::FrankaResult;
@@ -37,7 +37,8 @@ use crate::wire::robot::codec::FciVersion;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CartesianSent {
     /// The pose that went to the robot (after the backstop), or with [`Backend::Impedance`]
-    /// the desired pose the IK follows; column-major.
+    /// the desired pose the IK follows; column-major. On a cycle the joint velocity cap cut,
+    /// the desired pose before the cut: `q_goal` and `dq_goal` are what was commanded.
     pub pose: [f64; 16],
     /// The orientation of `pose` as a unit quaternion, `[x, y, z, w]`.
     pub orientation: [f64; 4],
@@ -60,9 +61,24 @@ pub struct CartesianSent {
     pub backstop_angular_alteration: f64,
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
+    /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
+    /// forward, under the joint velocity cap; zeros on the first cycle, while holding and with
+    /// [`Backend::RobotController`].
+    pub dq_goal: [f64; 7],
+    /// The scale this cycle's goal step was cut by to stay under
+    /// [`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction)
+    /// of the joint velocity limits: 1 when it was not, and with [`Backend::RobotController`].
+    pub cap_scale: f64,
     /// The torques sent, Nm, clamped to the torque limits; zeros with
     /// [`Backend::RobotController`].
     pub tau: [f64; 7],
+    /// The velocity envelope's share of `tau`, Nm, before the clamp: the barrier opposing every
+    /// joint measured faster than
+    /// [`ImpedanceOptions::velocity_barrier_fraction`](super::ImpedanceOptions::velocity_barrier_fraction)
+    /// of its limit, less the law's torque along a joint's motion faded out above the fade's
+    /// start ([`FADE_BAND`](super::FADE_BAND)); zeros below it and with
+    /// [`Backend::RobotController`].
+    pub tau_envelope: [f64; 7],
     /// The IK's residual toward `pose` after this cycle's iterations, m plus rad in one norm;
     /// 0 with [`Backend::RobotController`].
     pub ik_error: f64,
@@ -237,7 +253,10 @@ pub(super) fn sent(step: &Step<6, 7>, pose: [f64; 16]) -> CartesianSent {
         backstop_alteration: 0.0,
         backstop_angular_alteration: 0.0,
         q_goal: [0.0; 7],
+        dq_goal: [0.0; 7],
+        cap_scale: 1.0,
         tau: [0.0; 7],
+        tau_envelope: [0.0; 7],
         ik_error: 0.0,
         leash_alteration: 0.0,
         leash_angular_alteration: 0.0,
@@ -298,13 +317,13 @@ pub(super) fn start(
     )?;
     let shared = Arc::new(Shared::<7>::default());
     let loop_shared = Arc::clone(&shared);
-    let priority = options.realtime_priority;
+    let scheduling = options.scheduling();
     let inner = match options.backend {
         Backend::RobotController => spawn(
             THREAD,
             robot,
             shared,
-            priority,
+            scheduling,
             move |robot: &Robot, started| pose_loop(robot, started, options, loop_shared),
         )?,
         Backend::Impedance(impedance) => {
@@ -313,7 +332,7 @@ pub(super) fn start(
                 THREAD,
                 robot,
                 shared,
-                priority,
+                scheduling,
                 move |robot: &Robot, started| {
                     let limit_rate = options.limit_rate;
                     let version = robot.fci_version();
@@ -348,6 +367,7 @@ pub(super) fn torque_loop(
         &impedance,
         Arc::clone(&model),
         joint_position_limits(version),
+        max_joint_velocity(version),
     );
     Ok(TorqueLoop::new(
         runner,
@@ -355,6 +375,7 @@ pub(super) fn torque_loop(
         impedance,
         tracker,
         options.observer,
+        max_joint_velocity(version),
     ))
 }
 

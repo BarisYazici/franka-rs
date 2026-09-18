@@ -44,7 +44,7 @@ const HEADROOM: f64 = 1.25;
 /// with some margin at the top.
 const EYE_POSITION: [f32; 3] = [0.62, -0.95, 0.68];
 const EYE_LOOK_AT: [f32; 3] = [0.20, -0.06, 0.40];
-/// The 3D view's background: a solid near-black, the demo animation's ground.
+/// The 3D view's background: a solid near-black.
 const BACKGROUND: u32 = 0x0b0f_14ff;
 
 /// Sends the demo layout as the active, default blueprint. `budget` is what the

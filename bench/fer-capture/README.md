@@ -1,13 +1,12 @@
 # Franka Emika Robot (FER, FCI v5) state-arrival capture
 
-Offline tooling to find out **which side stalls** when an FER control loop loses roughly one
-robot state in a thousand: the robot (or the wire), or this box.
+Offline tooling to find out **which side stalls** when an FER control loop loses robot
+states: the robot (or the wire), or the host.
 
-Both the pure-Rust client and libfranka 0.9.2 lose ~1 state per 1000 on the left FER while
-every NIC, reassembly and UDP counter stays at zero, the longest observed gap between control
-cycles is 7.6 ms, and never more than one `message_id` is missing in a row. That pattern is
-what a *late sender* looks like, not a lost packet - but it is a guess until the packets are
-timestamped before the client ever sees them. That is what this directory does.
+A loop can lose states while every NIC, reassembly and UDP counter stays at zero and never more
+than one `message_id` is missing in a row. That pattern points at a *late sender*, not a lost
+packet, and timestamping the packets before the client sees them tells the two apart. That is
+what this directory does.
 
 Why a capture settles it: tcpdump timestamps a frame when the kernel (or, with
 `-j adapter_unsynced`, the NIC itself) receives it, i.e. **before** the client's `recvmsg`. A
@@ -16,7 +15,7 @@ commands it sends back. So:
 
 * a gap in the **state arrival** timestamps -> the robot sent late or the packet sat on the
   wire / in the NIC (`ROBOT_OR_WIRE_STALL`),
-* a smooth state stream plus a gap in the **commands** -> this box stalled (`HOST_STALL`).
+* a smooth state stream plus a gap in the **commands** -> the host stalled (`HOST_STALL`).
 
 ## Files
 
@@ -27,43 +26,42 @@ commands it sends back. So:
 | `README.md` | this file |
 
 `analyze.py` needs nothing but Python 3 (no scapy, no dpkt). `capture.sh` needs `tcpdump` with
-`cap_net_raw` - on this box that is already granted:
+`cap_net_raw`; check with:
 
 ```
 $ getcap "$(command -v tcpdump)"
 /usr/bin/tcpdump cap_net_admin,cap_net_raw=eip
 ```
 
-If it is not, grant it once (this is the only step that needs root, and neither script ever
+If it is missing, grant it once (this is the only step that needs root, and neither script ever
 elevates by itself):
 
 ```
 sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v tcpdump)"
 ```
 
-## Running it on the left arm
+## Running it
 
-Left arm: robot `<robot-ip>`, host `<host-ip>` on `<iface>`. (Right arm: on
-its own interface - pass those instead.)
+`<robot-ip>` is the arm's address and `<iface>` the host interface on its link.
 
 ```bash
 cd <repo>
 cargo build --release --example communication_test
 
 # 1. arm the capture (returns as soon as tcpdump is listening)
-bench/fer-capture/capture.sh start <robot-ip> <iface> /tmp/fer-left.pcap
+bench/fer-capture/capture.sh start <robot-ip> <iface> /tmp/fer.pcap
 
 # 2. run the client that loses states
 FRANKA_REALTIME=ignore chrt -f 80 target/release/examples/communication_test <robot-ip>
 
 # 3. stop the capture (SIGINT, then wait for tcpdump to flush)
-bench/fer-capture/capture.sh stop /tmp/fer-left.pcap
+bench/fer-capture/capture.sh stop /tmp/fer.pcap
 
 # 4. analyse
-python3 bench/fer-capture/analyze.py /tmp/fer-left.pcap --robot-ip <robot-ip> --gap-ms 1.5
+python3 bench/fer-capture/analyze.py /tmp/fer.pcap --robot-ip <robot-ip> --gap-ms 1.5
 ```
 
-`capture.sh status /tmp/fer-left.pcap` says whether a capture is still running.
+`capture.sh status /tmp/fer.pcap` says whether a capture is still running.
 
 `capture.sh` first tries `-j adapter_unsynced` so the timestamps come from the NIC's own clock
 (`ethtool -T <iface>` lists `hardware-receive` if the adapter can do it) and falls back to
@@ -79,7 +77,7 @@ kernel" counters - check that "dropped by kernel" is 0), `<out.pcap>.meta`.
 ## Reading the report
 
 ```
-python3 bench/fer-capture/analyze.py /tmp/fer-left.pcap
+python3 bench/fer-capture/analyze.py /tmp/fer.pcap
 ```
 
 `--robot-ip` is optional: without it the tool picks the side that sends the big datagrams. Other
@@ -90,10 +88,10 @@ threshold, defaults to `--gap-ms`), `--max-rows`, and `--clock-scale` (below).
 ### `--clock-scale auto|FACTOR` - capture clock rate
 
 **A `-j adapter_unsynced` capture must be analysed with `--clock-scale auto`.** The NIC's
-timestamp clock is free-running and disciplined to nothing; on this box's i219 it runs
-**1.5999x fast**, which turns the 1 kHz cadence into a 1.6 ms interval, makes *every* normal
-interval cross a 1.5 ms threshold (9820 "gap" rows), and inflates the drift range to 6185 ms.
-Nothing is wrong with the capture - only with the units.
+timestamp clock is free-running and disciplined to nothing; a free-running NIC clock can be
+far off nominal (about 1.6x has been seen on Intel i219 adapters), which turns the 1 kHz
+cadence into a 1.6 ms interval and makes every normal interval cross a 1.5 ms threshold,
+inflating the drift range. Nothing is wrong with the capture - only with the units.
 
 The robot's `message_id` is a millisecond clock, so the ratio is measurable from the capture
 itself. `auto` fits arrival time against `message_id` with a Theil-Sen median slope over pairs a
@@ -103,7 +101,7 @@ robot's own cumulative lateness into the rate), then divides every timestamp by 
 the fitted slope and the residual RMS around it:
 
 ```
-clock scale        : 1.599972163 (auto), fitted 1599972.2 ns of capture clock per robot ms, residual RMS 80.2 us over 10206 states
+clock scale        : <slope> (auto), fitted <slope> ns of capture clock per robot ms, residual RMS <rms> us over <n> states
 ```
 
 `--clock-scale 1.6` applies a fixed factor instead. A kernel-timestamped capture (`-j host`, or
@@ -115,11 +113,11 @@ Two more things about hardware timestamps:
   hardware timestamps; the outgoing commands are still stamped by the kernel. The tool fits each
   direction separately, notices when the two rates disagree, says so in the header, and shifts
   the command timeline by the constant offset between the two clocks (median turnaround = 0) so
-  that the state/command coincidence test still means something. Measured on this box: 1.5999 for
-  receive, 0.99999 for transmit, 6609 s apart in absolute terms.
+  that the state/command coincidence test still means something. On an i219, for example: 1.5999
+  for receive, 0.99999 for transmit.
 * **Fragment timing is not resolvable.** The i219 gives both fragments of a state the same
-  timestamp, so `first->last fragment` is exactly 0 for 99.7 % of datagrams (the report prints
-  that count). Use the software capture for fragment-level questions.
+  timestamp, so `first->last fragment` is exactly 0 for almost every datagram (the report
+  prints that count). Use the software capture for fragment-level questions.
 
 Sections, in order:
 
@@ -161,9 +159,9 @@ Sections, in order:
   * `NO_STALL` - no gap above `--gap-ms` in either direction; raise the run time or lower the
     threshold.
 
-For the reported symptom the expected outcome is `ROBOT_OR_WIRE_STALL` with `consec = yes`,
-`robot_dt_ms = 1` and `next_3ms = cadence` on every row: the robot's millisecond clock only
-advanced by one while the wire stayed quiet for 7 ms, which no host-side delay can produce.
+A late sender reads `ROBOT_OR_WIRE_STALL` with `consec = yes` and `robot_dt_ms = 1` on every
+row: the robot's millisecond clock advanced by one while the wire stayed quiet, which no
+host-side delay can produce.
 
 ### The v5 wire fields this reads
 
@@ -180,31 +178,6 @@ From `crates/franka-rs/src/wire/robot/v5/rbk_types.rs` (little endian, `#[repr(C
 At an MTU of 1500 a state is two IP fragments (1480 + 901 bytes of IP payload); the tool
 reassembles them by `(src, dst, ip_id, proto)` and keeps both the first and the last fragment's
 timestamp. Unfragmented datagrams (loopback, jumbo frames) are handled too.
-
-## What the left arm actually does
-
-`../results/20260905-fer-capture/` holds two ~10 s captures of
-`communication_test <robot-ip>` on `<iface>`, one with NIC receive timestamps
-(`left_rust.pcap`, analysed with `--clock-scale auto` into `left_rust_hw.txt`) and one with
-kernel timestamps (`left_rust_sw.pcap` -> `left_rust_sw.txt`). They agree:
-
-| | hardware (PHY) | software (kernel) |
-|---|---|---|
-| states | 10310 | 10373 |
-| missing message_ids | 0 | 0 |
-| state gap p50 / p99 / p999 / max (µs) | 999.3 / 1150.0 / 4154.2 / 6212.2 | 999.4 / 1176.0 / 4232.6 / 6319.5 |
-| gaps >= 1.5 ms | 70 | 70 |
-| of those, consecutive ids | 69 (the 70th spans the datagram the capture was cut off mid-way) | 70 |
-| of those, followed by a burst | 61 | 58 |
-| drift range | 5.331 ms | 5.470 ms |
-| host-only command gaps | 1 (5975 µs at t=0.19 s) | 1 (6062 µs at t=0.17 s) |
-| verdict | MIXED (70 transit vs 1 host-only: predominantly ROBOT_OR_WIRE) | same |
-
-The multi-millisecond gaps are already there in the PHY timestamps, before the packet reaches
-the kernel, let alone the client: the delay is in the robot's box or on the wire, not in this
-host's interrupt path. Every gap keeps the message ids consecutive with the robot's own clock
-advancing exactly 1 ms, so nothing is lost - the robot simply emits late and then catches up
-(hence the bursts). The single host-side event in each capture is at startup.
 
 ## Tests
 
@@ -236,7 +209,7 @@ robot's UDP source port.
 
 ### End-to-end check against the FER simulator
 
-The whole pipeline was also exercised for real, without a robot, over loopback: `franka-sim:panda-v5`
+The whole pipeline also runs end to end without a robot, over loopback: `franka-sim:panda-v5`
 (`--protocol v5 --robot panda --no-gripper`, `PANDA_MJCF=/opt/mujoco_menagerie/franka_emika_panda/panda_nohand.xml`)
 on `--network host` under `flock .sim.lock`, `capture.sh start 127.0.0.1 lo ...`,
 `FRANKA_REALTIME=ignore target/release/examples/communication_test 127.0.0.1`, `capture.sh stop`,
@@ -250,5 +223,5 @@ timestamp mode : host (software, adapter_unsynced refused)
 
 On loopback the states are unfragmented (MTU 65536) and both addresses are `127.0.0.1`, so that
 run also covers the unfragmented path and the port-based direction split. Note that
-`udp and host 127.0.0.1` also catches this box's DNS traffic; the analyzer keeps only the busiest
+`udp and host 127.0.0.1` also catches the host's DNS traffic; the analyzer keeps only the busiest
 FCI flow and counts the rest under "datagrams outside the flow".

@@ -39,11 +39,11 @@
 //! that is exactly braking to its target) keeps its minimum duration.
 //!
 //! # In a control loop
-//! Three rules, learnt from a run on a real FER in which the first version of the bridge in
-//! `examples/nonrealtime_commander.rs` was clamped by the rate limiter behind it and then
-//! orbited at the velocity cap for twenty seconds. The limits are **per axis**: two axes at
-//! full acceleration have a vector norm `sqrt 2` above it, so a budget that is a norm (which is
-//! what `limit_rate_cartesian_pose` bounds) needs [`OtgLimits::per_axis_for_norm`]. Step **one
+//! Three rules, without which a bridge such as `examples/nonrealtime_commander.rs` is clamped
+//! by the rate limiter behind it and then orbits at the velocity cap. The limits are
+//! **per axis**: two axes at full acceleration have a vector norm `sqrt 2` above it, so a
+//! budget that is a norm (which is what `limit_rate_cartesian_pose` bounds) needs
+//! [`OtgLimits::per_axis_for_norm`]. Step **one
 //! nominal cycle per command** (`DELTA_T`), not the measured period: the robot and the rate
 //! limiter check every packet against a 1 ms budget, so a 2 ms step after a lost packet is a
 //! doubled velocity to them. And **re-anchor on the robot's echo of the position** every

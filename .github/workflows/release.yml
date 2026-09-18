@@ -1,9 +1,11 @@
 name: Release
 
-# On a `v*` tag: the Python wheels (x86_64 and aarch64 manylinux, plus the sdist) to PyPI
-# through trusted publishing and `franka-rs` to crates.io. From the Actions tab
-# (`workflow_dispatch`) the wheels are built and the crate publish is a `--dry-run`; nothing
-# is uploaded.
+# On a `v*` tag: the Python wheels (x86_64 and aarch64 manylinux, plus the sdist, and the pure
+# franka-node-client wheel and sdist) to PyPI through trusted publishing, the franka-node and
+# franka-cam tarballs to the tag's GitHub release, and `franka-rs`, `franka-description`,
+# `franka-rerun`, `franka-node` and `franka-cam` to crates.io. From the Actions tab
+# (`workflow_dispatch`) the wheels and tarballs are built and the crate publish is a
+# `--dry-run`; nothing is uploaded.
 
 on:
   push:
@@ -43,14 +45,37 @@ jobs:
           args: --out dist -m crates/franka-py/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
-          name: sdist
+          name: wheels-sdist
+          path: dist
+
+  # franka-node-client, the pure-Python client of franka-node: one py3-none-any wheel and its
+  # sdist. Its static version must be the tag's.
+  node-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/franka-node/python/pyproject.toml)
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "tag $GITHUB_REF_NAME is not v$version of franka-node-client"; exit 1
+          fi
+          pip install build
+          python -m build crates/franka-node/python --outdir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-node-client
           path: dist
 
   # Trusted publishing: PyPI accepts the job's OIDC token for the `pypi` environment of
-  # this repository and workflow (docs/book/src/contributing.md, "Releasing").
+  # this repository and workflow (docs/book/src/contributing.md, "Releasing"), for
+  # `franka-rs` and for `franka-node-client`.
   publish-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, sdist]
+    needs: [wheels, sdist, node-client, binaries]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -58,11 +83,97 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
+  # One tarball per node and target, `<crate>-<version>-<target>.tar.gz` holding the binary, its
+  # config example, the systemd unit where there is one, LICENSE and NOTICE: what
+  # `[package.metadata.binstall]` in crates/franka-{node,cam} points at. cargo-zigbuild links
+  # the gnu targets against glibc 2.31 (pinned by the `.2.31` target suffix), so a binary runs on
+  # Raspberry Pi OS Bookworm and on Ubuntu 20.04 alike; musl is fully static.
+  binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [aarch64-unknown-linux-gnu, aarch64-unknown-linux-musl, x86_64-unknown-linux-gnu]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install cargo-zigbuild
+        run: pip install cargo-zigbuild==0.23.4 ziglang==0.16.0
+
+      - name: Build
+        run: |
+          target=${{ matrix.target }}
+          case $target in *-gnu) target=$target.2.31 ;; esac
+          cargo zigbuild --release --locked --target "$target" \
+            -p franka-node -p franka-cam --bins --features franka-node/record,franka-cam/record
+
+      - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "franka-node") | .version')
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "tag $GITHUB_REF_NAME is not v$version, the binstall URLs would miss"; exit 1
+          fi
+          for crate in franka-node franka-cam; do
+            dir="$crate-$version-$TARGET"
+            mkdir -p "dist/$dir"
+            cp "target/$TARGET/release/$crate" "crates/$crate/config.example.toml" LICENSE NOTICE "dist/$dir/"
+            if [[ -d "crates/$crate/deploy" ]]; then cp crates/$crate/deploy/*.service "dist/$dir/"; fi
+            tar -C dist --owner=0 --group=0 -czf "dist/$dir.tar.gz" "$dir"
+          done
+          if [[ "$TARGET" == x86_64-* ]]; then   # runs here: prints its usage without a config
+            usage=$("dist/franka-node-$version-$TARGET/franka-node" 2>&1 || true)
+            [[ "$usage" == "usage: franka-node"* ]]
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: dist
+          merge-multiple: true
+      - name: Attach the tarballs to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" \
+            --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes "See [CHANGELOG.md](https://github.com/$GH_REPO/blob/$GITHUB_REF_NAME/CHANGELOG.md)."
+          gh release upload "$GITHUB_REF_NAME" dist/*.tar.gz --clobber
+
+  # The crates whose version crates.io does not have yet, in one invocation: cargo orders them,
+  # verifies each against the others' packages before the index has them, and waits for each.
+  # Trusted publishing only updates an existing crate, so a crate's first release is published
+  # by hand (docs/book/src/contributing.md, "Releasing") and skipped here.
   publish-crates:
+    needs: [binaries]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -76,4 +187,19 @@ jobs:
       - name: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish -p franka-rs ${{ github.event_name == 'workflow_dispatch' && '--dry-run' || '' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "franka-rs") | .version')
+          args=()
+          for crate in franka-rs franka-description franka-rerun franka-cam franka-node; do
+            if curl -fs -A "franka-rs release workflow" -o /dev/null \
+              "https://crates.io/api/v1/crates/$crate/$version"; then
+              echo "$crate $version is on crates.io, skipped"
+            else
+              args+=(-p "$crate")
+            fi
+          done
+          if (( ${#args[@]} == 0 )); then exit 0; fi
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          cargo publish "${args[@]}"

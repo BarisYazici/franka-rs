@@ -21,6 +21,7 @@
 # How-to
 
 - [Command from a low-rate program](./howto/target-control.md)
+- [Serve arms over Zenoh: franka-node](./howto/franka-node.md)
 - [Write a 1 kHz callback](./howto/callback-control.md)
 - [Drive the loop yourself](./howto/active-control.md)
 - [Use the model](./howto/model.md)
@@ -39,7 +40,7 @@
 - [Online trajectory generation](./reference/otg.md)
 - [The impedance backend](./reference/impedance.md)
 - [Model parameters and conformance](./reference/model.md)
-- [Benchmarks and hardware validation](./reference/benchmarks.md)
+- [Benchmarks](./reference/benchmarks.md)
 - [Simulator gaps](./reference/simulator-gaps.md)
 - [API reference](./api-reference.md)
 - [Changelog](./changelog.md)

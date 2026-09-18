@@ -1,6 +1,6 @@
-"""A low-rate policy loop on a real arm, as first run on a Panda: a jittery 6-10 Hz commander
-draws a 4 cm circle with `move_to`, yaws and tilts the tool with `move_by`, then hands a
-20-row chunk back to the start to `follow`.
+"""A low-rate policy loop: a jittery 6-10 Hz commander draws a 4 cm circle with `move_to`,
+yaws and tilts the tool with `move_by`, then hands a 20-row chunk back to the start to
+`follow`.
 
 Usage: python policy_loop.py <hostname> [--yes]    (FRANKA_REALTIME=ignore against franka-sim)
 """

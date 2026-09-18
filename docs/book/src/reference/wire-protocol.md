@@ -116,10 +116,7 @@ crate root.
 
 The v5 state datagram, 2373 bytes, exceeds the 1500-byte Ethernet MTU, so every FER state
 arrives as exactly two IP fragments: 2000 packets per second for the host to service instead
-of 1000. The FER hardware campaign saw no reassembly failures or drops
-(`ReasmFails`, `ReasmTimeout`, `Udp.InErrors` and NIC drops all zero); the doubled packet
-rate is the most plausible reason the FER lost occasional cycles where the FR3 lost none,
-as a load effect. See [Benchmarks](./benchmarks.md).
+of 1000.
 
 ## How the layout is pinned
 

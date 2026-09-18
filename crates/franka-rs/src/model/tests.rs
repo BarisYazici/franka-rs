@@ -2,7 +2,7 @@
 
 use super::*;
 
-const FR3_URDF: &str = include_str!("../../tests/data/fr3.urdf");
+use super::FR3_URDF;
 
 fn model() -> Model {
     Model::from_urdf(FR3_URDF).expect("fr3.urdf loads")

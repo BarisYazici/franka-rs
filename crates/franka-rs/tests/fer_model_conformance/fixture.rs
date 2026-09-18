@@ -50,9 +50,9 @@ pub fn model_library_path() -> PathBuf {
 /// capture.
 ///
 /// Every test in this file is a no-op when the fixture is absent, and a plain
-/// `cargo test` (CI included) prints nothing a passing test wrote — which is
-/// how nine green-but-vacuous results could look like coverage. This makes the
-/// `SKIP:` lines show up without `--nocapture`.
+/// `cargo test` (CI included) prints nothing a passing test wrote, so skipped
+/// tests would look like coverage. This makes the `SKIP:` lines show up
+/// without `--nocapture`.
 pub fn skip(message: &str) {
     println!("{message}");
     #[cfg(unix)]

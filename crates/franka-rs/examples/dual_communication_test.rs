@@ -28,6 +28,7 @@ mod common;
 use std::sync::{Arc, Barrier};
 use std::time::Instant;
 
+use franka::realtime::pin_current_thread_to_cpu;
 use franka::{ControllerMode, Robot, Torques, DEFAULT_CUTOFF_FREQUENCY};
 
 /// Default number of successful control-loop iterations per robot, matching
@@ -92,23 +93,6 @@ fn parse_args() -> Result<Args, String> {
         cycles,
         pin,
     })
-}
-
-/// Pins the calling thread to a single CPU core with `sched_setaffinity`.
-fn pin_current_thread_to_cpu(cpu: usize) -> Result<(), String> {
-    unsafe {
-        let mut set: libc::cpu_set_t = std::mem::zeroed();
-        libc::CPU_ZERO(&mut set);
-        libc::CPU_SET(cpu, &mut set);
-        let rc = libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
-        if rc != 0 {
-            return Err(format!(
-                "sched_setaffinity(cpu={cpu}) failed: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// Per-robot results, returned by [`run_robot`] and printed by `main` after both threads join.
@@ -268,7 +252,7 @@ fn run_robot(
         }
         last_tick = Some(tick);
 
-        if counter % 100 == 0 {
+        if counter.is_multiple_of(100) {
             println!(
                 "{host}: #{counter} current success rate: {:.2}",
                 state.control_command_success_rate

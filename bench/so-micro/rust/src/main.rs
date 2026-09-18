@@ -24,9 +24,8 @@
 //! first. `ramp` makes that explicit by timing the same sequence after increasing amounts
 //! of untimed filler work.
 //!
-//! This matters because it is the trap the full FER benchmark write-up (kept privately)
-//! fell into: an in-the-loop measurement of this model path prices the CPU's wake-up
-//! behaviour at least as much as it prices the model.
+//! This matters because an in-the-loop measurement of this model path prices the CPU's
+//! wake-up behaviour at least as much as it prices the model.
 //!
 //! Only the `steady state` block is a cross-language comparison. [`filler`] is not the same
 //! machine code here and in `../cpp/main.cpp` and does not drive the core to the same
@@ -106,8 +105,7 @@ fn filler(mut a: f64, iterations: u64) -> f64 {
     a
 }
 
-/// The state the C++ side uses too: robot L's read-only probe of 2026-09-05
-/// (`bench/results/20260905-fer-hw/L/model_probe_cpp_0.9.2.txt`), with a non-zero `dq`
+/// The state the C++ side uses too: an FER state near the ready pose, with a non-zero `dq`
 /// so `coriolis` is not evaluated at rest.
 #[allow(non_snake_case)]
 fn probe_state() -> RobotState {
@@ -178,9 +176,9 @@ fn main() {
         .unwrap_or(100_000);
 
     // The model library imports `sin`, `cos` and `sincos` and carries no `DT_NEEDED` of its
-    // own; `franka::model::so_backend::SoModelBackend::load` now opens `libm.so.6` into the
-    // process's global scope itself before `dlopen`ing the model library, so this binary no
-    // longer needs its own libm priming call — see that module's `open_libm_global`.
+    // own; `franka::model::so_backend::SoModelBackend::load` opens `libm.so.6` into the
+    // process's global scope itself before `dlopen`ing the model library (that module's
+    // `open_libm_global`), so this binary needs no libm priming call.
     let mut checksum = 0.0;
 
     // SAFETY: the file the operator named is a captured `libfcimodels` build for this

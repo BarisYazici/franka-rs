@@ -29,6 +29,8 @@ const IDENTITY: [f64; 16] = [
 /// The FK of the solution may be this far from the pose it was asked for, m and rad.
 const TRACKING: f64 = 1e-4;
 const MARGIN: f64 = 0.02;
+/// The velocity cap of the tests that are not about it, rad/s: 10 on every joint.
+const CAP: [f64; 7] = [10.0; 7];
 
 struct Arm {
     name: &'static str,
@@ -55,7 +57,21 @@ fn arms() -> [Arm; 2] {
 impl Arm {
     fn ik(&self, options: IkOptions, limits: ([f64; 7], [f64; 7])) -> Ik {
         let model = Arc::clone(&self.model);
-        Ik::new(model, options, limits, READY, HAND, IDENTITY)
+        Ik::new(model, options, limits, CAP, READY, HAND, IDENTITY)
+    }
+
+    /// An IK at the arm's limits and default options, starting from `q` under `cap`.
+    fn ik_from(&self, q: [f64; 7], cap: [f64; 7]) -> Ik {
+        let model = Arc::clone(&self.model);
+        Ik::new(
+            model,
+            IkOptions::default(),
+            self.limits,
+            cap,
+            q,
+            HAND,
+            IDENTITY,
+        )
     }
 
     fn fk(&self, q: &[f64; 7]) -> [f64; 16] {
@@ -228,6 +244,7 @@ fn the_start_is_clamped_inside_the_inset_limits() {
             Arc::clone(&arm.model),
             IkOptions::default(),
             arm.limits,
+            CAP,
             outside,
             HAND,
             IDENTITY,
@@ -278,33 +295,40 @@ fn the_limit_margin_holds_a_folding_joint_4() {
 }
 
 #[test]
-fn the_step_is_capped_at_max_step_per_call() {
+fn the_step_is_capped_per_joint_as_a_whole() {
     for arm in arms() {
         let start = arm.fk(&READY);
         let (p, r) = (translation_of(&start), rotation_of(&start));
-        // A pose a metre away asks for a jump; the solution moves at most `max_step` on
-        // its largest joint per call, all joints scaled alike.
+        // A pose a metre away asks for a jump: each call moves every joint at most its cap for
+        // one cycle, the binding joint exactly that, along the uncapped step's direction.
         let pose = pose_from(&r, &[p[0] + 1.0, p[1], p[2]]);
-        for max_step in [0.01, 0.002] {
-            let options = IkOptions {
-                max_step,
-                ..IkOptions::default()
-            };
-            let mut ik = arm.ik(options, arm.limits);
+        for cap in [CAP, [2.0, 2.0, 2.0, 2.0, 2.5, 2.5, 2.5]] {
+            let mut ik = arm.ik_from(READY, cap);
             let mut q = READY;
             for k in 0..50 {
+                let free = arm
+                    .ik_from(q, [f64::INFINITY; 7])
+                    .step(&pose, &READY, DELTA_T)
+                    .0;
                 let (next, residual) = ik.step(&pose, &READY, DELTA_T);
-                let largest = (0..7).fold(0.0f64, |m, i| m.max((next[i] - q[i]).abs()));
+                let scale = ik.cap_scale();
+                assert!(scale < 1.0, "{}: call {k} was not capped", arm.name);
+                let binding = (0..7)
+                    .map(|i| (next[i] - q[i]).abs() / (cap[i] * DELTA_T))
+                    .fold(0.0, f64::max);
                 assert!(
-                    largest <= max_step + 1e-12,
-                    "{}: call {k} moved {largest} rad against {max_step}",
+                    (binding - 1.0).abs() < 1e-9,
+                    "{}: call {k} at {binding}",
                     arm.name
                 );
-                assert!(
-                    largest > 0.99 * max_step,
-                    "{}: the cap did not bind",
-                    arm.name
-                );
+                for i in 0..7 {
+                    let off = next[i] - q[i] - scale * (free[i] - q[i]);
+                    assert!(
+                        off.abs() < 1e-12,
+                        "{}: call {k}, joint {i}: {off}",
+                        arm.name
+                    );
+                }
                 let (dp, da) = pose_distance(&arm.fk(&next), &pose);
                 assert!((residual - dp.hypot(da)).abs() < 1e-9, "{}", arm.name);
                 q = next;
@@ -314,6 +338,7 @@ fn the_step_is_capped_at_max_step_per_call() {
         let near = pose_from(&r, &[p[0] + 1e-3, p[1], p[2]]);
         let mut ik = arm.ik(IkOptions::default(), arm.limits);
         let (q, residual) = ik.step(&near, &READY, DELTA_T);
+        assert_eq!(ik.cap_scale(), 1.0, "{}", arm.name);
         assert!(residual < TRACKING, "{}: {residual}", arm.name);
         assert!(joint_distance(&q, &READY) < 0.01, "{}", arm.name);
     }
@@ -332,7 +357,4 @@ fn options_validate() {
     assert!(rejects(|o| o.iterations = 0));
     assert!(rejects(|o| o.tolerance = f64::NAN));
     assert!(rejects(|o| o.limit_margin = f64::INFINITY));
-    assert!(rejects(|o| o.max_step = 0.0));
-    assert!(rejects(|o| o.max_step = f64::NAN));
-    assert_eq!(IkOptions::default().max_step, 0.01);
 }

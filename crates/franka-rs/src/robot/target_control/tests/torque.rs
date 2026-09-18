@@ -33,20 +33,23 @@ pub(super) fn cartesian_loop(
     (torque, shared, first_cycle)
 }
 
-/// A joint torque loop at the FER's default limits with a fresh slot.
+/// A joint torque loop on a fresh slot, at the options' limits or the FER's default ones.
 pub(super) fn joint_loop(
     options: JointTargetControlOptions,
     impedance: ImpedanceOptions,
 ) -> (JointLoop, Arc<Shared<7>>, mpsc::Receiver<()>) {
     let shared = Arc::new(Shared::<7>::default());
     let (started, first_cycle) = mpsc::sync_channel(1);
-    let limits = JointTargetControlOptions::scaled_limits(FciVersion::V5, DEFAULT_LIMIT_FRACTION);
+    let limits = options.limits.unwrap_or_else(|| {
+        JointTargetControlOptions::scaled_limits(FciVersion::V5, DEFAULT_LIMIT_FRACTION)
+    });
     let model = Arc::new(Model::native_fer());
     let torque = joint::torque_loop(
         options,
         limits,
         impedance,
         model,
+        FciVersion::V5,
         Arc::clone(&shared),
         started,
     )

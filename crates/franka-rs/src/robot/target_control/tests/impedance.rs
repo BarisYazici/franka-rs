@@ -6,6 +6,7 @@ use nalgebra::{SMatrix, SVector};
 
 use super::super::ik::IkOptions;
 use super::super::impedance::*;
+use super::is_invalid_argument;
 
 const Q: [f64; 7] = [0.1, -0.6, 0.2, -2.1, 0.0, 1.7, 0.9];
 const DELTA: [f64; 7] = [0.01, -0.02, 0.03, 0.005, -0.01, 0.02, -0.03];
@@ -296,6 +297,11 @@ fn defaults_validate() {
         },
         ImpedanceGains::DROID
     );
+    // The joint velocity cap and the barrier are on by default, on both interfaces.
+    for options in [cartesian, ImpedanceOptions::joint()] {
+        assert_eq!(options.joint_velocity_fraction, 0.7);
+        assert_eq!(options.velocity_barrier_fraction, 0.85);
+    }
 }
 
 #[test]
@@ -351,4 +357,28 @@ fn validate_rejects_bad_fields() {
             joint: 0.1
         }
     );
+    for bad in [0.0, -0.1, 1.01, f64::NAN, f64::INFINITY] {
+        let result = options.with_joint_velocity_fraction(bad).validate();
+        assert!(
+            is_invalid_argument(result, "joint_velocity_fraction"),
+            "{bad}"
+        );
+    }
+    // The barrier sits at or above the cap and at most at the limit.
+    for bad in [0.69, 1.01, f64::NAN] {
+        let result = options.with_velocity_barrier_fraction(bad).validate();
+        assert!(
+            is_invalid_argument(result, "velocity_barrier_fraction"),
+            "{bad}"
+        );
+    }
+    assert!(options.with_joint_velocity_fraction(0.8).validate().is_ok());
+    assert!(options
+        .with_velocity_barrier_fraction(0.8)
+        .validate()
+        .is_ok());
+    let full = options
+        .with_joint_velocity_fraction(1.0)
+        .with_velocity_barrier_fraction(1.0);
+    assert!(full.validate().is_ok());
 }

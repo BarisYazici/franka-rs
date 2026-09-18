@@ -8,6 +8,7 @@ use super::super::*;
 use super::torque::{assert_held, bits, cartesian_loop, cycles_to_finish, peak_abs};
 use super::{recording, Arm, Records, READY};
 use crate::model::Frame;
+use crate::rate_limiting::DELTA_T;
 
 #[test]
 fn the_cartesian_loop_anchors_on_the_models_pose_of_the_measured_q_at_rest() {
@@ -131,6 +132,15 @@ fn the_cartesian_loop_follows_a_step_lands_a_stop_and_holds_the_desired_pose_the
         .iter()
         .all(|r| r.leash_alteration == 0.0 && r.leash_angular_alteration == 0.0));
     assert!(peak_abs(&last.tau) < 1.0, "{:?}", last.tau);
+    // A 5 cm step never nears the joint velocity cap, and the record carries the goal's own
+    // velocity: the finite difference of q_goal (the hold starts after cycle 850).
+    assert!(records.iter().all(|r| r.cap_scale == 1.0));
+    for pair in records[1..600].windows(2) {
+        for i in 0..7 {
+            let difference = (pair[1].q_goal[i] - pair[0].q_goal[i]) / DELTA_T;
+            assert!((pair[1].dq_goal[i] - difference).abs() < 1e-9, "joint {i}");
+        }
+    }
 }
 
 #[test]

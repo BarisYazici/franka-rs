@@ -15,9 +15,9 @@ use crate::robot_state::RobotState;
 /// A generator within [`Settle::tolerance`] of its target moving slower than this, per axis,
 /// counts as landed (m/s, rad/s). The hold then freezes a velocity step of at most this in
 /// one cycle, a jerk of 100 per second cubed, which the joint side of a Cartesian command
-/// amplifies threefold (1 mm/s froze as 3840 rad/s^3 on joint 2 in the simulator, over its
-/// 3750). Not smaller: re-anchoring on a float32 echo (FCI v10) keeps a landed generator in
-/// micro-profiles of a few 1e-8 that peak at about 2e-5 per second.
+/// amplifies threefold (1 mm/s freezes as about 3840 rad/s^3 on joint 2 in the simulator,
+/// over its 3750). Not smaller: re-anchoring on a float32 echo (FCI v10) keeps a landed
+/// generator in micro-profiles of a few 1e-8 that peak at about 2e-5 per second.
 pub const REST_VELOCITY: f64 = 1e-4;
 /// ... and accelerating less than this (m/s^2, rad/s^2); the micro-profiles above peak at
 /// about 0.01.
@@ -181,6 +181,31 @@ impl<const N: usize, const S: usize> Runner<N, S> {
             hold: false,
             finished: false,
         }
+    }
+
+    /// Restarts the generator at `velocity`, keeping its position and, per axis, its
+    /// acceleration only where that brakes (against `velocity`, or `velocity` zero): the torque
+    /// backend re-anchors it on what a capped goal actually carried, as the third OTG rule
+    /// re-anchors the position. `velocity` is an end-of-cycle state, as
+    /// [`Otg::set_state`](crate::otg::Otg::set_state) requires: the torque backend hands over the
+    /// generator's own end velocity cut by the cap's scale, never the capped step's mean. A goal
+    /// held at the cap sent no acceleration toward more speed, so a stop never plans from one; a
+    /// braking one is kept, so a generator that meets the cap cycle after cycle still slows at its
+    /// jerk, not by one cycle's jerk each time.
+    pub(super) fn restart_at_velocity(&mut self, velocity: [f64; N]) {
+        let axes = self.otg.axes();
+        let acceleration = std::array::from_fn(|i| {
+            let a = axes[i].acceleration();
+            if a * velocity[i] > 0.0 {
+                0.0
+            } else {
+                a
+            }
+        });
+        // A non-finite velocity leaves the state as it was.
+        let _ = self
+            .otg
+            .set_state(self.otg.position(), velocity, acceleration);
     }
 
     /// The loop's result: a regular end after the deviation guard fired is the error it is.
