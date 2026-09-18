@@ -83,7 +83,7 @@ stops after the first state, as 0.9.2 does.
 | `Move` request | 56 bytes | 113 bytes: adds `use_async_motion_generator` and seven `maximum_velocity` values, always transmitted |
 | `Move` generator modes | four, **no `None`** | the same four plus `None` (4) |
 | `Move::Status` | 10 values | 12: `PreemptedDueToActivatedSafetyFunctions` (3) and `CommandRejectedDueToActivatedSafetyFunctions` (4) inserted after `Preempted` (2), so `ReflexAborted` is 6 on v5 and 8 on v10 |
-| torque-only control | joint-velocity generator commanding zeros | `MotionGeneratorMode::None` |
+| torque control (no user motion generator) | user torques + joint-velocity generator commanding zeros | user torques + `MotionGeneratorMode::None` |
 | `SetFilters` | yes (`Robot::set_filters`) | removed from the protocol |
 | `GetCartesianLimit` | yes (`Robot::virtual_wall`) | removed from the protocol |
 | `GetRobotModel` (URDF) | **no such command** | yes (`Robot::robot_model`) |

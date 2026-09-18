@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1220" viewBox="0 0 1440 1220" role="img" aria-labelledby="title desc">
+  <title id="title">Franka architecture: choose the goal, keep control beside the robot</title>
+  <desc id="desc">A Python application sends goals and receives state over Zenoh. On a Raspberry Pi 5 or a real-time Linux PC, franka-node manages commands and runs a one-kilohertz controller using franka-rs. A wired Franka Control Interface connection carries torque commands to a Panda or FR3 and returns robot state. Network messaging is outside the real-time control loop. Optional cameras, recording, meshes and a simulator extend this path. Direct Rust or Python control on the real-time machine can bypass the node and Zenoh.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0 8 4 0 8Z" fill="#38796f"/></marker>
+    <marker id="arrow-muted" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0 8 4 0 8Z" fill="#727a86"/></marker>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #202b37; }
+      .eyebrow { font-size: 16px; font-weight: 700; letter-spacing: 2px; fill: #38796f; }
+      .heading { font-size: 38px; font-weight: 700; letter-spacing: -1px; }
+      .sub { font-size: 21px; fill: #566270; }
+      .label { font-size: 16px; font-weight: 700; letter-spacing: 1px; fill: #566270; }
+      .name { font-size: 26px; font-weight: 700; }
+      .body { font-size: 20px; }
+      .small { font-size: 17px; fill: #566270; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 18px; }
+      .white { fill: #fff; }
+      .green { fill: #38796f; }
+      .line { fill: none; stroke: #38796f; stroke-width: 3; }
+      .muted-line { fill: none; stroke: #727a86; stroke-width: 2; }
+    </style>
+  </defs>
+  <rect width="1440" height="1220" rx="24" fill="#f7f6f2"/>
+  <text x="48" y="51" class="eyebrow">FRANKA-RS · THE WHOLE PICTURE</text>
+  <text x="48" y="105" class="heading">Choose the goal. Keep control beside the robot.</text>
+  <text x="48" y="145" class="sub">The node is the robot service. Python is the remote. Rust runs the control loop.</text>
+
+  <rect x="48" y="190" width="296" height="420" rx="20" fill="#fff" stroke="#d7dce0"/>
+  <text x="72" y="226" class="label">1 · YOUR APPLICATION</text>
+  <text x="72" y="266" class="name">Laptop or lab PC</text>
+  <text x="72" y="302" class="small">No real-time kernel required</text>
+  <rect x="70" y="333" width="252" height="113" rx="12" fill="#eef3f8"/>
+  <text x="88" y="366" class="body" font-weight="700">Python client</text>
+  <text x="88" y="397" class="mono">import franka_node</text>
+  <text x="88" y="426" class="small">Package: franka-node-client</text>
+  <text x="72" y="485" class="body">Ask for a pose or joints.</text>
+  <text x="72" y="518" class="body">Read state. Enable. Stop.</text>
+  <text x="72" y="568" class="small">Your task logic lives here.</text>
+
+  <text x="379" y="295" class="label">ZENOH</text>
+  <text x="372" y="322" class="small">Lab network</text>
+  <path d="M344 365H519" class="line" marker-end="url(#arrow)"/>
+  <text x="358" y="351" class="small">Goals · 50 Hz →</text>
+  <path d="M522 419H348" class="line" marker-end="url(#arrow)"/>
+  <text x="354" y="404" class="small">← State · 100 Hz</text>
+  <text x="367" y="463" class="small">Request / reply:</text>
+  <text x="367" y="488" class="small">lease, enable, stop</text>
+  <text x="367" y="531" class="small">Default rates;</text>
+  <text x="360" y="557" class="small">outside 1 kHz loop</text>
+
+  <rect x="526" y="190" width="486" height="420" rx="20" fill="#edf5f1" stroke="#aac8be"/>
+  <text x="550" y="226" class="label">2 · REAL-TIME HOST</text>
+  <text x="550" y="266" class="name">Raspberry Pi 5 or Linux PC</text>
+  <text x="550" y="302" class="small">Runs next to the robot · real-time kernel</text>
+  <rect x="550" y="327" width="438" height="99" rx="12" fill="#fff" stroke="#c4d8cf"/>
+  <text x="571" y="359" class="name">franka-node</text>
+  <text x="571" y="387" class="small">Command ownership · validation · watchdogs</text>
+  <text x="571" y="412" class="small">Connects remote goals to the local controller</text>
+  <path d="M768 427V455" class="line" marker-end="url(#arrow)"/>
+  <rect x="550" y="462" width="438" height="125" rx="12" fill="#2e655c"/>
+  <text x="571" y="496" class="name white">Local control loop · 1 kHz</text>
+  <text x="571" y="528" class="body white">Trajectory → impedance → joint torques</text>
+  <text x="571" y="562" class="small white">Uses franka-rs to communicate with the robot</text>
+
+  <text x="1042" y="364" class="label">WIRED FCI</text>
+  <text x="1044" y="391" class="small">Ethernet</text>
+  <path d="M1012 480H1152" class="line" marker-end="url(#arrow)"/>
+  <text x="1027" y="463" class="small">Torques →</text>
+  <path d="M1154 540H1017" class="line" marker-end="url(#arrow)"/>
+  <text x="1032" y="571" class="small">← State</text>
+
+  <rect x="1160" y="190" width="232" height="420" rx="20" fill="#fff" stroke="#d7dce0"/>
+  <text x="1182" y="226" class="label">3 · ROBOT</text>
+  <text x="1182" y="266" class="name">Panda / FR3</text>
+  <path d="M1215 419H1305M1233 416V395L1289 369L1254 331L1290 306" fill="none" stroke="#aebfba" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="1233" cy="395" r="11" fill="#38796f"/><circle cx="1289" cy="369" r="11" fill="#38796f"/><circle cx="1254" cy="331" r="11" fill="#38796f"/>
+  <text x="1182" y="473" class="body">Robot control unit</text>
+  <text x="1182" y="510" class="small">Receives commands</text>
+  <text x="1182" y="537" class="small">Returns measurements</text>
+  <text x="1182" y="577" class="small">Physical arm + sensors</text>
+
+  <rect x="48" y="638" width="1344" height="77" rx="14" fill="#e8ecef"/>
+  <text x="72" y="668" class="body" font-weight="700">Why the node?</text>
+  <text x="246" y="668" class="body">The laptop can send goals without scheduling every control cycle.</text>
+  <text x="246" y="696" class="small">The Pi or PC keeps the fast loop local. Camera traffic and network delays stay outside that loop.</text>
+
+  <text x="48" y="764" class="label">OPTIONAL PIECES · ADD THEM WHEN YOUR TASK NEEDS THEM</text>
+  <rect x="48" y="790" width="320" height="196" rx="16" fill="#fff" stroke="#d7dce0"/>
+  <text x="70" y="826" class="name">franka-cam</text>
+  <text x="70" y="859" class="body">Camera → Zenoh → app</text>
+  <text x="70" y="897" class="small">Publishes camera frames.</text>
+  <text x="70" y="924" class="small">Run beside the attached camera;</text>
+  <text x="70" y="951" class="small">your app uses the images.</text>
+
+  <rect x="389" y="790" width="320" height="196" rx="16" fill="#fff" stroke="#d7dce0"/>
+  <text x="411" y="826" class="name">Franka Hand</text>
+  <text x="411" y="859" class="body">App → node → gripper</text>
+  <text x="411" y="897" class="small">Open, close, grasp.</text>
+  <text x="411" y="924" class="small">A separate gripper connection,</text>
+  <text x="411" y="951" class="small">outside the arm torque loop.</text>
+
+  <rect x="730" y="790" width="320" height="196" rx="16" fill="#fff" stroke="#d7dce0"/>
+  <text x="752" y="826" class="name">Observe &amp; record</text>
+  <text x="752" y="862" class="mono">franka-rerun</text>
+  <text x="752" y="889" class="small">Record and inspect robot data.</text>
+  <text x="752" y="928" class="mono">franka-description</text>
+  <text x="752" y="955" class="small">Robot models and visual meshes.</text>
+
+  <rect x="1071" y="790" width="321" height="196" rx="16" fill="#fff" stroke="#d7dce0"/>
+  <text x="1093" y="826" class="name">franka-sim</text>
+  <text x="1093" y="859" class="body">Develop without an arm</text>
+  <text x="1093" y="897" class="small">Replaces the robot FCI endpoint.</text>
+  <text x="1093" y="924" class="small">Optional MuJoCo viewer shows</text>
+  <text x="1093" y="951" class="small">the simulated robot moving.</text>
+
+  <rect x="48" y="1012" width="1344" height="145" rx="16" fill="#fff" stroke="#d7dce0" stroke-dasharray="6 5"/>
+  <text x="72" y="1047" class="label">ALTERNATIVE · WRITE YOUR OWN LOCAL CONTROLLER</text>
+  <text x="72" y="1085" class="body">Rust: franka-rs</text>
+  <text x="72" y="1118" class="body">Python: import franka</text>
+  <path d="M335 1090H459" class="muted-line" marker-end="url(#arrow-muted)"/>
+  <text x="483" y="1085" class="body">Your control program on the real-time host</text>
+  <text x="483" y="1118" class="small">Direct FCI access; franka-node and Zenoh are optional.</text>
+  <path d="M994 1090H1117" class="muted-line" marker-end="url(#arrow-muted)"/>
+  <text x="1142" y="1085" class="body">Robot or simulator</text>
+  <text x="1142" y="1118" class="small">Same wire interface</text>
+  <text x="48" y="1193" class="small">One architecture, two placements: put the real-time host on the Pi, or run it on your Linux laptop.</text>
+</svg>

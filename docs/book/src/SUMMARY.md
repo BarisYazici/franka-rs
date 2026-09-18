@@ -2,33 +2,47 @@
 
 [franka-rs](./introduction.md)
 
-# Getting started
+# Start here
+
+- [How the pieces fit](./getting-started/architecture.md)
+- [Choose your setup](./getting-started/choose-your-setup.md)
+- [Without a robot: franka-sim](./getting-started/simulator.md)
+
+# Raspberry Pi setup
+
+- [Build a Pi controller](./getting-started/raspberry-pi.md)
+  - [1. Parts and assembly](./getting-started/pi-hardware.md)
+  - [2. System and network](./getting-started/pi-system.md)
+  - [3. Node and laptop client](./getting-started/pi-software.md)
+  - [4. Optional enclosure](./getting-started/pi-enclosure.md)
+
+# Direct Rust or Python
 
 - [Install](./getting-started/install.md)
 - [The realtime machine](./getting-started/realtime-machine.md)
 - [First program](./getting-started/first-program.md)
 - [From Python](./getting-started/python.md)
-- [Without a robot: franka-sim](./getting-started/simulator.md)
 
-# Things to keep in mind
+# Add capabilities
+
+- [Peripherals: gripper, cameras, recording](./getting-started/peripherals.md)
+- [Command from a low-rate program](./howto/target-control.md)
+- [Use the gripper](./howto/gripper.md)
+- [Record and replay a run](./howto/flight-recorder.md)
+- [Serve arms over Zenoh: franka-node](./howto/franka-node.md)
+- [Tune a running controller](./howto/live-tuning.md)
+- [Run the examples](./howto/examples.md)
+
+# Advanced
 
 - [How the FCI works](./concepts/fci.md)
 - [Three ways to control the arm](./concepts/control-interfaces.md)
 - [The realtime rules](./concepts/realtime-rules.md)
 - [Reflexes, limits and recovery](./concepts/safety.md)
 - [State and errors](./concepts/state-and-errors.md)
-
-# How-to
-
-- [Command from a low-rate program](./howto/target-control.md)
-- [Serve arms over Zenoh: franka-node](./howto/franka-node.md)
-- [Tune a running controller](./howto/live-tuning.md)
 - [Write a 1 kHz callback](./howto/callback-control.md)
 - [Drive the loop yourself](./howto/active-control.md)
 - [Use the model](./howto/model.md)
-- [Use the gripper](./howto/gripper.md)
-- [Record and replay a run](./howto/flight-recorder.md)
-- [Run the examples](./howto/examples.md)
 - [Test against the simulator](./howto/simulator-tests.md)
 - [Build for another machine](./howto/cross-compile.md)
 

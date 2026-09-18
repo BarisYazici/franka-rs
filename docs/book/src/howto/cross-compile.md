@@ -100,10 +100,9 @@ FRANKA_REALTIME=ignore ./communication_test 172.16.0.2
 
 The same [realtime prerequisites](../getting-started/realtime-machine.md) apply on the
 target: a `PREEMPT_RT` kernel (`cat /sys/kernel/realtime` reads `1`) and the right to
-`SCHED_FIFO`, or `FRANKA_REALTIME=ignore` at the cost described there. Raspberry Pi OS 64-bit
-has a `PREEMPT_RT` kernel package (`sudo apt install linux-image-rpi-v8-rt`, selected with
-`kernel=kernel8_rt.img` in `/boot/firmware/config.txt`) and Ubuntu 24.04 for Raspberry Pi has
-one through Ubuntu Pro (`sudo pro enable realtime-kernel --variant=raspi`).
+`SCHED_FIFO`. For a Pi 5, follow [System and network](../getting-started/pi-system.md)
+for the Ubuntu Raspberry Pi real-time kernel route and NIC setup. An ordinary Raspberry
+Pi OS image does not by itself establish these realtime prerequisites.
 
 Building natively on the target instead (`rustup`, then `cargo build --release -p franka-rs
 --examples`) needs none of the above.

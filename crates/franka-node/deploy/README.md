@@ -19,6 +19,9 @@ sudo install -m 644 franka-node.service /etc/systemd/system/
 After `cargo binstall` or `cargo install`, the binary is `~/.cargo/bin/franka-node` and the two
 files are in `crates/franka-node/` of the repository.
 
+For two arms, use the supplied `config.two-arms.toml` instead of `config.example.toml`;
+it retains the shipped control defaults and documents the second network link.
+
 Edit `/etc/franka-node/node.toml` (the arms' hosts, the interface Zenoh listens on) and set
 `User=` in the unit to the account that runs the node (`Group=` is `realtime`; an unedited
 copy refuses to start). Then:

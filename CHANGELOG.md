@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- The Python node client gives queued state callbacks up to 250 ms to catch up after a
+  long local streamer stall, preventing a false disconnect on the next tick. Repeated
+  stalls cannot extend that deadline; normal node-silence detection and explicit
+  session-end handling remain unchanged.
+
 ### Changed
 
 - **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
@@ -21,6 +28,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   that enforces it.
 
 ### Added
+
+- A live-tuning guide and node parameter protocol reference, including accepted-versus-applied
+  values, feedforward configuration, confirmation gates and session lifetime. A portable
+  two-arm node example retains the shipped defaults and shows optional CPU pinning and Hands.
+  The tuning panel instructions now use a dedicated environment and a standalone preset path.
 
 - **Live tuning: a running Cartesian session takes a change to the law and the plan, and
   `franka-node` serves it over Zenoh.** `LiveTuning` is the set of parameters an operator may

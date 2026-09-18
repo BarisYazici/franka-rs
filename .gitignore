@@ -23,3 +23,6 @@
 .sim.lock
 __pycache__/
 /.private/
+
+# Local marketing videos are copied into the ignored site build, not versioned.
+/docs/site/media/*.mp4

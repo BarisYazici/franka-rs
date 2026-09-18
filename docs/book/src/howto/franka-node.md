@@ -3,8 +3,8 @@
 At the end of this page a small machine next to the robots runs `franka-node`, and a program
 on another machine, in any language with a [Zenoh](https://zenoh.io) binding, takes an arm,
 streams pose or joint targets to it and reads its state, without linking `franka-rs` or
-running a realtime kernel itself. The crate is `franka-node` on crates.io and `crates/franka-node`
-in the repository; its [README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-node)
+running a realtime kernel itself. The crate is `franka-node`, under `crates/franka-node`
+in the repository (not yet on crates.io as of 18 September 2026); its [README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-node)
 has the byte-exact wire tables, the verb table and every configuration key. This page is the
 guided tour.
 
@@ -31,19 +31,12 @@ controller holds the arm where it is. A second client is refused while the first
 
 ## The data path
 
-```text
-Zenoh RX ──send──▶ mpsc channel, at most 64 targets in flight ──▶ arm thread (one per arm:
-                                                                   robot, control handle,
-                                                                   guard, state machine,
-                                                                   watchdog)
-                                                   │ set_target
-                                                   ▼
-                                       1 kHz SCHED_FIFO loop (the library's)
-                                                   │ state()
-arm thread, every 10 ms: StateMsg ──▶ Zenoh publisher
-arm thread, at a session's start and end: JSON ──▶ franka/<arm>/episode
-status thread, every 1 s: JSON ──▶ franka/node/<name>/status
-```
+<figure class="flow-figure">
+  <div class="flow-scroll" tabindex="0" role="region" aria-label="Node data path diagram; scroll horizontally on small screens">
+    <img src="../assets/node-data-path.svg" alt="Zenoh targets pass through a bounded queue to one arm thread per robot. The arm thread checks targets and updates the local franka-rs 1 kHz control loop. Torques go to the robot; measured state returns through the arm thread to the client." width="760" height="990">
+  </div>
+  <figcaption>The network and arm-management threads stay outside the realtime loop. <a href="../assets/node-data-path.svg">Open full-size diagram</a>.</figcaption>
+</figure>
 
 The Zenoh callbacks decode a fixed layout with `zerocopy` and send without blocking; the arm
 thread drains its channel, runs commands and lease events in arrival order and judges only
@@ -131,7 +124,9 @@ the token is still in flight), `enable`, targets, `stop`.
 
 ## From Python
 
-`pip install franka-node-client` installs the Python client, imported as `franka_node`: pure
+From this checkout, `python -m pip install ./crates/franka-node/python` installs the client.
+For a matching published release, use `pip install franka-node-client`. It imports as
+`franka_node`: pure
 Python over `eclipse-zenoh` and numpy, so it runs wherever those do, macOS and Windows included.
 This takes an arm, raises the end effector by 5 cm, waits until it is there and opens the gripper:
 
@@ -213,6 +208,17 @@ A client in another language speaks the byte layouts of the README's
 
 ## Installing
 
+For this development checkout, install from the repository root:
+
+```sh
+cargo install --path crates/franka-node --locked
+python -m pip install ./crates/franka-node/python
+```
+
+The following release commands require a matching node release on crates.io, PyPI,
+and GitHub. Older core-only releases do not contain these packages.
+See the [Pi setup guide](../getting-started/raspberry-pi.md) for the full source path.
+
 ```sh
 cargo binstall franka-node             # prebuilt, from the GitHub release; no compiler needed
 cargo install franka-node --locked     # or compile it where it runs, a Raspberry Pi included
@@ -270,9 +276,11 @@ journalctl -u franka-node -f
 
 A commander that is not on the robot's network needs no inbound rule: set `mode = "client"` in
 the `[zenoh]` table and name a router in `connect`, and the node dials out instead of listening.
-Use a `tls/` or `quic/` endpoint once the link leaves the local segment. Distance costs nothing
-in safety: the generator turns a stalled target stream into a slower motion, and the hold and
-stop watchdogs and the lease behave as they do on the bench.
+Use plain TCP only on a trusted network. For other deployments, use a `tls/` endpoint
+and set `zenoh_config` to a Zenoh configuration containing certificates, authentication,
+and access controls. Link delay still affects application responsiveness. The node handles
+a lost lease or a watchdog timeout locally with a controlled stop, which may finish at the
+last accepted target; this does not replace the physical stop device.
 
 The node publishes its own health on `franka/node/<name>/status` once a second as JSON:
 
@@ -285,6 +293,15 @@ The node publishes its own health on `franka/node/<name>/status` once a second a
 
 The fields are in the crate README; a stalled arm thread shows as a frozen entry, a missing
 sample means the node is gone.
+
+## Live tuning
+
+A Cartesian impedance session can change gains and motion budgets while it runs.
+[Tune a running controller](./live-tuning.md) explains the optional panel, the feedforward
+bool/gain interaction and the lifetime of a change. [Live parameter protocol](../reference/node-parameters.md)
+is the reference for the `params/*` Zenoh keys. A
+[two-arm configuration](https://github.com/BarisYazici/franka-rs/blob/main/crates/franka-node/config.two-arms.toml)
+keeps the shipped defaults and shows optional CPU pinning and Franka Hands.
 
 ## Grippers
 

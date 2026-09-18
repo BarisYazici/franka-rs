@@ -67,7 +67,7 @@ fn a_camera_takes_its_defaults() {
 fn the_example_file_parses() {
     let text = include_str!("../../config.example.toml");
     let config = text.parse::<CamConfig>().expect("config.example.toml");
-    assert_eq!(config.name, "pi");
+    assert_eq!(config.name, "cameras");
     let camera = &config.cameras[0];
     assert_eq!(camera.name, "wrist");
     assert_eq!(camera.preview_every(), Some(6));

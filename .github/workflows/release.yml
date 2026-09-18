@@ -134,6 +134,9 @@ jobs:
             dir="$crate-$version-$TARGET"
             mkdir -p "dist/$dir"
             cp "target/$TARGET/release/$crate" "crates/$crate/config.example.toml" LICENSE NOTICE "dist/$dir/"
+            if [[ "$crate" == franka-node ]]; then
+              cp crates/franka-node/config.two-arms.toml "dist/$dir/"
+            fi
             if [[ -d "crates/$crate/deploy" ]]; then cp crates/$crate/deploy/*.service "dist/$dir/"; fi
             tar -C dist --owner=0 --group=0 -czf "dist/$dir.tar.gz" "$dir"
           done
