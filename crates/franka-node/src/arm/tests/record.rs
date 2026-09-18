@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use franka::CartesianSent;
+use franka_rerun::rerun::external::arrow::array::{Array, Float64Array};
 use franka_rerun::rerun::external::re_log_encoding::Decoder;
 use franka_rerun::rerun::log::{Chunk, LogMsg};
 use franka_rerun::rerun::StoreKind;
@@ -100,6 +101,44 @@ fn layout(path: &Path) -> String {
         }
     }
     text
+}
+
+/// The scalar rows logged at `entity` in the `.rrd` at `path`, each one's `N` components in the
+/// order they were sent: what the observer actually published, not merely that it published.
+fn values<const N: usize>(path: &Path, entity: &str) -> Vec<[f64; N]> {
+    let reader = std::io::BufReader::new(std::fs::File::open(path).unwrap());
+    let mut rows = Vec::new();
+    for message in Decoder::<LogMsg>::decode_lazy(reader) {
+        let LogMsg::ArrowMsg(store, arrow) = message.unwrap() else {
+            continue;
+        };
+        if store.kind() != StoreKind::Recording {
+            continue;
+        }
+        let chunk = Chunk::from_arrow_msg(&arrow).unwrap();
+        if chunk.entity_path().to_string().trim_start_matches('/') != entity || chunk.is_static() {
+            continue;
+        }
+        // The components are an unordered map: take the one column and refuse the rest, or a
+        // second one logged here some day would concatenate behind the first in map order.
+        let mut columns = chunk.components().list_arrays();
+        let list = columns.next().expect("a scalar column");
+        assert!(
+            columns.next().is_none(),
+            "{entity} has more than one column"
+        );
+        for row in 0..list.len() {
+            let scalars = list.value(row);
+            let scalars = scalars
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .expect("a scalar series");
+            let values = scalars.values();
+            assert_eq!(values.len(), N, "{entity} row {row}");
+            rows.push(std::array::from_fn(|i| values[i]));
+        }
+    }
+    rows
 }
 
 #[test]
@@ -421,7 +460,7 @@ fn a_reused_token_keeps_both_files_under_the_one_recording_id() {
 }
 
 #[test]
-fn the_torque_backends_goal_cap_and_envelope_are_recorded() {
+fn the_torque_backends_goal_cap_pins_envelopes_and_stall_are_recorded() {
     let dir = TempDir::new("torque");
     let mut rig = recording_rig(&dir);
     rig.activate();
@@ -446,11 +485,23 @@ fn the_torque_backends_goal_cap_and_envelope_are_recorded() {
         q_goal: READY,
         dq_goal: [0.1; 7],
         cap_scale: 0.5,
+        pinned: [0, 0, 0, -1, 0, 0, 2],
         tau: [0.0; 7],
         tau_envelope: [-1.0; 7],
-        ik_error: 0.0,
-        leash_alteration: 0.0,
-        leash_angular_alteration: 0.0,
+        tau_position: [0.5; 7],
+        ik_error: 4e-4,
+        ik_passes: 2,
+        stall_pressure: 3e-5,
+        // Not `held`, so publishing the wrong flag under `ik/held` shows.
+        stalled: false,
+        ik_step: 0.02,
+        ik_step_clipped: 0.005,
+        ik_blend: 0.25,
+        held: true,
+        // Distinct per component, so a swap or a drop on the way into the `TorqueLog` shows.
+        wall_age: [4, -1],
+        leash_alteration: 0.013,
+        leash_angular_alteration: 0.027,
     };
     let state = rig.fake.state();
     for _ in 0..3 {
@@ -458,13 +509,39 @@ fn the_torque_backends_goal_cap_and_envelope_are_recorded() {
     }
     drop(observer);
     rig.ok(Verb::Stop, CLIENT);
-    let (_, entities) = store(&dir.rrd_files()[0]);
+    let file = &dir.rrd_files()[0];
+    let (_, entities) = store(file);
     for entity in [
         "t/joints/q_goal",
         "t/joints/dq_goal",
         "t/joints/cap_scale",
+        "t/joints/pinned",
         "t/joints/tau_envelope",
+        "t/joints/tau_position",
+        "t/ik/stall",
+        "t/ik/passes",
+        "t/ik/step",
+        "t/ik/blend",
+        "t/ik/held",
+        "t/ik/error",
+        "t/ee/velocity",
+        "t/ee/leash",
+        "t/ee/orientation/commanded",
     ] {
         assert!(entities.contains(entity), "{entity} is not in {entities:?}");
+    }
+    // The leash and the wall ages reach the file as sent, per component: the observer would
+    // pass this by dropping either half or swapping the two.
+    let leash = values::<2>(file, "t/ee/leash");
+    let held = values::<3>(file, "t/ik/held");
+    assert_eq!((leash.len(), held.len()), (3, 3));
+    for row in 0..3 {
+        assert_eq!(
+            leash[row],
+            [sent.leash_alteration, sent.leash_angular_alteration],
+            "t/ee/leash row {row}"
+        );
+        let [age_t, age_r] = sent.wall_age.map(f64::from);
+        assert_eq!(held[row], [1.0, age_t, age_r], "t/ik/held row {row}");
     }
 }

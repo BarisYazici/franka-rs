@@ -8,9 +8,9 @@
 //! the same [`super::limit_rate_torques`], [`super::limit_rate_joint_velocities`], … with the constants from
 //! this module.
 //!
-//! Unlike the FR3, the FER's joint velocity limits are flat: there is no position-dependent
-//! envelope and no URDF to read one from, so [`MAX_JOINT_VELOCITY`] is used directly in
-//! both directions.
+//! The FER's joint velocity limits are flat, unlike the FR3's position-dependent envelope:
+//! Franka publishes no position-based velocity rows for this arm and the protocol serves no URDF
+//! to read one from, so [`MAX_JOINT_VELOCITY`] is used directly in both directions.
 
 /// Sample time constant. Port of `franka::kDeltaT` (`rate_limiting.h:18`). Same as on FR3.
 pub const DELTA_T: f64 = 1e-3;

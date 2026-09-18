@@ -250,8 +250,9 @@ impl Recorder {
     }
 
     /// [`Recorder::push_at`] with what target control's torque backend made of the cycle,
-    /// logged under `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale` and
-    /// `joints/tau_envelope`. Same guarantees: no blocking, no allocation.
+    /// logged under `joints/{q_goal, dq_goal, cap_scale, pinned, tau_envelope, tau_position}`,
+    /// `ik/{stall, passes, step, blend, held, error}` and `ee/{velocity, leash}`. Same
+    /// guarantees: no blocking, no allocation.
     pub fn push_torque_at(
         &self,
         state: &RobotState,

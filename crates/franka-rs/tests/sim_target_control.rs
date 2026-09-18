@@ -2,8 +2,9 @@
 //! against franka-sim with motion limits enforced: a low-rate commander steps, bursts and
 //! stalls its targets from the test thread while the crate's loop runs on its own. Tests 1-3
 //! here stream through the robot's controller (`Backend::RobotController`); tests 4-7 in
-//! [`impedance`] send the impedance backend's torques (the default), and test 8 in
-//! [`velocity_cap`] drives its joint velocity cap.
+//! [`impedance`] send the impedance backend's torques (the default), test 8 in
+//! [`velocity_cap`] drives its joint velocity cap and test 9 in [`position_guard`] its joint
+//! position guard.
 //!
 //! Run with `FRANKA_SIM_IMAGE=franka-sim:dev cargo test --release -p franka-rs \
 //! --test sim_target_control -- --test-threads=1`.
@@ -11,6 +12,8 @@
 mod common;
 #[path = "sim_target_control/impedance.rs"]
 mod impedance;
+#[path = "sim_target_control/position_guard.rs"]
+mod position_guard;
 #[path = "sim_target_control/velocity_cap.rs"]
 mod velocity_cap;
 

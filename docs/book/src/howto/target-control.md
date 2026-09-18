@@ -113,12 +113,15 @@ every cycle *on the realtime thread* with the state and what was sent: the pose 
 after the backstop, the target, the generator's velocity and acceleration (angular too for a
 pose), and by how much the backstop altered the command. In the impedance backend `pose` /
 `q` is the loop's setpoint, the backstop alterations are 0, and the record also carries the
-joint goal `q_goal`, its velocity `dq_goal`, the scale the joint velocity cap cut the goal's
-step by (`cap_scale`, 1 when it did not), the clamped torques `tau` and the velocity
-envelope's share of them (`tau_envelope`), what the leash took off the desired state this
+joint goal `q_goal`, its velocity `dq_goal`, the fraction of the generator's step the goal
+carried when a joint limit cut it (`cap_scale`, exactly 1 when none did) and the joints held on a
+bound (`pinned`), the clamped torques `tau` and the velocity and position envelopes' shares of
+them (`tau_envelope`, `tau_position`), what the leash took off the desired state this
 cycle (`leash_alteration`, m for a pose and rad for joints, plus `leash_angular_alteration`,
 rad, for a pose; 0 while the arm follows) and, for a pose, the inverse kinematics residual
-`ik_error` (m plus rad). It must not allocate or block; copying into a preallocated
+`ik_error` (the norm of the position error, m, and the orientation error times
+`rotation_weight`), its active-set passes `ik_passes` and the stall at a joint limit
+(`stall_pressure`, `stalled`). It must not allocate or block; copying into a preallocated
 ring is what it is for, and how `franka_rerun::Recorder::push` and the commander example's
 CSV log hook in.
 
@@ -173,9 +176,10 @@ behind), and the generator is leashed to the arm (below).
 | `leash: Leash` | 0.025 m, 0.15 rad | 0.1 rad per joint (the torque clamp, not the leash, bounds the torque: 600 × 0.1 = 60 Nm on joints 1 to 4, under their 86 Nm clamp; on joints 5 and 6 the 11.5 Nm clamp binds first) |
 | `project_joint_gains` | `false` | `false` |
 | `posture` (IK nullspace reference) | `None`: the start configuration | not used |
-| `ik: IkOptions` | λ 0.05, nullspace gain 1.0 /s, 3 iterations, tolerance 1e-6, limit margin 0.02 rad | not used |
+| `ik: IkOptions` | λ 0.05, nullspace gain 1.0 /s, 3 iterations, tolerance 1e-6 (weighted), rotation weight 0.1 m/rad | not used |
 | `joint_velocity_fraction` (of `max_joint_velocity(version)`) | 0.7 | 0.7 |
 | `velocity_barrier_fraction` | 0.85 | 0.85 |
+| `joint_position_margin` (rad) | 0.05 | 0.05 |
 
 The Cartesian column, `ImpedanceGains::CARTESIAN`, is DROID's preset with the translational
 damping raised from 37 to 50, 50, 90 Ns/m: a damping ratio of about 0.8 from the arm's
@@ -218,12 +222,14 @@ trained on it. The joint column is the `fer_joint_impedance` example's gains. Wh
   as about 990 to 1180 N/m in translation (computed on the FER model), and two to three times `Kx` in
   rotation. With the projection on, zero Cartesian gains would leave the end effector free.
 - `posture`: the joint configuration the inverse kinematics drifts toward in the nullspace,
-  at most 0.5 rad/s; `None` is the configuration the loop started in. A posture outside the
-  joint limits (inset 0.02 rad) is refused with `InvalidArgument`, as is a joint target
-  outside them.
+  at most 0.5 rad/s; `None` is the configuration the loop started in. A posture inside
+  `joint_position_margin` of a joint limit is refused with `InvalidArgument`, as is a joint
+  target there.
 - `joint_velocity_fraction`: no joint of the goal moves faster than this fraction of the arm's
-  velocity limit (`target_control::max_joint_velocity`: the FER's `MAX_JOINT_VELOCITY`, about
-  2.13 rad/s on joints 1 to 4 and 2.55 on 5 to 7, or the FR3's flat 2.62, 5.26, 4.18, 5.26).
+  velocity limit, which narrows toward the joint position limits on the FR3 and is flat on the
+  FER (`target_control::max_joint_velocity` away from them: the FER's `MAX_JOINT_VELOCITY`,
+  the published 2.175 and 2.61 rad/s less libfranka's tolerance, so 2.13 to 2.15 rad/s on
+  joints 1 to 4 and 2.564 / 2.549 / 2.549 on 5 to 7, or the FR3's 2.62, 5.26, 4.18, 5.26).
   A faster step is scaled down as a whole, so the goal keeps its direction and an unreachable or
   singular pose is approached at a bounded rate; the generator is then re-anchored on what went
   out, so it never plans from a velocity the arm was not sent. In (0, 1].
@@ -234,6 +240,15 @@ trained on it. The joint column is the `fer_joint_impedance` example's gains. Wh
   from `min(cap, onset − FADE_BAND × limit)` (`FADE_BAND` 0.15) of measured speed to none at
   the onset, so a joint catching up on its lag cannot cancel the barrier. At least
   `joint_velocity_fraction`, at most 1.
+- `joint_position_margin`: how far the goal keeps from each joint position limit. Toward a
+  limit the goal brakes to rest on the margin; a joint measured inside it keeps less and less
+  of the law's torque toward the limit and, 0.02 rad further in, meets a spring pushing it out.
+  On the Cartesian interface the other joints make up what a joint held at its margin cannot,
+  position before orientation (`ik.rotation_weight`; while the goal is stalled position comes
+  first, to within micrometres): with several joints held, the tool stays put and the turn gets
+  as far as the wall allows, and under a speed limit the orientation lags more. In [0.035, 0.5].
+  See [The joint position limit
+  guard](../reference/impedance.md#the-joint-position-limit-guard).
 
 Every gain must be finite and non-negative, the leash finite and positive (`validate()`).
 The law itself is public as `franka::impedance_torques`. The options are set through
@@ -306,8 +321,9 @@ What changes between the two:
   `set_collision_behavior` sets, and a spring reaches them by deflection (the paragraph
   above).
 - **An unreachable or singular target** lags in the impedance backend, because no joint of the
-  goal moves faster than `joint_velocity_fraction` of its limit and the leash holds the desired
-  pose near the arm; the robot's controller refuses a pose stream it cannot follow.
+  goal moves faster than `joint_velocity_fraction` of its limit or closer to a limit than
+  `joint_position_margin`, and the leash holds the desired pose near the arm; the robot's
+  controller refuses a pose stream it cannot follow.
 - **The finish waits for the arm.** `stop()` in the impedance backend sets `motion_finished`
   only once every joint is slower than `REST_JOINT_VELOCITY`, or after the 5 s timeout.
 
@@ -333,9 +349,11 @@ backend](../reference/impedance.md#what-a-spring-does-not-do).
 3. **Generate.** One synchronised jerk-limited generator over all axes, per-axis limits,
    one nominal millisecond per command, re-anchored before every re-plan on the echo
    (robot-controller backend) or on the leashed anchor (impedance backend).
-4. **Track.** Impedance backend: the inverse kinematics step for a pose, the joint velocity
-   cap on the goal's step, the law with its torque along a fast joint's motion faded, plus the
-   velocity barrier, the clamp, `Torques`.
+4. **Track.** Impedance backend: the inverse kinematics step for a pose inside the joint
+   limits' box, or the joint goal's step scaled into it; the law with its torque along a fast
+   joint's motion and toward a near limit faded, plus the velocity barrier and the position
+   spring, the clamp, `Torques`. A goal that falls short restarts the generator from what went
+   out.
    Robot-controller backend: the rate limiter under the same budget,
    then the loop's own libfranka limiter; neither is meant to bind, and the observer sees
    when one does.

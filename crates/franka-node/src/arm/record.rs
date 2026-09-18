@@ -2,9 +2,9 @@
 //! `home`) is one `.rrd` in the arm's `record_dir`, written by a `franka_rerun::Recorder`
 //! whose `push` is the loop's observer; the arm thread logs the targets it accepts and
 //! refuses into the same recording; every cycle carries the torque backend's goal, cap
-//! scale and envelope torque (`joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`,
-//! `joints/tau_envelope`). Without the feature `Recording` has the same surface and does
-//! nothing, and nothing from Rerun is compiled.
+//! scale, pins, envelope torques and IK stall (`joints/{q_goal, dq_goal, cap_scale, pinned,
+//! tau_envelope, tau_position}`, `ik/{stall, passes}`). Without the feature `Recording` has
+//! the same surface and does nothing, and nothing from Rerun is compiled.
 //!
 //! Every entity is logged under the arm's name, and with an episode token ([`super::Machine`]
 //! passes `enable`'s) the recording id is that token and the file is `<token>-<arm>.rrd`: two
@@ -356,7 +356,22 @@ mod live {
                     q_goal: sent.q_goal,
                     dq_goal: sent.dq_goal,
                     cap_scale: sent.cap_scale,
+                    pinned: sent.pinned,
                     tau_envelope: sent.tau_envelope,
+                    tau_position: sent.tau_position,
+                    stall_pressure: sent.stall_pressure,
+                    stalled: sent.stalled,
+                    ik_passes: sent.ik_passes,
+                    ee_velocity: {
+                        let ([vx, vy, vz], [wx, wy, wz]) = (sent.velocity, sent.angular_velocity);
+                        [vx, vy, vz, wx, wy, wz]
+                    },
+                    ik_step: [sent.ik_step, sent.ik_step_clipped],
+                    ik_blend: sent.ik_blend,
+                    held: sent.held,
+                    wall_age: sent.wall_age,
+                    ik_error: sent.ik_error,
+                    leash: [sent.leash_alteration, sent.leash_angular_alteration],
                 };
                 shared.cycle(state, command, torque);
             }))
@@ -374,7 +389,12 @@ mod live {
                     q_goal: sent.q_goal,
                     dq_goal: sent.dq_goal,
                     cap_scale: sent.cap_scale,
+                    pinned: sent.pinned,
                     tau_envelope: sent.tau_envelope,
+                    tau_position: sent.tau_position,
+                    // A joint session claims no wall; the default 0 would read as one.
+                    wall_age: [-1; 2],
+                    ..TorqueLog::default()
                 };
                 shared.cycle(state, command, torque);
             }))

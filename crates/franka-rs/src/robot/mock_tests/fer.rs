@@ -434,7 +434,7 @@ fn the_first_v5_joint_position_command_is_rate_limited_against_q_d() {
     let first = commands.first().expect("no command reached the mock");
     let sent = crate::wire::f64s_to_f64(&first.motion.q_c);
 
-    // Exactly what `franka::limitRate` yields for a step from rest, with the FER envelope.
+    // Exactly what `franka::limitRate` yields for a step from rest, with the FER's flat limits.
     let expected = crate::rate_limiting::limit_rate_joint_positions(
         &crate::rate_limiting::fer::MAX_JOINT_VELOCITY,
         &crate::rate_limiting::fer::MIN_JOINT_VELOCITY,

@@ -133,18 +133,22 @@ fn joint_gate_refuses_non_finite_and_the_inset_limits() {
     };
     let mut guard = Guard::joints(options, (lower, upper), edge).unwrap();
     guard.set_holder(HOLDER, 0);
+    // The default inset is the library's joint position margin, above its bare inset.
+    let inset = options.joint_limit_inset;
+    assert_eq!(inset, ImpedanceOptions::joint().joint_position_margin);
+    assert!(inset > JOINT_LIMIT_INSET);
     let mut inside = edge;
-    inside[5] = upper[5] - JOINT_LIMIT_INSET;
+    inside[5] = upper[5] - inset;
     assert_eq!(guard.check(&joints(1, inside), 0, None), Verdict::Accept);
     let mut outside = edge;
-    outside[5] = upper[5] - JOINT_LIMIT_INSET + 1e-9;
+    outside[5] = upper[5] - inset + 1e-9;
     let reason = refused(guard.check(&joints(2, outside), 0, None));
     assert!(
         matches!(reason, Reason::JointLimit { joint: 6, .. }),
         "{reason:?}"
     );
     let mut low = edge;
-    low[3] = lower[3] + JOINT_LIMIT_INSET / 2.0;
+    low[3] = lower[3] + (JOINT_LIMIT_INSET + inset) / 2.0;
     let reason = refused(guard.check(&joints(2, low), 0, None));
     assert!(
         matches!(reason, Reason::JointLimit { joint: 4, .. }),

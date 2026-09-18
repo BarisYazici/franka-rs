@@ -214,8 +214,8 @@ fn stop_without_a_motion_is_harmless() {
 ///    `automatic_error_recovery` clears it.
 ///
 /// The FER's velocity limit is *flat*, unlike the FR3's position-dependent envelope: 2.175
-/// rad/s on joints 1-4 (`rate_limiting::fer::MAX_JOINT_VELOCITY`, which subtracts
-/// `kLimitEps` and three lost packets' worth of acceleration and lands at about 2.129 rad/s).
+/// rad/s on joints 1-4 (`rate_limiting::fer::MAX_JOINT_VELOCITY`, which subtracts `kLimitEps`
+/// and three lost packets' worth of acceleration and lands at about 2.129 rad/s).
 /// The FR3 test trips its reflex with a 2.0 rad/s ramp *near the joint limit*, where the FR3
 /// envelope has narrowed; on an FER 2.0 rad/s is legal everywhere, so this ramps to 3.0 rad/s
 /// instead. The commanded position is capped short of the FER's 2.8973 rad joint-1 limit so

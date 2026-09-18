@@ -11,7 +11,7 @@ use crate::wire::f64s_to_f64;
 
 /// The FR3 envelope, which every pre-existing case in this module is written against.
 const V10_RATE: RateLimits = rate_limits(FciVersion::V10);
-/// The FER envelope.
+/// The FER's flat limits.
 const V5_RATE: RateLimits = rate_limits(FciVersion::V5);
 
 /// The fixed limits libfranka's `setupJointVelocityLimitsMock` injects.

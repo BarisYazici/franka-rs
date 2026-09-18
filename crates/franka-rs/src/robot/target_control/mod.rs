@@ -22,11 +22,15 @@
 //! ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's low-pass filter
 //! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. The goal never moves a joint
 //! faster than [`ImpedanceOptions::joint_velocity_fraction`] of the arm's limit
-//! ([`max_joint_velocity`]): a faster step is scaled down as a whole and the generator re-anchored
-//! on what went out. A joint *measured* faster than the cap, or than [`FADE_BAND`] of its limit
-//! under the barrier's onset if that is lower, keeps less and less of the law's torque along its
-//! motion, none from [`ImpedanceOptions::velocity_barrier_fraction`] of its limit, where it meets a
-//! damping of [`VELOCITY_BARRIER_GAIN`] on the excess, added before the clamp. There is no echo of
+//! ([`max_joint_velocity`], which narrows toward the position limits on the FR3): a faster step
+//! is scaled down as a whole and the generator re-anchored on what went out. A joint *measured*
+//! faster than the cap, or than [`FADE_BAND`] of its limit under the barrier's onset if that is
+//! lower, keeps less and less of the law's torque along its motion, none from
+//! [`ImpedanceOptions::velocity_barrier_fraction`] of its limit, where it meets a damping of
+//! [`VELOCITY_BARRIER_GAIN`] on the excess, added before the clamp. Toward a joint
+//! position limit the goal brakes to stop [`ImpedanceOptions::joint_position_margin`] inside it; a
+//! joint measured inside the margin keeps less of the law's torque toward the limit over
+//! [`POSITION_FADE_BAND`], then meets a spring ([`POSITION_BARRIER_STIFFNESS`]). There is no echo of
 //! a torque command, so the loop anchors on the *measured* configuration in its first
 //! cycle (the Cartesian interface on the model's pose of it, where the IK's residual is zero), and
 //! then, every cycle, on the measured state pulled toward the previous desired by at most the
@@ -124,10 +128,12 @@
 //! ```
 
 mod cartesian;
+mod envelope;
 mod ik;
 mod impedance;
 mod joint;
 mod options;
+mod position;
 mod rotation;
 mod runner;
 mod slot;
@@ -137,10 +143,12 @@ mod velocity;
 pub use cartesian::{CartesianObserver, CartesianSent, CartesianTargetControl};
 pub use ik::{IkOptions, MAX_POSTURE_RATE};
 pub use impedance::{
-    impedance_torques, Backend, ImpedanceGains, ImpedanceOptions, Leash, RATED_TORQUES,
+    impedance_torques, Backend, ImpedanceGains, ImpedanceOptions, Leash, MIN_FEEDFORWARD_CUTOFF,
+    RATED_TORQUES,
 };
 pub use joint::{JointObserver, JointSent, JointTargetControl};
 pub use options::{JointTargetControlOptions, TargetControlOptions, DEFAULT_LIMIT_FRACTION};
+pub use position::{POSITION_BARRIER_STIFFNESS, POSITION_FADE_BAND};
 pub use rotation::{ORTHONORMAL_TOLERANCE, UNIT_QUATERNION_TOLERANCE};
 pub use slot::TargetSlot;
 pub use velocity::{FADE_BAND, VELOCITY_BARRIER_GAIN};
@@ -256,13 +264,17 @@ pub fn joint_position_limits(version: FciVersion) -> ([f64; 7], [f64; 7]) {
     }
 }
 
-/// The FR3's flat joint velocity caps, rad/s: the `<limit velocity>` of its URDF, which is
-/// what the position-dependent envelope of `compute_upper_limits_joint_velocity` saturates
-/// at away from the joint limits.
+/// The FR3's joint velocity caps, rad/s: the specifications page's `dq_max`, where its
+/// position-dependent envelope saturates away from the joint limits; the `<limit velocity>` of
+/// its URDF carries the same values. Nominal, where the V5 branch of [`max_joint_velocity`]
+/// returns the FER's `MAX_JOINT_VELOCITY` already less libfranka's `LIMIT_EPS` and lost-packet
+/// tolerance: each branch hands back the constant its arm's module defines, so the two differ by
+/// that 1e-3 rad/s.
 const FR3_MAX_JOINT_VELOCITY: [f64; 7] = [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26];
 
-/// The joint velocity limits, rad/s, of the arm speaking `version`: the FER's
-/// `MAX_JOINT_VELOCITY` or the FR3's flat caps. The impedance backend's cap and barrier
+/// The joint velocity limits, rad/s, of the arm speaking `version` away from its joint position
+/// limits: the FER's `MAX_JOINT_VELOCITY` or the FR3's caps. The FR3's limit narrows toward the
+/// position limits, which the impedance backend follows; the FER's is flat. Its cap and barrier
 /// ([`ImpedanceOptions::joint_velocity_fraction`], [`ImpedanceOptions::velocity_barrier_fraction`])
 /// and [`JointTargetControlOptions::scaled_limits`] are fractions of these.
 pub fn max_joint_velocity(version: FciVersion) -> [f64; 7] {
@@ -274,18 +286,32 @@ pub fn max_joint_velocity(version: FciVersion) -> [f64; 7] {
 
 /// How far, rad, inside the negotiated version's joint position limits a joint target and an
 /// impedance posture must lie: [`JointTargetControl::set_joints`] and both `start`s refuse a
-/// configuration outside.
+/// configuration outside. [`Backend::Impedance`] refuses one inside
+/// [`ImpedanceOptions::joint_position_margin`] where that is larger.
 pub const JOINT_LIMIT_INSET: f64 = 0.02;
 
-/// Refuses a `q` outside `limits` inset by [`JOINT_LIMIT_INSET`], naming the joint and `what`.
-fn check_joint_limits(q: &[f64; 7], limits: &([f64; 7], [f64; 7]), what: &str) -> FrankaResult<()> {
+/// The inset, rad, targets and postures of `backend` are refused inside.
+fn joint_limit_inset(backend: &Backend) -> f64 {
+    match backend {
+        Backend::Impedance(impedance) => JOINT_LIMIT_INSET.max(impedance.joint_position_margin),
+        Backend::RobotController => JOINT_LIMIT_INSET,
+    }
+}
+
+/// Refuses a `q` outside `limits` inset by `inset`, naming the joint and `what`.
+fn check_joint_limits(
+    q: &[f64; 7],
+    limits: &([f64; 7], [f64; 7]),
+    inset: f64,
+    what: &str,
+) -> FrankaResult<()> {
     for (i, value) in q.iter().enumerate() {
-        let lower = limits.0[i] + JOINT_LIMIT_INSET;
-        let upper = limits.1[i] - JOINT_LIMIT_INSET;
+        let lower = limits.0[i] + inset;
+        let upper = limits.1[i] - inset;
         if !(lower..=upper).contains(value) {
             return Err(FrankaError::InvalidArgument(format!(
                 "target control: the {what} puts joint {} at {value} rad, outside \
-                 [{lower}, {upper}] ({JOINT_LIMIT_INSET} rad inside the arm's limits)",
+                 [{lower}, {upper}] ({inset} rad inside the arm's limits)",
                 i + 1
             )));
         }
@@ -299,7 +325,7 @@ fn check_posture(backend: &Backend, limits: &([f64; 7], [f64; 7])) -> FrankaResu
         Backend::Impedance(ImpedanceOptions {
             posture: Some(posture),
             ..
-        }) => check_joint_limits(posture, limits, "posture"),
+        }) => check_joint_limits(posture, limits, joint_limit_inset(backend), "posture"),
         _ => Ok(()),
     }
 }
