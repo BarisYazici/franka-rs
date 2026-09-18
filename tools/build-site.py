@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the guide and overlay its public landing page; optionally include local videos."""
+"""Build the guide and landing page, including the website's demo videos."""
 
 import argparse
 from html import escape
@@ -16,16 +16,18 @@ VIDEOS = ("architecture-overview.mp4", "bridge-demo.mp4", "rerun-demo.mp4")
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--videos-dir", type=Path, help="Optional directory of demo videos")
+    parser.add_argument("--require-videos", action="store_true",
+                        help="Fail if any website video is missing (used by deployment)")
     args = parser.parse_args()
     subprocess.run(["mdbook", "build", str(ROOT / "docs/book")], check=True)
     destination = ROOT / "target/book"
     source = ROOT / "docs/site"
-    shutil.copytree(source, destination / "site", dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("README.md", "index.html"))
     media = destination / "site/media"
     media.mkdir(parents=True, exist_ok=True)
     for name in VIDEOS:
         (media / name).unlink(missing_ok=True)
+    shutil.copytree(source, destination / "site", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("README.md", "index.html"))
     if args.videos_dir:
         for name in VIDEOS:
             video = args.videos_dir / name
@@ -39,6 +41,10 @@ def main():
                 shutil.copy2(video, media / name)
             else:
                 print(f"Optional video not found: {video}")
+    missing = [name for name in VIDEOS
+               if not (media / name).is_file() or (media / name).stat().st_size == 0]
+    if args.require_videos and missing:
+        raise SystemExit("Missing website videos: " + ", ".join(missing))
     # Make a clean deployment work without JavaScript or requests for absent videos.
     def optional_video(match):
         block = match.group(0)

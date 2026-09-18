@@ -24,5 +24,8 @@
 __pycache__/
 /.private/
 
-# Local marketing videos are copied into the ignored site build, not versioned.
+# Only the three curated website clips are versioned; local source recordings stay private.
 /docs/site/media/*.mp4
+!/docs/site/media/architecture-overview.mp4
+!/docs/site/media/bridge-demo.mp4
+!/docs/site/media/rerun-demo.mp4
