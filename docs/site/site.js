@@ -137,8 +137,7 @@
     }
   }
 
-  // Optional videos: the file may be absent in a clean build. When the last
-  // source fails, the poster stays as a plain image and no dead play control
+  // If the browser cannot load a video, the poster stays as a plain image and no dead play control
   // is shown. When it loads and motion is welcome, it plays muted in view.
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

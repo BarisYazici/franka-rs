@@ -53,7 +53,7 @@ jobs:
 
       # book.toml sets build-dir = ../../target/book, so the site root is target/book.
       - name: Build the website and guide
-        run: python3 tools/build-site.py
+        run: python3 tools/build-site.py --require-videos
 
       # The book's own Rust snippets, compiled for real. They are built into a scratch
       # target directory outside ./target on purpose: rustdoc's `-L` resolution fails with

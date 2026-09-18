@@ -21,7 +21,11 @@ cp -a target/doc/. target/book/api/
 
 ## Demo videos
 
-Videos are optional local assets and are not committed. To include them in a preview:
+The three curated clips in `media/` are included in a normal build and in GitHub Pages.
+The deployment uses `--require-videos` so missing clips fail the build instead of silently
+shipping only posters. Original recordings and other local marketing assets stay outside Git.
+
+To override the clips in a local preview:
 
 ```sh
 python3 tools/build-site.py --videos-dir /path/to/videos
@@ -45,9 +49,17 @@ ffmpeg -n -i /path/to/videos/bridge-demo.mp4 -t 29 -map 0:v:0 \
   -c:v libx264 -preset fast -crf 18 -an -movflags +faststart /path/to/videos/bridge-demo-short.mp4
 ```
 
-Poster images and the text explanation remain available without the videos. A clean
-GitHub Actions build does not include these local videos. Hosting them publicly is a
-separate publishing step; add approved media to the build input when ready.
+The committed overview is a 1280-pixel-wide H.264 export of the slower copy; the two
+viewer clips retain 1920-pixel resolution for readable plots. All three use `yuv420p`,
+have no audio or recording metadata, and put MP4 playback metadata first (`+faststart`).
+The overview lasts about 89 seconds, the target demo 29 seconds, and the Rerun demo 19 seconds.
+
+Poster images and text remain available if a browser cannot play a video. To check the
+same required-media build used by deployment:
+
+```sh
+python3 tools/build-site.py --require-videos
+```
 
 ## Editing
 
