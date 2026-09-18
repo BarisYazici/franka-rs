@@ -24,6 +24,19 @@
     var list = document.querySelector('#mdbook-sidebar ol.chapter, #sidebar ol.chapter');
     if (!list || list.querySelector('.guide-part-toggle')) return false;
 
+    // Resolve from the introduction so this also works on nested pages and local previews.
+    var introduction = list.querySelector('a[href$="introduction.html"]');
+    if (introduction && !list.querySelector('.guide-home')) {
+      var homeItem = document.createElement('li');
+      homeItem.className = 'chapter-item';
+      var homeLink = document.createElement('a');
+      homeLink.className = 'guide-home';
+      homeLink.href = new URL('index.html', introduction.href).href;
+      homeLink.textContent = 'Project home';
+      homeItem.appendChild(homeLink);
+      list.insertBefore(homeItem, list.firstChild);
+    }
+
     var groups = [];
     var current = null;
     Array.prototype.forEach.call(list.children, function (li) {

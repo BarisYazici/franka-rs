@@ -32,8 +32,7 @@ defaults bring all three to about 0.8. And the damping acts on the velocity
 error by default, with `dq_goal` the goal's velocity: the generator's on the joint interface,
 the finite difference of the IK solution on the Cartesian one, zero while holding. Damping the
 absolute velocity resists the motion the goal asks for, and a goal moving at `v` is tracked
-`Kd v / Kp` behind it; on franka-sim 1.1.6 a 5 cm step peaks 12.3 mm behind without the
-feedforward and 3.7 mm with it. `J` is `Model::zero_jacobian(Frame::EndEffector, state)`, the
+`Kd v / Kp` behind it. `J` is `Model::zero_jacobian(Frame::EndEffector, state)`, the
 6x7 base-frame Jacobian at the *measured* `q`, so `Kx` acts at the configured end-effector
 frame, the frame the `O_T_EE` targets are in. Gravity is compensated by the robot; `coriolis`
 is the model's, as in every torque example of the crate. The clamp comes before the low-pass
@@ -154,23 +153,15 @@ while `K × 1 ms / I` stays under 1; the rate limiter only slows the barrier's o
 alone is light (0.003 kg m² on the FER's joint 7) but the drive's reflected inertia is not
 (MuJoCo's FR3 carries 0.074 kg m² of armature on the wrist), and the `JOINT` preset's 15 Nm
 s/rad on joint 7 is stable on an FER; the Cartesian preset puts at most about 6 Nm s/rad on a
-wrist joint at 1200 N/m, so the barrier's 20 keeps `K` under 26. Offline, on a 0.04 kg m² wrist
-behind the crate's own filter and rate limiter, a joint damped at 3 Nm s/rad and pushed 11 Nm
-from outside holds 2.36 rad/s while the push is on, against a 2.55 rad/s limit (3.67 without
-the barrier), and once released comes to rest with nothing ringing on, while 15 Nm s/rad on a
-0.01 kg m² wrist rings in the same harness (`tests/velocity.rs`). The stability bound assumes
+wrist joint at 1200 N/m, so the barrier's 20 keeps `K` under 26. The offline velocity tests exercise the barrier behind the filter and rate limiter
+(`tests/velocity.rs`). The stability bound assumes
 that one cycle of delay; it says nothing about the push itself and does not claim to bound
 it -- the velocity still overshoots the limit while the push is applied, before the barrier
 settles it back under.
 
-**Tested.** An ignored acceptance test (`tests/replay.rs`) replays a teleoperation recording
-of your own through the real loop with the cap on and off, and asserts that the goal stays
-within the cap every cycle, the cap is active in at most 0.5 % of the engaged time, and lag
-and tracking error stay within 5 ms and 5 % of the uncapped run. On
-franka-sim 1.1.6, a 0.8 rad turn of the hand with joints 5 and 7 20° apart (joint 6 at
-2.8 rad) under a 4 rad/s rotation budget: the cap cut the goal in 88 cycles, peak
-`|dq| / limit` 0.819, also with the CPU loaded, back within 3.94e-3 rad
-(`tests/sim_target_control/velocity_cap.rs`).
+**Tests.** `tests/replay.rs` provides an optional replay check for the velocity cap,
+tracking lag and error. `tests/sim_target_control/velocity_cap.rs` exercises the cap in
+the simulator. These tests do not establish a bound on externally imposed motion.
 
 The barrier's gain is lowered in proportion where `torque_limits` clamps a joint below its
 preset (86 Nm on joints 1 to 4, 11.5 Nm on 5 to 7), so a lighter clamp does not leave a stiffer
@@ -178,14 +169,10 @@ barrier; at the presets it is 20 on every joint.
 
 ## The joint position limit guard
 
-A goal clamped a fixed inset inside a joint limit stops dead there, and the arm behind it, a
-spring with a lag, does not: in teleoperation on an FER a goal held 0.02 rad inside joint 4's
-or joint 2's limit had the arm run up to 20 mrad past it, onto the limit. A clamp also costs
-the pose: it drops the pinned joints' share of a step, and what the free joints are left with is
-no descent step, so near a wrist limit a turn of the hand walked the elbow along the self-motion
-while the tool's yaw stood still. The guard replaces the clamp with a braking box in the IK,
-a stall flag that restarts the generator against the wall, and a fade and a spring at the
-measured arm. Three rules keep it independent of the tool:
+Clamping a goal inside a joint limit does not ensure that the moving arm can stop there.
+The guard uses braking bounds in the IK, a stall flag that re-anchors the generator,
+and a torque fade and spring near the measured joint limit. Three rules keep it
+independent of the tool:
 
 - **Joint space only.** Margin, box, pins, fade and spring are per joint; there is no workspace
   or link geometry.
@@ -203,15 +190,11 @@ E(x)  = min(v_flat, sqrt(k x + c²) − c)  for x > 0, else 0     braking envelo
 u     = min(f · v_σ · Δt,  max(0, min(x, f · E(x) · Δt)))       step allowed toward that side
 ```
 
-`v_σ` is the arm's velocity limit toward that side. On the FR3 it is position-dependent, of the
-form Franka's robot specifications give, `min(dq_max, max(0, sqrt(2 ddq_dec d) − dq_offset))` at
-a distance `d` from the limit, less libfranka's tolerance, with the specifications' parameters
-(not those of libfranka's deprecated `compute_{lower,upper}_limits_joint_velocity`, which the
-recorded FR3 faults do not follow); it reaches zero inside the goal's limits only on joint 3,
-11.6 mrad in. On the FER it is the flat `MAX_JOINT_VELOCITY`: Franka publishes no
-position-based velocity rows for that arm, and recorded FER sessions ran a joint at 2.26 times
-an assumed envelope with no reflex, so the flat limit is what the robot itself checks. The
-per-arm structure stays, so published FER coefficients can be dropped in later.
+`v_σ` is the arm's velocity limit toward that side. On the FR3 it is position-dependent:
+`min(dq_max, max(0, sqrt(2 ddq_dec d) − dq_offset))` at distance `d` from the limit,
+less libfranka's tolerance, using Franka's robot-specification parameters. On the FER it
+uses the flat `MAX_JOINT_VELOCITY`; no published position-dependent coefficients are
+available for that arm.
 
 `E` is the guard's own braking profile, `sqrt(k x + c²) − c` with `k = 2a`, held under `v_flat`,
 the joint's velocity limit away from the position limits (the FER's flat `MAX_JOINT_VELOCITY`,
@@ -245,10 +228,9 @@ whichever pushes harder; above 2e-5 (weighted m per cycle) on a position pin the
 `stalled`, cleared on 20 of the last 40 cycles in which no position pin pushes at all.
 Position first takes the goal as far as the pins allow, which lowers the very pressure that set
 the flag, so a flag
-cleared on a magnitude cycles between the two modes (measured: 150 cycles, β between 0.87 and
-0.98). The generator is re-anchored on its own
+cleared on a magnitude can cycle between the two modes. The generator is re-anchored on its own
 anchor moved by the goal's own step, and never by more than it planned, which keeps the IK's lag
-behind it (dropped, the goal's velocity sawed at the cap) without a goal closing a lag dragging
+behind it without a goal closing a lag dragging
 the desired along. What went out is always the goal's own step. While held, every cycle, its
 velocity and acceleration *into* the wall are removed per block (translation, rotation), the lead
 into the wall with them, and what is left is cut to the speed the goal's step carried, but for a
@@ -289,35 +271,18 @@ margin and peaks at `m`, at `|law| / (velocity_barrier_fraction × E(POSITION_FA
 lookahead adds about another 1 %. On the FR3 the limit has itself come down by the margin, so
 the velocity band is the wider of the two there and `FADE_BAND` does bound the gain.
 
-**The rotation weight.** When several joints pin, the pose cannot be met and the IK must trade
-position against orientation. In replays of eleven recorded stalls at wrist limits through the
-box at `w_r` 1 the tool slid 12 to 68 mm; at 0.1 the weighted solve held it within 2.3 mm, and
-0.03 was no more than 0.002 rad of yaw better. So the default is near position-first: 1 mm costs
-as much as 10 mrad. Guarded, with position first below, the same eleven windows end within
-0.01 mm of the target and give up 0 to 0.16 rad of yaw. Expected from that, not yet seen on a
-robot: with several pins the tool stays where it is, the turn stops at the wall and resumes the
-moment it is reversed, and the elbow does not swing; orientation-first in the same replays follows
-the yaw while the tool slides 3 to 5 cm. Only the old clamp is hardware-observed — it was recorded
-stopping the yaw *and* walking the elbow. With joint 5 alone pinned the turn still goes through
-joints 1 and 3, so the elbow moves, but with the yaw. The weight matches
-the law's own trade, `sqrt(15 / 750)` ≈ 0.14 m for the default gains, and is fixed rather than
-derived from `cartesian_stiffness`, which may be zero in rotation.
+**The rotation weight.** When several joints are pinned at their bounds, the pose may be
+unreachable and the IK must trade position against orientation. The default
+`rotation_weight` is 0.1 m/rad: 1 mm of position error has the same weight as 10 mrad of
+orientation error. The weight is fixed rather than derived from `cartesian_stiffness`,
+which may be zero in rotation.
 
-**Position first at a wall.** The weight alone still leaves the tool a few millimetres off
-where the pins make the pose unreachable, so while the goal is stalled the IK puts position
-first, to within micrometres: each iteration solves the translation alone in the box, then the
-whole task with that translation held in the box that is left, its translation rows weighed 30
-times against the orientation, which leaves the position about 1/900 of the weighted trade off
-its own optimum (3 to 16 µm measured). The orientation gets as close as the pins allow: the
-lexicographic step itself never gives it back (5e-10 rad measured), and in replay, with the
-target held and the switch steady, no cycle gives up what it is minimising. Where the trade has
-more than one stationary point the solve settles in the one its own path leads to: of eleven
-recorded stalls, eight settle on the best there is and three end 3 to 5 mrad of orientation
-short of a better one a search from elsewhere finds. The switch eases in and
-out over 0.5 s (a smoothstep on the weighted solve's weights), so the goal velocity has no
-step, and away from a wall the weighted solve runs unchanged. Under a speed limit the
-translation takes the velocity box first, so at a wall the orientation lags more than the
-weighted solve would leave it.
+**Position first at a wall.** While the goal is stalled, each iteration first solves
+translation within the joint bounds, then solves the full task with translation weighted
+30 times more strongly than orientation. Orientation follows as far as the remaining
+freedom allows. The solve can settle at a local optimum. The switch eases in and out over
+0.5 s so the goal velocity has no step; away from a wall the weighted solve is unchanged.
+Under a speed limit, translation takes priority within the velocity bounds too.
 
 | constant | value | why |
 |---|---|---|
@@ -325,7 +290,7 @@ weighted solve would leave it.
 | `IkOptions::rotation_weight` | 0.1 m/rad, in (0, 1] | the trade above; 1 weighs 1 m as 1 rad |
 | `POSITION_FADE_BAND` | 0.02 rad | `b ≥ 0.015` keeps `E(s − b)` under the arm's velocity limit near the limit |
 | `POSITION_BARRIER_STIFFNESS` | 12.5 /rad × torque clamp | stable on the wrist behind the 1 ms delay and the low-pass |
-| active-set passes | 12 | four and a clip were 2.8 mrad off the exact step on a recorded fault; position first solves twice per iteration |
+| active-set passes | 12 | bounds the work per solve; position first solves twice per iteration |
 | stall on / quiet cycles | 2e-5 weighted m per cycle / 20 of the last 40 | above the damped solve's lag; the flag holds while a pin pushes at all, and a pin brushed now and then still clears it |
 | posture distance | 0.3 rad beyond the margin | where the posture is clamped and its pull starts to fade |
 | spring ramp | 500 cycles from the loop's start | an arm started inside `b` eases out |
@@ -338,8 +303,7 @@ the position-first blend, and `held` with `wall_age` say whether a wall was stan
 long since it was last pushed on. The flight recorder's entities are on [Record and replay a
 run](../howto/flight-recorder.md#replay-a-reflex).
 
-**Limits.** Self-collision is not modelled: on an FER folding joint 4 toward its lower limit met
-the robot's self-collision reflex 0.033 rad from it, inside the smallest margin allowed. The
+**Limits.** Self-collision is not modelled; a joint position margin does not prevent it. The
 spring is sized for an overshoot of the margin by 0.02 rad; a push that drives a joint further
 meets at most its torque clamp, and the robot's own limit reflex remains the last stop. The guard
 is exercised offline, on the model with a simulated plant (`tests/position.rs`,
@@ -347,46 +311,14 @@ is exercised offline, on the model with a simulated plant (`tests/position.rs`,
 
 ## Near full stretch: a self-motion the law cannot see
 
-The Cartesian half of the law acts through `Jᵀ Kx J`, so a joint motion in the null space of
-`J` costs it nothing: `J Δdq ≈ 0` leaves the stiffness and the damping with nothing to push on.
-What holds such a motion is the joint gains alone -- `Kqd` is 5 Nm s/rad on joint 4 at the
-`CARTESIAN` preset -- and the damping fitted from the bursts below is that, not the much larger
-figure `Jᵀ Kxd J + Kqd` gives.
+Near a singular configuration, the joints can move substantially while the tool's
+position barely changes. Cartesian position gains cannot damp motion in that direction;
+joint gains and, where orientation changes, rotational gains remain relevant.
 
-And it is not only the whole Jacobian's null space that matters. Teleoperated on an FER near
-maximum reach, with the elbow about 30° from straight and the hand moving, recordings show
-bursts of 4 to 12 Hz oscillation lasting 0.3 to 0.5 s in joints 2, 4 and 6 together while the
-end effector moves 0.15 to 2 mm: 92 to 99 % of the band's joint-velocity energy lies in the
-null space of the *translational* Jacobian and next to none in the null space of the whole one.
-The arm holds the tool's position and swings its orientation, through an elbow-plane
-self-motion. So the translational gains see nothing of it, and the only Cartesian gains that
-bear on it at all are the rotational ones: 15 Nm/rad and 2 Nm s/rad at the default, against 750
-N/m and 50 N s/m in translation. The goal leads the measurement in quadrature and the goal's
-tracking error is
-larger than the joint's own response, so the joint is following an oscillating command rather
-than ringing on a resonance of its own.
-
-Two things make the command side cheap in that direction. `rotation_weight` (0.1 m/rad) prices
-10 mrad of orientation at a millimetre of position, so orientation is the slack the active set
-spends first when a bound makes it redistribute a step among the free joints. And `λ` (0.05) is
-not small against the translation Jacobian's smallest singular value at full stretch (0.09 to
-0.23 in those recordings), so the damped solve has room to trade there.
-
-Ruled out as the driver, on those recordings: the position spring and its fade, the velocity
-fade and the barrier, the 100 Hz filter, the torque rate limiter, the from-start deviation
-guard, the joint velocity cap's scale, the leash, and the stall flag -- each is either dormant
-in the bursts or follows their onset rather than preceding it. **What starts a burst is not
-identified.** What is left is inside the IK: the active set's warm start and its pins, the
-damped step against the box clip, the posture bias through an ill-conditioned projector, the
-priority blend. `ik/step`, `ik/blend`, `ik/held`, `ik/error`, `ee/velocity`, `ee/leash` and the
-commanded orientation are recorded so that the next recording can settle it, by replaying the
-desired poses it carries through the IK open loop. Nothing here is fixed, and no remedy for it
-is in the code.
-
-The design lesson does not wait on the initiator: **a limit-aware inverse kinematics near a
-singular configuration can excite a self-motion that a Cartesian impedance law cannot damp,
-because the task the law regulates barely moves.** A guard written in joint space has to be
-reasoned about in joint space; the end effector's error is not a witness for it.
+Oscillation near full stretch is an unresolved limitation. The initiating mechanism is
+not yet identified, and no specific remedy is implemented. A small end-effector error
+does not establish that joint motion is well controlled. Use the recorded joint states,
+IK diagnostics and commanded orientation when investigating this behavior.
 
 ## Anchoring without an echo: the leash
 
@@ -417,11 +349,8 @@ the measured joint, the feedforward velocity being the finite difference of that
 goal. While the arm follows, `s = 1` and the anchor *is* the previous desired, so the
 generator runs from its own output and its budget is the whole budget, as before. Held back,
 the desired stays within the leash of the arm, so the spring force on whoever holds it
-plateaus: roughly 40 to 50 N at the default gains in an FER's `O_F_ext_hat_K`,
-however far past the leash the arm is pushed (the felt stiffness times the leash, 990 to
-1180 N/m × 0.025 m on the FER model, would give 25 to 30 N, and 750 × 0.025 = 18.75 N is the
-translational spring alone with `project_joint_gains`; the robot's estimate shows more).
-Gentle pushes read well under 30 N; a hard, fast push briefly exceeds 60 N.
+is limited by the leashed position error. This is not a limit on total reaction force,
+which also includes damping.
 On the joint interface it is the torque clamp, not the leash, that bounds the torque: the
 `JOINT` preset's 600 Nm/rad × 0.1 rad is 60 Nm on joints 1 to 4, under their 86 Nm clamp but
 far over the 20 Nm joint threshold the examples set, which such a joint reaches at 0.033 rad
@@ -439,23 +368,17 @@ shape the torque and leave the setpoint alone.
 
 ## The handover at start and stop
 
-At the start the desired pose is the model's pose of the measured configuration, not
-`O_T_EE` (the two differ by the model's accuracy on a robot, and by 0.107 m on franka-sim,
-whose `O_T_EE` is the joint-7 frame), so the IK's residual is zero and `q_goal = q`: the
-first command is `−Kd dq + coriolis(q, dq)`, near zero on an arm at rest, and the robot's
-controller hands over without a step. On franka-sim 1.1.6 the arm did not move over the
-first 500 cycles of a session (measured change 0 to within floating point). At `stop()` the
-generator lands on the last target;
-the loop then holds the landed setpoint for `Settle::cycles` (250) and sets
-`motion_finished` once every joint moves slower than `REST_JOINT_VELOCITY` (0.01 rad/s), or
-after `STOP_TIMEOUT_CYCLES` (5 s) more cycles, the law kept on the held goal until then. The
-generator's rest is not the arm's: an arm still closing its lag, handed to the robot's
-controller at the moment of the finish, is held wherever it was (0.048 rad short on joint 7
-on the simulator, before the gate). With the gate the arm is at rest on the setpoint and the
-torques are near zero, so the robot's controller takes over from rest, as it does after the
-`cartesian_impedance_active_control` example's final zero-torque command. On franka-sim 1.1.6
-a 5 cm step lands 0.5 to 0.8 mm from the target. The law itself, `impedance_torques`, is
-public at the crate root for a loop of your own.
+At the start, the desired pose is the model's pose of the measured configuration and
+`q_goal = q`. The IK therefore starts with zero residual. The first command is
+`−Kd dq + coriolis(q, dq)`.
+
+At `stop()`, the generator lands on the last target and holds the setpoint for
+`Settle::cycles` (250). It sets `motion_finished` once every joint moves slower than
+`REST_JOINT_VELOCITY` (0.01 rad/s), or after `STOP_TIMEOUT_CYCLES` (5 s) more cycles.
+The impedance law continues to act on the held goal until then. The velocity check
+allows the arm to settle before control returns to the robot's controller.
+
+The law itself, `impedance_torques`, is public at the crate root for a loop of your own.
 
 ## What a spring does not do
 

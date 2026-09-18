@@ -98,11 +98,9 @@ return the flat `fer::MAX_JOINT_VELOCITY` / `MIN_JOINT_VELOCITY` and ignore `q`.
 `franka::compute_upper_limits_joint_velocity` / `compute_lower_limits_joint_velocity` are the
 deprecated libfranka versions with the FR3 parameters hardcoded; their offsets and position limits
 are not those of Franka's FR3 specifications (joint 1: 0.30 and 2.7501 against 0.6599 and
-2.9007), and the recorded FR3 faults follow the specifications'. Franka publishes no such
-envelope for the FER — no rows on the specifications page, nothing in libfranka or
-franka_description — and recorded FER sessions ran well above an assumed one without a reflex,
-so the flat limit is what that arm checks. Target control's torque backend follows the FR3's
-envelope and brakes toward the position limits on both arms, see
+2.9007). Franka publishes no corresponding envelope for the FER, and neither libfranka nor
+franka_description provides one; the FER path uses the flat limits. Target control's torque
+backend follows the FR3's envelope and brakes toward the position limits on both arms, see
 [the joint position limit guard](impedance.md#the-joint-position-limit-guard).
 
 ### The torque-rate margin on FCI v10
