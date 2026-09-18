@@ -73,7 +73,7 @@ impl<const N: usize> TargetSlot<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::mpsc::{sync_channel, TryRecvError};
 
     #[test]
     fn an_unwritten_slot_reports_nothing_and_leaves_the_output_alone() {
@@ -103,33 +103,49 @@ mod tests {
     #[test]
     fn a_reader_never_sees_a_torn_triple_under_a_busy_writer() {
         // Every published triple is `[k, 2k, 3k]`; a torn read would break that invariant.
-        let slot = Arc::new(TargetSlot::<3>::new([0.0; 3]));
-        let writer = {
-            let slot = Arc::clone(&slot);
-            std::thread::spawn(move || {
-                for k in 1..200_000u32 {
-                    let k = f64::from(k);
-                    slot.publish([k, 2.0 * k, 3.0 * k]);
+        const ROUNDS: u32 = 200;
+        const WRITES_PER_ROUND: u32 = 1_000;
+        let slot = TargetSlot::<3>::new([0.0; 3]);
+        let (done_tx, done_rx) = sync_channel(0);
+        let (resume_tx, resume_rx) = sync_channel(0);
+        let slot = &slot;
+        std::thread::scope(move |threads| {
+            threads.spawn(move || {
+                for round in 1..=ROUNDS {
+                    let last = round * WRITES_PER_ROUND;
+                    for k in last - WRITES_PER_ROUND + 1..=last {
+                        let k = f64::from(k);
+                        slot.publish([k, 2.0 * k, 3.0 * k]);
+                    }
+                    // Guarantee observable updates without assuming how the scheduler divides
+                    // time between the threads. A failed reader disconnects these channels.
+                    if done_tx.send(last).is_err() || resume_rx.recv().is_err() {
+                        return;
+                    }
                 }
-            })
-        };
-        let mut target = [0.0; 3];
-        let (mut loads, mut torn) = (0u64, 0u64);
-        while !writer.is_finished() {
-            if slot.load(&mut target) {
-                loads += 1;
-                assert_eq!(target[1], 2.0 * target[0], "torn read {target:?}");
-                assert_eq!(target[2], 3.0 * target[0], "torn read {target:?}");
-            } else {
-                torn += 1;
+            });
+            let mut target = [0.0; 3];
+            for round in 1..=ROUNDS {
+                loop {
+                    if slot.load(&mut target) {
+                        assert_eq!(target[1], 2.0 * target[0], "torn read {target:?}");
+                        assert_eq!(target[2], 3.0 * target[0], "torn read {target:?}");
+                    }
+                    match done_rx.try_recv() {
+                        Ok(last) => {
+                            assert_eq!(last, round * WRITES_PER_ROUND);
+                            break;
+                        }
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => panic!("writer stopped early"),
+                    }
+                }
+                // The paused writer gives every round a successful read, even on one CPU.
+                assert!(slot.load(&mut target));
+                let last = f64::from(round * WRITES_PER_ROUND);
+                assert_eq!(target, [last, 2.0 * last, 3.0 * last]);
+                resume_tx.send(()).unwrap();
             }
-        }
-        writer.join().unwrap();
-        assert!(
-            loads > 0,
-            "the reader never saw a consistent value ({torn} torn)"
-        );
-        assert!(slot.load(&mut target));
-        assert_eq!(target, [199_999.0, 399_998.0, 599_997.0]);
+        });
     }
 }
