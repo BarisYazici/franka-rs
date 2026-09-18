@@ -10,22 +10,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 cargo clippy -p franka-rs --all-targets --no-default-features -- -D warnings
 cargo clippy -p franka-rs --all-targets --features serde -- -D warnings
+cargo clippy -p franka-rs --all-targets --features model-library -- -D warnings
 cargo test --workspace --lib
 cargo test -p franka-rs --lib --features serde
+cargo test -p franka-rs --lib --features model-library
 cargo test -p franka-rs \
   --test wire_sizes --test model_conformance \
   --test wire_sizes_v5 --test fer_native_conformance \
-  --test fer_model_conformance \
   --test example_motion_generator
+cargo test -p franka-rs --features model-library --test fer_model_conformance
 cargo test --workspace --doc
+cargo test -p franka-rs --doc
 cargo test -p franka-rerun
 cargo build -p franka-rerun --examples
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc -p franka-rs --no-deps
 ```
 
-The `--no-default-features` clippy invocations keep the crate building without the default
-`model-library` feature, which is how it cross-compiles to static musl; the `-p franka-rs`
-one is needed because `--workspace` unifies the other crates' default features back on.
+The standalone `-p franka-rs` checks cover the default native model without the optional
+`model-library` loader. Workspace builds can enable that feature through the
+`fer-model-fit` development tool, so CI also checks each path explicitly.
 
 `cargo test --workspace --lib` includes the README-sync unit tests: the README's "Quick
 example" block must stay byte-identical to the body of `main` in

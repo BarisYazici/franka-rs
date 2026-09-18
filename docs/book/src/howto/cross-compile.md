@@ -11,16 +11,13 @@ The Raspberry Pi 5 is the reference board for `franka-node`.
 
 ## The two targets
 
-| target | libc | linking | `model-library` |
-|---|---|---|---|
-| `aarch64-unknown-linux-gnu` | glibc | dynamic | compiles |
-| `aarch64-unknown-linux-musl` | musl | fully static | off (`--no-default-features`) |
+| target | libc | linking |
+|---|---|---|
+| `aarch64-unknown-linux-gnu` | glibc | dynamic |
+| `aarch64-unknown-linux-musl` | musl | fully static |
 
-The default `model-library` feature compiles `Robot::load_model_from_robot`, which `dlopen`s
-the model library an FER serves. That library is an x86-64 build (`libfcimodels_x64.so`) and
-of no use on `aarch64` either way; `load_model()` evaluates both robots' models natively and
-is the path to use. Turning the feature off drops `libloading`, which a static musl binary
-cannot use, and changes nothing else.
+The default build evaluates both robots' models in Rust. `Robot::load_model()` works
+on either target, including for the Panda.
 
 ## Option A: `cargo-zigbuild`, no root
 
@@ -54,7 +51,7 @@ Rust's musl target ships a self-contained linker (`rust-lld`) with `rustup`:
 ```sh
 rustup target add aarch64-unknown-linux-musl
 cargo build --release --target aarch64-unknown-linux-musl -p franka-rs \
-  --no-default-features --examples
+  --examples
 ```
 
 The repository's `.cargo/config.toml` sets `linker = "rust-lld"` for this target only;
@@ -85,8 +82,8 @@ The crate's test suite has been run this way, one binary at a time with `--test-
 and `FRANKA_SIM_ADDR=127.0.0.1` pointing at a container started on the host (a binary under
 QEMU cannot exec the host's `docker`, so the harness must [attach](./simulator-tests.md)).
 Everything that passes natively passed on `aarch64` with byte-identical model numbers, except
-the tests calling `load_model_from_robot`: compiled out under `--no-default-features`, and
-failing with the feature on because the x86-64 library cannot be loaded.
+the optional tests calling `load_model_from_robot`: disabled in the default build, and
+unavailable with `model-library` enabled because the robot's x86-64 library cannot be loaded on ARM.
 
 ## Deploy and run
 

@@ -23,9 +23,9 @@ name = "franka"
 path = "src/lib.rs"
 
 [features]
-default = ["model-library"]
-# The FCI v5 (Franka Emika Robot / FER) model: `LoadModelLibrary` plus `dlopen` of the shared object the
-# robot serves. Off, the crate keeps the URDF-based native backend only.
+default = []
+# Opt-in FCI v5 (Franka Emika Robot / FER) shared-object loader: `LoadModelLibrary` plus
+# `dlopen`. `Robot::load_model` uses the built-in native FER model with or without this feature.
 model-library = ["dep:libloading"]
 # `serde::Serialize` / `serde::Deserialize` on `RobotState`, `RobotMode`, `Errors`, `Duration`,
 # `Record`, `RobotCommandLog`, `MoveStatus` and `ControlException`, so a control log can be
