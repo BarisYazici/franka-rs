@@ -1,5 +1,7 @@
 # franka-rs
 
+[Project home](./index.html) · Documentation
+
 Send targets from your program. Let Rust handle the realtime control.
 
 `franka-rs` controls a Franka FR3 or Panda directly from Rust or Python, without

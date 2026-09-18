@@ -5,11 +5,21 @@
 <h1 align="center">franka-rs</h1>
 <p align="center">Send targets. Let Rust handle the realtime control.</p>
 
+<p align="center">
+  <a href="https://github.com/BarisYazici/franka-rs/actions/workflows/ci.yml"><img src="https://github.com/BarisYazici/franka-rs/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/BarisYazici/franka-rs/actions/workflows/docs.yml"><img src="https://github.com/BarisYazici/franka-rs/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
+  <a href="https://crates.io/crates/franka-rs"><img src="https://img.shields.io/crates/v/franka-rs.svg" alt="crates.io"></a>
+  <a href="https://pypi.org/project/franka-rs/"><img src="https://img.shields.io/pypi/v/franka-rs.svg" alt="PyPI"></a>
+  <a href="https://docs.rs/franka-rs"><img src="https://img.shields.io/docsrs/franka-rs" alt="docs.rs"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+</p>
+
 Control a Franka FR3 or Panda from Rust or Python. `franka-rs` connects directly to the
 robot, generates smooth motion from your targets, and runs the 1 kHz control loop.
 It implements the Franka Control Interface in Rust, without libfranka or C++.
 
-**[Choose your setup](docs/book/src/getting-started/choose-your-setup.md)** ·
+**[Website](https://barisyazici.github.io/franka-rs/)** ·
+[Choose your setup](docs/book/src/getting-started/choose-your-setup.md) ·
 [Documentation](https://barisyazici.github.io/franka-rs/introduction.html) ·
 [API](https://docs.rs/franka-rs) · [Changelog](CHANGELOG.md)
 

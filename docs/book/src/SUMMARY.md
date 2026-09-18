@@ -5,6 +5,7 @@
 # Start here
 
 - [How the pieces fit](./getting-started/architecture.md)
+  - [Architecture in detail](./getting-started/architecture-details.md)
 - [Choose your setup](./getting-started/choose-your-setup.md)
 - [Without a robot: franka-sim](./getting-started/simulator.md)
 
