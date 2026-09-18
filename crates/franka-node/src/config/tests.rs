@@ -495,3 +495,189 @@ fn velocity_fractions_reach_both_session_kinds() {
         assert!(why.contains(key), "{key} = {value}: {why}");
     }
 }
+
+#[test]
+fn the_joint_position_margin_reaches_both_session_kinds_and_the_joint_gate() {
+    let library = ImpedanceOptions::cartesian().joint_position_margin;
+    let defaults = &minimal("").unwrap().arms[0];
+    assert_eq!(defaults.joint_position_margin, library);
+    assert_eq!(defaults.guard_options().joint_limit_inset, library);
+    let arm = &minimal("joint_position_margin = 0.1").unwrap().arms[0];
+    let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(cartesian.joint_position_margin, 0.1);
+    let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
+    let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(joint.joint_position_margin, 0.1);
+    assert_eq!(arm.guard_options().joint_limit_inset, 0.1);
+    for edge in ["0.035", "0.5"] {
+        minimal(&format!("joint_position_margin = {edge}")).unwrap();
+    }
+    for value in ["0.034", "0.51", "nan"] {
+        let why = invalid_text(minimal(&format!("joint_position_margin = {value}")));
+        assert!(why.contains("joint_position_margin"), "{value}: {why}");
+    }
+}
+
+#[test]
+fn the_ik_damping_reaches_both_session_kinds_and_leaves_the_other_ik_options_alone() {
+    let library = IkOptions::default();
+    let defaults = &minimal("").unwrap().arms[0];
+    assert_eq!(defaults.ik_damping, library.damping);
+
+    let arm = &minimal("ik_damping = 0.1").unwrap().arms[0];
+    let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(cartesian.ik.damping, 0.1);
+    let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
+    let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(joint.ik.damping, 0.1);
+
+    // The key sets λ and nothing else: a reset of the weighting or the iteration count would
+    // change the IK's behaviour far more than the damping does.
+    assert_eq!(cartesian.ik.rotation_weight, library.rotation_weight);
+    assert_eq!(cartesian.ik.nullspace_gain, library.nullspace_gain);
+    assert_eq!(cartesian.ik.iterations, library.iterations);
+    assert_eq!(cartesian.ik.tolerance, library.tolerance);
+
+    for value in ["0", "-0.1", "nan"] {
+        let why = invalid_text(minimal(&format!("ik_damping = {value}")));
+        assert!(why.contains("ik_damping"), "{value}: {why}");
+    }
+}
+
+#[test]
+fn the_nullspace_gain_and_the_feedforward_reach_both_session_kinds() {
+    let library = IkOptions::default();
+    let defaults = &minimal("").unwrap().arms[0];
+    assert_eq!(defaults.ik_nullspace_gain, library.nullspace_gain);
+    assert!(defaults.velocity_feedforward);
+
+    let arm = &minimal("ik_nullspace_gain = 0.0\nvelocity_feedforward = false")
+        .unwrap()
+        .arms[0];
+    let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(cartesian.ik.nullspace_gain, 0.0);
+    assert!(!cartesian.velocity_feedforward);
+    let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
+    let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(joint.ik.nullspace_gain, 0.0);
+    assert!(!joint.velocity_feedforward);
+
+    // Switching the posture bias off must not disturb the damping, which is the other IK knob
+    // a session sweeps.
+    assert_eq!(cartesian.ik.damping, library.damping);
+
+    for value in ["-0.1", "nan"] {
+        let why = invalid_text(minimal(&format!("ik_nullspace_gain = {value}")));
+        assert!(why.contains("ik_nullspace_gain"), "{value}: {why}");
+    }
+}
+
+#[test]
+fn the_cutoff_frequency_reaches_both_session_kinds_and_switches_off_at_the_maximum() {
+    let library = ImpedanceOptions::cartesian().cutoff_frequency;
+    let defaults = &minimal("").unwrap().arms[0];
+    assert_eq!(defaults.cutoff_frequency, library);
+
+    let off = franka::lowpass_filter::MAX_CUTOFF_FREQUENCY;
+    let arm = &minimal(&format!("cutoff_frequency = {off}")).unwrap().arms[0];
+    let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(cartesian.cutoff_frequency, off);
+    let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
+    let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(joint.cutoff_frequency, off);
+
+    for value in ["0", "-1", "nan"] {
+        let why = invalid_text(minimal(&format!("cutoff_frequency = {value}")));
+        assert!(why.contains("cutoff_frequency"), "{value}: {why}");
+    }
+}
+
+#[test]
+fn the_joint_gains_override_the_preset_on_both_session_kinds_and_keep_the_cartesian_ones() {
+    // Unset, a Cartesian session keeps its own soft joint terms.
+    let defaults = &minimal("").unwrap().arms[0];
+    assert_eq!(defaults.joint_stiffness, None);
+    let Backend::Impedance(preset) = defaults.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(
+        preset.gains.joint_stiffness,
+        ImpedanceGains::CARTESIAN.joint_stiffness
+    );
+
+    let k = "[600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0]";
+    let d = "[50.0, 50.0, 50.0, 50.0, 30.0, 25.0, 15.0]";
+    let arm = &minimal(&format!(
+        "cartesian_stiffness = 750.0\njoint_stiffness = {k}\njoint_damping = {d}"
+    ))
+    .unwrap()
+    .arms[0];
+    let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(
+        cartesian.gains.joint_stiffness,
+        ImpedanceGains::JOINT.joint_stiffness
+    );
+    assert_eq!(
+        cartesian.gains.joint_damping,
+        ImpedanceGains::JOINT.joint_damping
+    );
+    // Overriding the joint terms must leave the Cartesian spring exactly where
+    // `cartesian_stiffness` put it.
+    assert_eq!(
+        cartesian.gains.cartesian_stiffness,
+        cartesian_gains(750.0).cartesian_stiffness
+    );
+
+    let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
+    let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
+        panic!("expected the impedance backend");
+    };
+    assert_eq!(
+        joint.gains.joint_stiffness,
+        ImpedanceGains::JOINT.joint_stiffness
+    );
+
+    // A negative gain, a non-finite one, and the wrong arity must each be refused by name.
+    for (field, bad) in [
+        (
+            "joint_stiffness",
+            "[600.0, 600.0, 600.0, 600.0, 250.0, 150.0, -1.0]",
+        ),
+        (
+            "joint_stiffness",
+            "[600.0, 600.0, 600.0, 600.0, 250.0, 150.0, nan]",
+        ),
+        (
+            "joint_damping",
+            "[50.0, 50.0, 50.0, 50.0, 20.0, 20.0, -0.1]",
+        ),
+    ] {
+        let why = invalid_text(minimal(&format!("{field} = {bad}")));
+        assert!(why.contains(field), "{field} = {bad}: {why}");
+    }
+    // Seven entries exactly: six or eight is a different error, but it must still be one.
+    for arity in ["[600.0, 600.0, 600.0, 600.0, 250.0, 150.0]", "[1.0, 2.0]"] {
+        assert!(
+            minimal(&format!("joint_stiffness = {arity}")).is_err(),
+            "{arity} was accepted"
+        );
+    }
+}

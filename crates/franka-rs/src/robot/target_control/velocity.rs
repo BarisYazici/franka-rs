@@ -4,28 +4,38 @@
 //! onset), so that catching up on its lag does not drive it past that onset; and the barrier on
 //! the measured velocity, which damps what the two cannot: spring-back and overshoot.
 
-/// Scales `to - from` as a whole so that no joint moves further than `max_step`, which keeps
-/// the step's direction in joint space; returns the scale, 1 when every joint is within its
-/// bound.
-pub(super) fn cap_step(from: &[f64; 7], to: &mut [f64; 7], max_step: &[f64; 7]) -> f64 {
-    let scale = to
-        .iter()
-        .zip(from)
-        .zip(max_step)
-        .fold(1.0f64, |scale, ((to, from), max)| {
-            let step = (to - from).abs();
-            if step > *max {
-                scale.min(max / step)
-            } else {
-                scale
-            }
-        });
+use super::impedance::TORQUE_LIMITS;
+
+/// Scales `to - from` as a whole by the largest `s ≤ 1` that keeps every joint's step within
+/// `[lower, upper]` (`lower ≤ 0 ≤ upper`), which keeps the step's direction in joint space;
+/// returns `s`.
+pub(super) fn scale_step(
+    from: &[f64; 7],
+    to: &mut [f64; 7],
+    lower: &[f64; 7],
+    upper: &[f64; 7],
+) -> f64 {
+    let mut scale = 1.0f64;
+    for i in 0..7 {
+        let step = to[i] - from[i];
+        if step > upper[i] {
+            scale = scale.min(upper[i] / step);
+        } else if step < lower[i] {
+            scale = scale.min(lower[i] / step);
+        }
+    }
     if scale < 1.0 {
         for (q, from) in to.iter_mut().zip(from) {
             *q = from + scale * (*q - from);
         }
     }
     scale
+}
+
+/// [`scale_step`] within `±max_step`.
+#[cfg(test)]
+pub(super) fn cap_step(from: &[f64; 7], to: &mut [f64; 7], max_step: &[f64; 7]) -> f64 {
+    scale_step(from, to, &max_step.map(|m| -m), max_step)
 }
 
 /// Nm per rad/s of the velocity barrier: the damping a joint meets beyond
@@ -37,9 +47,21 @@ pub const VELOCITY_BARRIER_GAIN: f64 = 20.0;
 
 /// The narrowest band, as a fraction of a joint's velocity limit, over which the law's push
 /// along the joint's motion fades out under the barrier's onset: the fade starts at the cap or
-/// this far under the onset, whichever is lower. The fade adds up to `|law| / (FADE_BAND × limit)`
-/// Nm per rad/s to the loop's gain there, about 30 on an FER's wrist at its 11.5 Nm clamp, which
-/// the loop settles on 0.03 kg m² and more; a fade from a cap of 0.8 rings there.
+/// this far under the onset, whichever is lower, and never below rest.
+///
+/// Away from a position limit the band is this wide and the fade adds up to
+/// `|law| / (FADE_BAND × limit)` Nm per rad/s to the loop's gain, about 30 on an FER's wrist at
+/// its 11.5 Nm clamp, which the loop settles on 0.03 kg m² and more; a fade from a cap of 0.8
+/// rings there. Inside the position margin the cap is 0 -- the braking envelope is 0 at and past
+/// the margin -- so the start is 0 and the band is `[0, onset]`. Where the arm's limit toward
+/// that side is flat, as the FER's is, that is the narrower band and the figure above is not the
+/// bound; what bounds the gain is the position fade
+/// ([`POSITION_FADE_BAND`](super::POSITION_FADE_BAND)) tapering the same push to nothing over
+/// the same rad. Both vanish linearly, so the product is finite, and it peaks at the margin at
+/// `|law| / (velocity_barrier_fraction × E(POSITION_FADE_BAND))`: on the FER 1.16 to 1.61 times
+/// the figure above (`tests/torque_position.rs`). The FR3's limit is position-dependent and has
+/// itself come down by the margin, so its band is wider there and the figure above does bound
+/// it.
 pub const FADE_BAND: f64 = 0.15;
 
 /// Where a joint's fade starts, rad/s: at `cap`, or [`FADE_BAND`] of `limit` under `onset` if
@@ -71,19 +93,25 @@ pub(super) fn fade_push(
     })
 }
 
-/// The barrier's torque, Nm: [`VELOCITY_BARRIER_GAIN`] per rad/s by which a joint's measured
-/// velocity exceeds `onset`, opposing it and at most that joint's torque limit; zero below.
+/// The barrier's gain per joint, Nm per rad/s: [`VELOCITY_BARRIER_GAIN`], lowered in proportion
+/// where `torque_limits` clamps a joint below the default clamp (86 Nm on joints 1-4, 11.5 on
+/// 5-7), so a lighter clamp does not leave a stiffer barrier to ring on the joint's inertia.
+pub(super) fn barrier_gains(torque_limits: &[f64; 7]) -> [f64; 7] {
+    std::array::from_fn(|i| VELOCITY_BARRIER_GAIN * (torque_limits[i] / TORQUE_LIMITS[i]).min(1.0))
+}
+
+/// The barrier's torque, Nm: `gains` per rad/s by which a joint's measured velocity exceeds
+/// `onset`, opposing it and at most that joint's torque limit; zero below.
 pub(super) fn velocity_barrier(
     dq: &[f64; 7],
     onset: &[f64; 7],
+    gains: &[f64; 7],
     torque_limits: &[f64; 7],
 ) -> [f64; 7] {
     std::array::from_fn(|i| {
         let excess = dq[i].abs() - onset[i];
         if excess > 0.0 {
-            (VELOCITY_BARRIER_GAIN * excess)
-                .min(torque_limits[i])
-                .copysign(-dq[i])
+            (gains[i] * excess).min(torque_limits[i]).copysign(-dq[i])
         } else {
             0.0
         }

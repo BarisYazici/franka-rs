@@ -3,10 +3,10 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use franka::robot::target_control::DEFAULT_LIMIT_FRACTION;
+use franka::robot::target_control::{DEFAULT_LIMIT_FRACTION, JOINT_LIMIT_INSET};
 use franka::{
-    Backend, ImpedanceGains, ImpedanceOptions, JointTargetControlOptions, Leash, OtgLimits,
-    RealtimeConfig, TargetControlOptions,
+    Backend, IkOptions, ImpedanceGains, ImpedanceOptions, JointTargetControlOptions, Leash,
+    OtgLimits, RealtimeConfig, TargetControlOptions,
 };
 use serde::Deserialize;
 
@@ -227,6 +227,56 @@ pub struct ArmConfig {
     /// [`joint_velocity_fraction`, 1]. Default 0.85.
     #[serde(default = "default_velocity_barrier_fraction")]
     pub velocity_barrier_fraction: f64,
+    /// [`ImpedanceOptions::joint_position_margin`] of both session kinds, rad, in [0.035, 0.5]:
+    /// the distance the joint goal keeps from the joint position limits; the joint gate refuses
+    /// targets inside it too. Default 0.05.
+    #[serde(default = "default_joint_position_margin")]
+    pub joint_position_margin: f64,
+    /// [`IkOptions::damping`], the `λ` of the Cartesian backend's damped least squares, of both
+    /// session kinds. The damped pseudo-inverse's gain is bounded by `1 / 2λ`, so near a singular
+    /// pose a smaller `λ` buys tracking accuracy with a larger amplification of the pose error
+    /// into joint motion. Default 0.05.
+    #[serde(default = "default_ik_damping")]
+    pub ik_damping: f64,
+    /// [`IkOptions::nullspace_gain`], 1/s, of both session kinds: the pull of the redundant
+    /// elbow toward the posture, which is the arm's configuration when the session started. The
+    /// further a session teleoperates from that snapshot, the more elbow motion the bias adds
+    /// that the commander never asked for; 0 switches it off. Default 1.0.
+    #[serde(default = "default_ik_nullspace_gain")]
+    pub ik_nullspace_gain: f64,
+    /// [`ImpedanceOptions::velocity_feedforward`] of both session kinds: with it off, `dq_goal`
+    /// is zero and the joint damping acts on the measured velocity alone, dissipatively. Default
+    /// true.
+    #[serde(default = "default_velocity_feedforward")]
+    pub velocity_feedforward: bool,
+    /// [`ImpedanceOptions::velocity_feedforward_gain`] of both session kinds, in [0, 1]: the
+    /// weight of the goal velocity in the damping term. 0 is `velocity_feedforward = false`.
+    /// Default 1.
+    #[serde(default = "default_velocity_feedforward_gain")]
+    pub velocity_feedforward_gain: f64,
+    /// [`ImpedanceOptions::velocity_feedforward_cutoff`], Hz, of a Cartesian session; `1000`
+    /// switches the filter off, and it is floored at
+    /// [`MIN_FEEDFORWARD_CUTOFF`](franka::robot::target_control::MIN_FEEDFORWARD_CUTOFF).
+    /// Bounding it keeps the feedforward's lead while leaving the joint reference's ripple
+    /// behind. A joints session forms its goal velocity directly and is unaffected.
+    #[serde(default = "default_velocity_feedforward_cutoff")]
+    pub velocity_feedforward_cutoff: f64,
+    /// [`ImpedanceOptions::cutoff_frequency`], Hz, of the crate's first-order low-pass on the
+    /// commanded torque. `1000` ([`MAX_CUTOFF_FREQUENCY`](franka::lowpass_filter::MAX_CUTOFF_FREQUENCY))
+    /// switches it off. Default 100.
+    #[serde(default = "default_cutoff_frequency")]
+    pub cutoff_frequency: f64,
+    /// [`ImpedanceGains::joint_stiffness`], Nm/rad, of both session kinds; `None` keeps the
+    /// preset's. A Cartesian session's preset is soft on purpose — the Cartesian spring does the
+    /// work and the joint terms only steady the posture — so an arm driven mostly by its joint
+    /// law (no `velocity_feedforward`, say) wants these raised toward the joint preset's
+    /// `[600, 600, 600, 600, 250, 150, 50]`.
+    #[serde(default)]
+    pub joint_stiffness: Option<[f64; 7]>,
+    /// [`ImpedanceGains::joint_damping`], Nm·s/rad, of both session kinds; `None` keeps the
+    /// preset's. Raise with the square root of the stiffness to hold the damping ratio.
+    #[serde(default)]
+    pub joint_damping: Option<[f64; 7]>,
     #[serde(default)]
     pub workspace: Workspace,
     /// [`GuardOptions::rate_hz`]. Default 250.
@@ -313,6 +363,27 @@ fn default_joint_velocity_fraction() -> f64 {
 }
 fn default_velocity_barrier_fraction() -> f64 {
     ImpedanceOptions::cartesian().velocity_barrier_fraction
+}
+fn default_joint_position_margin() -> f64 {
+    ImpedanceOptions::cartesian().joint_position_margin
+}
+fn default_ik_damping() -> f64 {
+    IkOptions::default().damping
+}
+fn default_ik_nullspace_gain() -> f64 {
+    IkOptions::default().nullspace_gain
+}
+fn default_velocity_feedforward() -> bool {
+    ImpedanceOptions::cartesian().velocity_feedforward
+}
+fn default_cutoff_frequency() -> f64 {
+    ImpedanceOptions::cartesian().cutoff_frequency
+}
+fn default_velocity_feedforward_gain() -> f64 {
+    ImpedanceOptions::cartesian().velocity_feedforward_gain
+}
+fn default_velocity_feedforward_cutoff() -> f64 {
+    ImpedanceOptions::cartesian().velocity_feedforward_cutoff
 }
 fn default_rate_hz() -> f64 {
     GuardOptions::default().rate_hz
@@ -421,11 +492,49 @@ impl ArmConfig {
             ("joint_max_deviation", self.joint_max_deviation),
             ("rate_hz", self.rate_hz),
             ("gripper_speed", self.gripper_speed),
+            ("ik_damping", self.ik_damping),
+            ("cutoff_frequency", self.cutoff_frequency),
+            (
+                "velocity_feedforward_cutoff",
+                self.velocity_feedforward_cutoff,
+            ),
         ];
         for (field, value) in scalars {
             if !positive(value) {
                 return Err(invalid(format!("{field} must be positive")));
             }
+        }
+        for (field, gains) in [
+            ("joint_stiffness", self.joint_stiffness),
+            ("joint_damping", self.joint_damping),
+        ] {
+            if let Some(gains) = gains {
+                if gains.iter().any(|g| !g.is_finite() || *g < 0.0) {
+                    return Err(invalid(format!(
+                        "{field} must be finite and non-negative, got {gains:?}"
+                    )));
+                }
+            }
+        }
+        if !self.velocity_feedforward_gain.is_finite()
+            || !(0.0..=1.0).contains(&self.velocity_feedforward_gain)
+        {
+            return Err(invalid(
+                "velocity_feedforward_gain must be within [0, 1]".into(),
+            ));
+        }
+        if self.velocity_feedforward_cutoff < franka::robot::target_control::MIN_FEEDFORWARD_CUTOFF
+        {
+            return Err(invalid(format!(
+                "velocity_feedforward_cutoff must be at least {} Hz",
+                franka::robot::target_control::MIN_FEEDFORWARD_CUTOFF
+            )));
+        }
+        // 0 switches the posture bias off, so this one is non-negative rather than positive.
+        if !self.ik_nullspace_gain.is_finite() || self.ik_nullspace_gain < 0.0 {
+            return Err(invalid(
+                "ik_nullspace_gain must be finite and non-negative".into(),
+            ));
         }
         // The lead limits take 0, which disables the check, and must otherwise stay above the
         // backend's own leash: at or below it the gate would refuse a healthy commander's
@@ -509,11 +618,12 @@ impl ArmConfig {
             workspace_min: self.workspace.min,
             workspace_max: self.workspace.max,
             rate_hz: self.rate_hz,
+            joint_limit_inset: JOINT_LIMIT_INSET.max(self.joint_position_margin),
         }
     }
 
     /// The options of `start_cartesian_target_control`: the budgets, the impedance backend
-    /// at `cartesian_stiffness` with the leash and the joint velocity cap and barrier, the
+    /// at `cartesian_stiffness` with the leash and the joint envelopes, the
     /// deviation guards, the priority, the cpu.
     pub fn target_control_options(&self) -> TargetControlOptions {
         let leash = Leash {
@@ -521,7 +631,7 @@ impl ArmConfig {
             rotation: self.leash.rotation,
             ..Leash::default()
         };
-        let impedance = self.velocity_envelope(
+        let impedance = self.envelopes(
             ImpedanceOptions::cartesian()
                 .with_gains(cartesian_gains(self.cartesian_stiffness))
                 .with_leash(leash),
@@ -537,10 +647,10 @@ impl ArmConfig {
     }
 
     /// The options of `start_joint_target_control` under `limits`: the library's impedance
-    /// backend with the joint velocity cap and barrier, and settle, `joint_max_deviation`, the
+    /// backend with the joint envelopes, and settle, `joint_max_deviation`, the
     /// priority, the cpu.
     pub fn joint_control_options(&self, limits: [OtgLimits; 7]) -> JointTargetControlOptions {
-        let impedance = self.velocity_envelope(ImpedanceOptions::joint());
+        let impedance = self.envelopes(ImpedanceOptions::joint());
         JointTargetControlOptions::default()
             .with_limits(limits)
             .with_backend(Backend::Impedance(impedance))
@@ -549,11 +659,30 @@ impl ArmConfig {
             .with_cpu(self.cpu)
     }
 
-    /// `impedance` with the arm's joint velocity cap and barrier.
-    fn velocity_envelope(&self, impedance: ImpedanceOptions) -> ImpedanceOptions {
+    /// `impedance` with the arm's joint velocity cap, barrier, position margin and IK damping.
+    fn envelopes(&self, impedance: ImpedanceOptions) -> ImpedanceOptions {
+        let ik = IkOptions {
+            damping: self.ik_damping,
+            nullspace_gain: self.ik_nullspace_gain,
+            ..impedance.ik
+        };
+        let gains = ImpedanceGains {
+            joint_stiffness: self
+                .joint_stiffness
+                .unwrap_or(impedance.gains.joint_stiffness),
+            joint_damping: self.joint_damping.unwrap_or(impedance.gains.joint_damping),
+            ..impedance.gains
+        };
         impedance
+            .with_gains(gains)
             .with_joint_velocity_fraction(self.joint_velocity_fraction)
             .with_velocity_barrier_fraction(self.velocity_barrier_fraction)
+            .with_joint_position_margin(self.joint_position_margin)
+            .with_velocity_feedforward(self.velocity_feedforward)
+            .with_velocity_feedforward_gain(self.velocity_feedforward_gain)
+            .with_velocity_feedforward_cutoff(self.velocity_feedforward_cutoff)
+            .with_cutoff_frequency(self.cutoff_frequency)
+            .with_ik(ik)
     }
 }
 

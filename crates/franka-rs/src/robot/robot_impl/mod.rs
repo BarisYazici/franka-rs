@@ -254,7 +254,7 @@ impl RobotImpl {
 
     /// Upper joint velocity limits at `q` (`Robot::Impl::getUpperJointVelocityLimits`).
     ///
-    /// FCI v5 has no position-dependent envelope: libfranka 0.9.2 rate limits against the flat
+    /// FCI v5 has no position-dependent envelope: the FER is limited against the flat
     /// `kMaxJointVelocity` of `include/franka/rate_limiting.h`, so `q` is ignored there.
     pub fn upper_joint_velocity_limits(&self, q: &[f64; NUM_JOINTS]) -> [f64; NUM_JOINTS] {
         match self.version {

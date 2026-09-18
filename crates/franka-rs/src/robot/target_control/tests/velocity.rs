@@ -51,11 +51,53 @@ fn an_infinite_bound_never_caps() {
 }
 
 #[test]
+fn scale_step_within_symmetric_bounds_is_cap_step_bit_for_bit() {
+    let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+    let mut random = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+    };
+    for _ in 0..10_000 {
+        let from: [f64; 7] = std::array::from_fn(|_| 3.0 * random());
+        let to: [f64; 7] = std::array::from_fn(|i| from[i] + 5e-3 * random());
+        let max: [f64; 7] = std::array::from_fn(|_| 3e-3 * random().abs());
+        let (mut capped, mut scaled) = (to, to);
+        let cap = cap_step(&from, &mut capped, &max);
+        let scale = scale_step(&from, &mut scaled, &max.map(|m| -m), &max);
+        assert_eq!(cap.to_bits(), scale.to_bits());
+        assert_eq!(capped.map(f64::to_bits), scaled.map(f64::to_bits));
+    }
+}
+
+#[test]
+fn scale_step_keeps_each_side_of_asymmetric_bounds() {
+    let lower = [-1e-3, -2e-3, 0.0, -1e-3, -1e-3, -1e-3, -1e-3];
+    let upper = [2e-3, 1e-3, 1e-3, 0.0, 1e-3, 1e-3, 1e-3];
+    // Joint 1 at 3 of its 2 upward, joint 2 at 1.5 of its 2 downward: joint 1 binds.
+    let delta = [3e-3, -1.5e-3, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let mut to: [f64; 7] = std::array::from_fn(|i| FROM[i] + delta[i]);
+    let scale = scale_step(&FROM, &mut to, &lower, &upper);
+    assert!((scale - 2.0 / 3.0).abs() < 1e-12, "{scale}");
+    assert!((to[0] - FROM[0] - 2e-3).abs() < 1e-12);
+    // A closed side stops the step whatever the others allow.
+    let mut to = FROM;
+    to[2] -= 1e-6;
+    assert_eq!(scale_step(&FROM, &mut to, &lower, &upper), 0.0);
+    assert_eq!(to, FROM);
+    // Away from a closed side, within the other: untouched.
+    let mut to = FROM;
+    to[3] -= 1e-3;
+    assert_eq!(scale_step(&FROM, &mut to, &lower, &upper), 1.0);
+}
+
+#[test]
 fn the_barrier_opposes_a_joint_past_its_onset_in_proportion_within_the_torque_limit() {
     let onset = [2.0; 7];
     let limits = [86.0, 86.0, 86.0, 86.0, 11.5, 11.5, 11.5];
     let dq = [1.99, 2.0, 2.1, -2.1, 2.5, -3.0, 10.0];
-    let tau = velocity_barrier(&dq, &onset, &limits);
+    let tau = velocity_barrier(&dq, &onset, &barrier_gains(&limits), &limits);
     assert_eq!(
         (tau[0], tau[1]),
         (0.0, 0.0),
@@ -78,7 +120,11 @@ fn the_barrier_opposes_a_joint_past_its_onset_in_proportion_within_the_torque_li
     );
     assert_eq!(tau[5], 11.5, "20 Nm opposing, clamped to the joint's limit");
     assert_eq!(tau[6], -11.5);
-    assert_eq!(velocity_barrier(&[f64::NAN; 7], &onset, &limits), [0.0; 7]);
+    let gains = barrier_gains(&limits);
+    assert_eq!(
+        velocity_barrier(&[f64::NAN; 7], &onset, &gains, &limits),
+        [0.0; 7]
+    );
 }
 
 #[test]
@@ -150,7 +196,9 @@ fn wrist(
                 torque = fade_push(&torque, &dq, &[start * limit; 7], &onset);
             }
             if barrier {
-                torque[WRIST] += velocity_barrier(&dq, &onset, &[CLAMP; 7])[WRIST];
+                let clamp = [CLAMP; 7];
+                torque[WRIST] +=
+                    velocity_barrier(&dq, &onset, &barrier_gains(&clamp), &clamp)[WRIST];
             }
             let command = torque[WRIST].clamp(-CLAMP, CLAMP);
             let filtered = low_pass_filter(DELTA_T, command, last, 100.0).unwrap();

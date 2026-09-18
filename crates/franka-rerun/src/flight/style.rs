@@ -4,7 +4,7 @@
 use franka::RobotState;
 use rerun::{Color, RecordingStream, SeriesLines};
 
-use super::ORIENTATION;
+use super::{COMMANDED_ORIENTATION, ORIENTATION};
 use crate::{Prefix, Result};
 
 /// `0xRRGGBBAA`: amber for a contact, red for a collision, grey for neither.
@@ -54,6 +54,15 @@ const WRENCH_NAMES: [&str; 6] = [
 pub(super) const AXES: [&str; 6] = ["Fx", "Fy", "Fz", "Tx", "Ty", "Tz"];
 const POSITION_NAMES: [&str; 6] = ["x", "y", "z", "x_c", "y_c", "z_c"];
 const ORIENTATION_NAMES: [&str; 8] = ["qx", "qy", "qz", "qw", "qx_c", "qy_c", "qz_c", "qw_c"];
+const COMMANDED_ORIENTATION_NAMES: [&str; 4] = ["qx", "qy", "qz", "qw"];
+const TWIST_NAMES: [&str; 6] = [
+    "vx [m/s]",
+    "vy [m/s]",
+    "vz [m/s]",
+    "wx [rad/s]",
+    "wy [rad/s]",
+    "wz [rad/s]",
+];
 
 /// The four flag arrays of a state as booleans (the robot sends 0.0 / 1.0).
 #[derive(Debug, Clone, Copy)]
@@ -126,7 +135,7 @@ fn palette(colors: &[u32]) -> Vec<Color> {
 /// The `SeriesLines` style -- legend names, colours, widths -- of every series entity.
 pub(super) fn log_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
     let joints = palette(&JOINTS);
-    let styles: [(&str, &[&str], Vec<Color>); 18] = [
+    let styles: [(&str, &[&str], Vec<Color>); 29] = [
         ("joints/q", &JOINT_NAMES, joints.clone()),
         ("joints/q_d", &JOINT_NAMES, joints.clone()),
         ("joints/dq", &JOINT_NAMES, joints.clone()),
@@ -135,6 +144,8 @@ pub(super) fn log_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
         ("joints/q_goal", &JOINT_NAMES, joints.clone()),
         ("joints/dq_goal", &JOINT_NAMES, joints.clone()),
         ("joints/tau_envelope", &JOINT_NAMES, joints.clone()),
+        ("joints/tau_position", &JOINT_NAMES, joints.clone()),
+        ("joints/pinned", &JOINT_NAMES, joints.clone()),
         ("joints/tau_ext", &JOINT_NAMES, joints),
         ("ee/F_ext", &WRENCH_NAMES, palette(&POSITION)),
         ("ee/position", &POSITION_NAMES, palette(&POSITION)),
@@ -145,6 +156,35 @@ pub(super) fn log_styles(rec: &RecordingStream, prefix: &Prefix) -> Result<()> {
         ("flags/cartesian_collision", &AXES, shades(COLLISION, 6)),
         ("contact/link", &["link"], palette(&[FORCE])),
         ("joints/cap_scale", &["cap scale"], palette(&[FORCE])),
+        (
+            "ik/stall",
+            &["pressure [m/cycle]", "stalled"],
+            palette(&[FORCE, COLLISION]),
+        ),
+        ("ik/passes", &["passes"], palette(&[FORCE])),
+        (
+            COMMANDED_ORIENTATION,
+            &COMMANDED_ORIENTATION_NAMES,
+            palette(&QUATERNION[4..]),
+        ),
+        ("ee/velocity", &TWIST_NAMES, palette(&POSITION)),
+        (
+            "ik/step",
+            &["step [rad]", "clipped [rad]"],
+            palette(&[FORCE, COLLISION]),
+        ),
+        ("ik/blend", &["blend"], palette(&[FORCE])),
+        (
+            "ik/held",
+            &["held", "wall age t [cycles]", "wall age r [cycles]"],
+            palette(&[COLLISION, FORCE, CONTACT]),
+        ),
+        ("ik/error", &["residual [m]"], palette(&[FORCE])),
+        (
+            "ee/leash",
+            &["translation [m]", "rotation [rad]"],
+            palette(&[FORCE, COLLISION]),
+        ),
     ];
     for (entity, names, colors) in styles {
         let style = SeriesLines::new()

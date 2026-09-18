@@ -4,16 +4,23 @@
 //! arithmetic in [`rotation`], the torque loops in [`torque_cartesian`] and [`torque_joint`]
 //! on the helpers of [`torque`].
 
+mod active_set;
+mod bench_ik;
+mod envelope;
 mod ik;
 mod impedance;
+mod limit_plant;
 mod options;
+mod plant;
 mod pose;
+mod position;
 mod replay;
 mod rotation;
 mod runner;
 mod torque;
 mod torque_cartesian;
 mod torque_joint;
+mod torque_position;
 mod torque_velocity;
 mod velocity;
 
@@ -72,7 +79,7 @@ impl Arm {
     fn drag_along_x(&mut self, dx: f64) {
         let mut pose = self.pose();
         pose[12] += dx;
-        let mut ik = Ik::new(
+        let mut ik = Ik::as_run(
             Arc::clone(&self.model),
             IkOptions::default(),
             rate_limiting::fer::JOINT_POSITION_LIMITS,

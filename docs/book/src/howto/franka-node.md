@@ -92,8 +92,10 @@ workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
 
 `name` is the node's, in its status key; the arm's `name` is the `<arm>` of every key
 (`franka/fr3/target`, `franka/fr3/state`, ...). A second `[[arm]]` table is a second arm in
-the same process, each with its own thread, loop and, with `cpu`, core. The full key list
-with the stiffness, leash, deviation and joint keys is in the README and in
+the same process, each with its own thread, loop and, with `cpu`, core. `joint_position_margin`
+(0.05 rad) is how far the arm's joint goal keeps from its joint limits, and a joint target inside
+it is refused ([the guard](../reference/impedance.md#the-joint-position-limit-guard)). The full
+key list with the stiffness, leash, deviation and joint keys is in the README and in
 `crates/franka-node/config.example.toml`, which the config tests parse.
 
 ## Running it

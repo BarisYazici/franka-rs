@@ -11,6 +11,7 @@
 use std::fmt;
 
 use franka::robot::target_control::JOINT_LIMIT_INSET;
+use franka::ImpedanceOptions;
 
 use crate::msg::{Kind, TargetMsg};
 
@@ -18,7 +19,7 @@ use crate::msg::{Kind, TargetMsg};
 pub const UNIT_QUATERNION_TOLERANCE: f64 = 1e-3;
 
 /// The arm's joint position limits (lower, upper), rad, as a joint-space gate checks them
-/// ([`JOINT_LIMIT_INSET`] inside).
+/// ([`GuardOptions::joint_limit_inset`] inside).
 pub type JointLimits = ([f64; 7], [f64; 7]);
 
 /// The gate's limits; [`Default`] is the spec's.
@@ -58,6 +59,10 @@ pub struct GuardOptions {
     pub workspace_max: [f64; 3],
     /// Sustained target rate per client; the token bucket holds twice this. Default 250.
     pub rate_hz: f64,
+    /// How far inside the joint position limits a joint target must lie, rad: what the
+    /// library's impedance backend refuses inside, the larger of [`JOINT_LIMIT_INSET`] and
+    /// the joint position margin. Default 0.05, the margin's default.
+    pub joint_limit_inset: f64,
 }
 
 impl Default for GuardOptions {
@@ -71,6 +76,8 @@ impl Default for GuardOptions {
             workspace_min: [0.2, -0.5, 0.0],
             workspace_max: [0.8, 0.5, 0.8],
             rate_hz: 250.0,
+            joint_limit_inset: JOINT_LIMIT_INSET
+                .max(ImpedanceOptions::joint().joint_position_margin),
         }
     }
 }
@@ -385,8 +392,8 @@ impl Guard {
             if step > self.options.max_step_joint {
                 return Err(Reason::JointStep { joint, rad: step });
             }
-            let lower = lower[i] + JOINT_LIMIT_INSET;
-            let upper = upper[i] - JOINT_LIMIT_INSET;
+            let lower = lower[i] + self.options.joint_limit_inset;
+            let upper = upper[i] - self.options.joint_limit_inset;
             if !(lower..=upper).contains(value) {
                 return Err(Reason::JointLimit { joint, rad: *value });
             }

@@ -212,7 +212,7 @@ The guard's Cartesian rules are the translation and rotation step from the previ
 accepted target (or from the measured pose, with the anchor flag), the lead limits above, the
 workspace box and a unit quaternion; its joint rules are a per-joint step of at most
 `max_step_joint` and the arm's joint limits (the FER's or the FR3's, by the negotiated FCI
-version) inset by the library's 0.02 rad. Both check the lease holder, the sequence, finite
+version) inset by `joint_position_margin`. Both check the lease holder, the sequence, finite
 values and the rate; a target of the other kind is refused. A refusal spends no token and
 leaves the previous target and the sequence where they were. During `home`
 every target is refused (`"homing"`), `stop` ends it early (its reply is `"home stopped"`), a
@@ -252,7 +252,8 @@ leash = { translation = 0.025, rotation = 0.15 }   # m, rad the desired pose may
 max_step = 0.05                      # m per target from the previous accepted one
 max_step_rotation = 0.26             # rad per target
 max_step_joint = 0.2                 # rad per joint per target in a joints session
-max_lead = 0.05                      # m a target may lead the measured pose; 0 disables
+max_lead = 0.05                      # m a target may lead the measured pose; 0 disables,
+                                     # otherwise must exceed leash.translation
 max_lead_rotation = 0.26             # rad, the same on the orientation; 0 disables
 joint_budget_fraction = 0.2          # of the arm's joint limits, (0, 1]; a joints session's budget
 joint_max_deviation = 1.0            # rad a joint may stray from its start in a joints session
@@ -260,6 +261,8 @@ joint_velocity_fraction = 0.7        # of the arm's joint velocity limits the go
 velocity_barrier_fraction = 0.85     # a joint measured faster meets a damping barrier, [the above, 1];
                                      # the law's push along a joint's motion fades out from the lower
                                      # of the above and this less 0.15 to this
+joint_position_margin = 0.05         # rad the joint goal keeps from the joint position limits, [0.035, 0.5];
+                                     # joint targets inside it are refused
 workspace = { min = [0.2, -0.5, 0.0], max = [0.8, 0.5, 0.8] }
 rate_hz = 250.0                      # targets per second per client, bucket of twice that
 realtime_priority = 80               # optional
@@ -283,8 +286,12 @@ FR3's, by the negotiated FCI version), the law's torque along a joint's measured
 out as the joint speeds from the cap fraction, or 0.15 under the barrier fraction if that is
 lower, to the barrier fraction, and a joint measured faster than the barrier fraction meets a
 damping of 20 Nm per rad/s of the excess. At the defaults, 0.7 and 0.85, the fade spans 0.7 to
-0.85 of the limit. With the `record` feature every cycle's `joints/q_goal`, `joints/dq_goal`,
-`joints/cap_scale` and `joints/tau_envelope` are in the recording.
+0.85 of the limit. `joint_position_margin`, the library's field of the same name, is the
+distance the joint goal keeps from each joint position limit: the IK (or, in a joints session,
+the step's scale) brakes the goal to stop there, and a joint measured inside it has the law's
+push toward the limit faded out over 0.02 rad, past which a spring pushes it back out. With the
+`record` feature every cycle's `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`, `joints/pinned`,
+`joints/tau_envelope`, `joints/tau_position`, `ik/stall` and `ik/passes` are in the recording.
 
 `budget` is the library's default, 0.3 m/s at 0.5 m/s² and 20 m/s³ as a norm, which exists
 because the robot's own controller refuses a pose stream whose IK crosses a joint's

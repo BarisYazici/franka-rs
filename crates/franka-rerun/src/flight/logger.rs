@@ -10,7 +10,7 @@ use rerun::{RecordingStream, Scalars, TextLog, TextLogLevel, TimeColumn};
 
 use super::cartesian::{self, Cartesian};
 use super::style::{self, Flags, AXES, JOINT_NAMES};
-use super::{FlightOptions, Stamped, Summary, TorqueLog, ORIENTATION};
+use super::{FlightOptions, Stamped, Summary, TorqueLog, COMMANDED_ORIENTATION, ORIENTATION};
 use crate::{scene, Meshes, Result, RobotKind, HOST_TIMELINE, TIMELINE};
 
 /// Where the timeline comes from; decided on the first batch.
@@ -112,8 +112,9 @@ pub struct FlightLogger<'m> {
     pub(super) collision_contact_reported: bool,
     /// The finite differences of the sent position, for records with a Cartesian command.
     pub(super) cartesian: Cartesian,
-    /// The last measured and commanded orientation, for the sign of the next one.
-    last_orientation: [Option<[f64; 4]>; 2],
+    /// The last measured, commanded (from the state) and commanded (from the command)
+    /// orientation, for the sign of the next one.
+    last_orientation: [Option<[f64; 4]>; 3],
 }
 
 /// The commanded joint positions: the command's `q_c` when the cycle sent a joint-position
@@ -193,7 +194,7 @@ impl<'m> FlightLogger<'m> {
             contact_reported: false,
             collision_contact_reported: false,
             cartesian: Cartesian::default(),
-            last_orientation: [None; 2],
+            last_orientation: [None; 3],
         })
     }
 
@@ -278,12 +279,41 @@ impl<'m> FlightLogger<'m> {
         // All of a batch or none, like the host clock: one producer pushes one kind of record.
         let torque: Option<Vec<TorqueLog>> = records.iter().map(|r| r.torque).collect();
         if let Some(torque) = torque {
-            let rows = |f: fn(&TorqueLog) -> [f64; 7]| torque.iter().map(f).collect::<Vec<_>>();
-            self.send_values("joints/q_goal", &columns, &rows(|t| t.q_goal))?;
-            self.send_values("joints/dq_goal", &columns, &rows(|t| t.dq_goal))?;
-            self.send_values("joints/tau_envelope", &columns, &rows(|t| t.tau_envelope))?;
-            let scale: Vec<[f64; 1]> = torque.iter().map(|t| [t.cap_scale]).collect();
-            self.send_values("joints/cap_scale", &columns, &scale)?;
+            fn rows<const N: usize>(
+                torque: &[TorqueLog],
+                f: impl Fn(&TorqueLog) -> [f64; N],
+            ) -> Vec<[f64; N]> {
+                torque.iter().map(f).collect()
+            }
+            let t = &torque;
+            self.send_values("joints/q_goal", &columns, &rows(t, |t| t.q_goal))?;
+            self.send_values("joints/dq_goal", &columns, &rows(t, |t| t.dq_goal))?;
+            self.send_values("joints/cap_scale", &columns, &rows(t, |t| [t.cap_scale]))?;
+            let pinned = rows(t, |t| t.pinned.map(f64::from));
+            self.send_values("joints/pinned", &columns, &pinned)?;
+            self.send_values(
+                "joints/tau_envelope",
+                &columns,
+                &rows(t, |t| t.tau_envelope),
+            )?;
+            self.send_values(
+                "joints/tau_position",
+                &columns,
+                &rows(t, |t| t.tau_position),
+            )?;
+            let stall = rows(t, |t| [t.stall_pressure, f64::from(u8::from(t.stalled))]);
+            self.send_values("ik/stall", &columns, &stall)?;
+            self.send_values("ik/passes", &columns, &rows(t, |t| [t.ik_passes.into()]))?;
+            self.send_values("ee/velocity", &columns, &rows(t, |t| t.ee_velocity))?;
+            self.send_values("ik/step", &columns, &rows(t, |t| t.ik_step))?;
+            self.send_values("ik/blend", &columns, &rows(t, |t| [t.ik_blend]))?;
+            let held = rows(t, |t| {
+                let [a, b] = t.wall_age.map(f64::from);
+                [f64::from(u8::from(t.held)), a, b]
+            });
+            self.send_values("ik/held", &columns, &held)?;
+            self.send_values("ik/error", &columns, &rows(t, |t| [t.ik_error]))?;
+            self.send_values("ee/leash", &columns, &rows(t, |t| t.leash))?;
         }
         self.send_series("ee/F_ext", &columns, records, |r| r.state.O_F_ext_hat_K)?;
         self.send_series("ee/position", &columns, records, |r| {
@@ -294,6 +324,10 @@ impl<'m> FlightLogger<'m> {
         // the orientation at the rate the rest of the state is at.
         let orientations = self.orientations(records);
         self.send_values(ORIENTATION, &columns, &orientations)?;
+        // The torque backend sends torques, so the state's `O_T_EE_c` is zero and the commanded
+        // half of `ee/orientation` with it: the pose it recorded in the command goes out here.
+        let commanded = self.commanded_orientations(records);
+        self.send_values(COMMANDED_ORIENTATION, &columns, &commanded)?;
         self.send_series("flags/joint_contact", &columns, records, |r| {
             r.state.joint_contact
         })?;
@@ -331,23 +365,38 @@ impl<'m> FlightLogger<'m> {
         Ok(())
     }
 
+    /// One pose's quaternion `xyzw`, signed to continue slot `slot` of `last_orientation`.
+    /// A row of zeros -- a pose that is no rotation -- does not reset the sign that is continued.
+    fn continued(&mut self, slot: usize, pose: &[f64; 16]) -> [f64; 4] {
+        let q = quaternion(pose, self.last_orientation[slot]);
+        if q != [0.0; 4] {
+            self.last_orientation[slot] = Some(q);
+        }
+        q
+    }
+
     /// The measured and the commanded end effector orientation of every record, one row of two
     /// quaternions `xyzw` each, continuous across batches.
     fn orientations(&mut self, records: &[Stamped]) -> Vec<[f64; 8]> {
         records
             .iter()
             .map(|r| {
-                let [measured, commanded] = [&r.record.state.O_T_EE, &r.record.state.O_T_EE_c];
-                let m = quaternion(measured, self.last_orientation[0]);
-                let c = quaternion(commanded, self.last_orientation[1]);
-                // The last one that *was* a rotation: a row of zeros in between must not reset
-                // the sign the series is continuing.
-                let keep = |q: [f64; 4], last| if q == [0.0; 4] { last } else { Some(q) };
-                self.last_orientation = [
-                    keep(m, self.last_orientation[0]),
-                    keep(c, self.last_orientation[1]),
-                ];
+                let (measured, commanded) = (r.record.state.O_T_EE, r.record.state.O_T_EE_c);
+                let m = self.continued(0, &measured);
+                let c = self.continued(1, &commanded);
                 [m[0], m[1], m[2], m[3], c[0], c[1], c[2], c[3]]
+            })
+            .collect()
+    }
+
+    /// The orientation of the pose every record's *command* carries, which the torque backend
+    /// fills where `state.O_T_EE_c` is zero; zeros for a record with no command.
+    fn commanded_orientations(&mut self, records: &[Stamped]) -> Vec<[f64; 4]> {
+        records
+            .iter()
+            .map(|r| {
+                let pose = r.record.command.map_or([0.0; 16], |c| c.O_T_EE_c);
+                self.continued(2, &pose)
             })
             .collect()
     }

@@ -11,9 +11,22 @@
 //! `REPLAY_TARGETS`: rows `t, x, y, z, qx, qy, qz, qw`, the accepted targets at robot time.
 //! The run's configuration, the library's defaults when unset: `REPLAY_BUDGET` and `REPLAY_ROT`
 //! (`v,a,j` norms), `REPLAY_STIFFNESS` (N/m), `REPLAY_LEASH` (`m,rad`), `REPLAY_FRACTION`, and
-//! `REPLAY_HAND=0` without the Franka Hand's `F_T_EE`. The reference is the same run with the
-//! cap and the barrier off. `REPLAY_OUT` writes the capped run, 60 f64 per cycle (see
-//! [`write_out`]).
+//! `REPLAY_HAND=0` without the Franka Hand's `F_T_EE`. The reference is the same run at an
+//! infinite fraction, which switches off the cap, the barrier and, with them, the guard's
+//! braking envelope: it bounds what the whole guard costs, not the cap alone. Chatter is
+//! [`chatter`]'s, judged on the recorded arm here, so the torque rate is judged against that
+//! reference rather than the absolute floor the plant runs are held to.
+//! `REPLAY_OUT` writes the capped run, 60 f64 per cycle (see
+//! [`write_out`]). Recorded sessions as CSV, commanded or on the plant: [`csv`].
+
+mod chatter;
+pub(super) mod csv;
+mod envelope;
+mod fr3;
+mod joint;
+mod limits;
+mod sync;
+mod yaw;
 
 use std::io::Write;
 
@@ -23,11 +36,15 @@ use super::super::rotation::{
     angle_between, distance, from_quaternion, log, rotation_of, translation_of,
 };
 use super::super::*;
+use chatter::{Chatter, HALF, NEAR_RMS, SLOW, SPEED_HALF};
+
+use super::plant::HAND;
 use super::recording;
 use super::torque::cartesian_loop;
 use crate::model::{Frame, Model};
 use crate::otg::OtgLimits;
-use crate::rate_limiting::{fer::MAX_JOINT_ACCELERATION, DELTA_T};
+use crate::rate_limiting::fer::JOINT_POSITION_LIMITS;
+use crate::rate_limiting::DELTA_T;
 use crate::wire::robot::codec::FciVersion;
 
 /// The rows of `width` f64 in the file `var` names.
@@ -75,30 +92,20 @@ fn triple(limits: OtgLimits) -> [f64; 3] {
 
 /// One replay's configuration.
 #[derive(Clone, Copy)]
-struct Config {
-    budget: OtgLimits,
-    rotation: OtgLimits,
-    stiffness: f64,
-    leash: Leash,
-    fraction: f64,
-    hand: bool,
+pub(super) struct Config {
+    pub budget: OtgLimits,
+    pub rotation: OtgLimits,
+    pub stiffness: f64,
+    pub leash: Leash,
+    pub fraction: f64,
+    pub hand: bool,
 }
 
-/// The Franka Hand's `F_T_EE`: -45 degrees about z, 0.1034 m along it, column-major.
-fn hand() -> [f64; 16] {
-    let c = std::f64::consts::FRAC_1_SQRT_2;
-    [
-        c, -c, 0.0, 0.0, c, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.1034, 1.0,
-    ]
-}
-
-/// Every record of the loop over `states` with the accepted targets published at their robot
-/// time, and how far the model's pose of each recorded `q` is from the recorded `O_T_EE`, m.
-fn replay(
-    states: &[Vec<f64>],
-    targets: &[Vec<f64>],
+/// The loop's options for `config`, with `observer`.
+pub(super) fn loop_options(
     config: Config,
-) -> (Vec<CartesianSent>, Vec<f64>) {
+    observer: impl FnMut(&RobotState, &CartesianSent) + Send + 'static,
+) -> (TargetControlOptions, ImpedanceOptions) {
     let preset = ImpedanceGains::CARTESIAN;
     let ratio = config.stiffness / preset.cartesian_stiffness[0];
     let gains = ImpedanceGains {
@@ -119,7 +126,6 @@ fn replay(
         .with_leash(config.leash)
         .with_joint_velocity_fraction(config.fraction)
         .with_velocity_barrier_fraction(barrier);
-    let (records, observer) = recording::<CartesianSent>();
     // The deviation guard is the commander's business: a replay must not end on it.
     let options = TargetControlOptions::default()
         .with_limits(config.budget)
@@ -127,11 +133,23 @@ fn replay(
         .with_max_deviation(100.0)
         .with_max_angular_deviation(100.0)
         .with_observer(observer);
+    (options, impedance)
+}
+
+/// Every record of the loop over `states` with the accepted targets published at their robot
+/// time, and how far the model's pose of each recorded `q` is from the recorded `O_T_EE`, m.
+fn replay(
+    states: &[Vec<f64>],
+    targets: &[Vec<f64>],
+    config: Config,
+) -> (Vec<CartesianSent>, Vec<f64>) {
+    let (records, observer) = recording::<CartesianSent>();
+    let (options, impedance) = loop_options(config, observer);
     let (mut torque, shared, _first) = cartesian_loop(options, impedance);
     let model = Model::native_fer();
     let mut state = RobotState::default();
     if config.hand {
-        state.F_T_EE = hand();
+        state.F_T_EE = HAND.f_t_ee;
     }
     let (mut next, mut fk_error) = (0, Vec::with_capacity(states.len()));
     for (i, row) in states.iter().enumerate() {
@@ -282,7 +300,29 @@ fn metrics(
     }
 }
 
-/// The cycles within `margin` of one whose goal the cap cut.
+/// Per cycle, whether the target's position moves slower than [`chatter::SLOW`] over the centred
+/// window: [`chatter`]'s rule, so that intended motion is not read as chatter.
+fn slow(times: &[f64], targets: &[Vec<f64>]) -> Vec<bool> {
+    let n = times.len();
+    let at = |k: usize| {
+        let i = targets.partition_point(|t| t[0] <= times[k]);
+        i.checked_sub(1).map(|i| &targets[i])
+    };
+    (0..n)
+        .map(|k| {
+            let (from, to) = (k.saturating_sub(SPEED_HALF), (k + SPEED_HALF).min(n - 1));
+            match (at(from), at(to)) {
+                (Some(a), Some(b)) => {
+                    let moved = (1..4).map(|i| (b[i] - a[i]).powi(2)).sum::<f64>().sqrt();
+                    moved < SLOW * (to - from) as f64 * DELTA_T
+                }
+                _ => true,
+            }
+        })
+        .collect()
+}
+
+/// The cycles within `margin` of one the generator was restarted on.
 fn capped_windows(sent: &[CartesianSent], margin: usize) -> Vec<bool> {
     let mut mask = vec![false; sent.len()];
     for i in (0..sent.len()).filter(|&i| sent[i].cap_scale < 1.0) {
@@ -404,9 +444,19 @@ fn replay_a_recorded_session() {
     let min_scale = capped.iter().map(|r| r.cap_scale).fold(1.0, f64::min);
     let windows = capped_windows(&capped, 5);
     let (jitter, reference_jitter) = (chatter(&capped, &windows), chatter(&free, &windows));
-    // A cap meeting a goal that accelerates at the arm's limit bends its velocity by one
-    // cycle of that acceleration: a kink, not chatter.
-    let kink = MAX_JOINT_ACCELERATION.into_iter().fold(0.0, f64::max) * DELTA_T;
+    // `jitter` is printed, not judged: `cap_scale` marks every restart, the position envelope's
+    // braking included, and its "one kink" floor is the cap flattening a goal at the arm's
+    // acceleration limit, not a proportional cut of a fast step. Chatter is judged on
+    // [`chatter`]'s quantities instead: the torque rate against the same run with the guard off,
+    // because a recording's own rate is not the guard's doing, and the near-limit RMS against
+    // its absolute floor where the session goes near a limit at all.
+    let q: Vec<[f64; 7]> = states
+        .iter()
+        .map(|r| std::array::from_fn(|i| r[1 + i]))
+        .collect();
+    let slow = slow(&times, &targets);
+    let jitters = Chatter::of(&capped, &q, &slow, &JOINT_POSITION_LIMITS);
+    let reference_jitters = Chatter::of(&free, &q, &slow, &JOINT_POSITION_LIMITS);
 
     let mut checks = vec![
         (
@@ -434,10 +484,17 @@ fn replay_a_recorded_session() {
             ours.p99.1 <= 1.05 * theirs.p99.1,
         ),
         (
-            "dq_goal chatter near the cap at most twice the reference's + one kink".to_string(),
-            jitter <= 2.0 * reference_jitter + kink,
+            "commanded torque rate p99 at most the reference's + 5 %".to_string(),
+            jitters.rate_p99 <= 1.05 * reference_jitters.rate_p99,
         ),
     ];
+    // The near-limit RMS needs a high-pass window of slow cycles near a limit to mean anything.
+    if jitters.counts[0] > 2 * HALF {
+        checks.push((
+            format!("near-limit dq_goal RMS at most {NEAR_RMS} rad/s"),
+            jitters.near.iter().all(|rms| *rms <= NEAR_RMS),
+        ));
+    }
     for (axis, name) in ["x", "y", "z", "rx", "ry", "rz"].iter().enumerate() {
         let ok = ours.lag_ms[axis] <= theirs.lag_ms[axis] + 5;
         checks.push((format!("lag {name} at most the reference's + 5 ms"), ok));
@@ -469,10 +526,13 @@ fn replay_a_recorded_session() {
         "replay: until the cap engaged the command stayed within {apart_m:.2e} m and \
          {apart_rad:.2e} rad of the reference"
     );
+    println!("replay: {jitters}");
+    println!("replay: reference {reference_jitters}");
     println!(
         "replay-summary budget={:?} rotation={:?} fraction={} active={active:.4} lag_ms={:?} \
          reference_lag_ms={:?} p50={:.5?} reference_p50={:.5?} p99={:.5?} reference_p99={:.5?} \
-         chatter={jitter:.4} reference_chatter={reference_jitter:.4} pass={}",
+         restart_jitter={jitter:.4} reference_jitter={reference_jitter:.4} \
+         near_rms={:.4} rate_p99={:.0} reference_rate_p99={:.0} pass={}",
         triple(run.budget),
         triple(run.rotation),
         run.fraction,
@@ -482,6 +542,9 @@ fn replay_a_recorded_session() {
         theirs.p50,
         ours.p99,
         theirs.p99,
+        jitters.near.iter().copied().fold(0.0, f64::max),
+        jitters.rate_p99,
+        reference_jitters.rate_p99,
         failed.is_empty()
     );
     if let Ok(path) = std::env::var("REPLAY_OUT") {

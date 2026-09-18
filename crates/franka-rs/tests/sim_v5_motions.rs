@@ -15,8 +15,8 @@
 //!
 //! Every excursion below was checked against the FER's own joint limits (joint 1 +-2.8973,
 //! joint 2 +-1.7628, joint 3 +-2.8973, joint 4 in [-3.0718, -0.0698], joint 5 +-2.8973,
-//! joint 6 in [-0.0175, 3.7525], joint 7 +-2.8973) and its flat velocity limits (2.175 rad/s
-//! on joints 1-4, 2.610 rad/s on joints 5-7), so no profile here approaches a limit: from the
+//! joint 6 in [-0.0175, 3.7525], joint 7 +-2.8973) and its flat velocity limits (2.175 rad/s on
+//! joints 1-4, 2.610 rad/s on joints 5-7), so no profile here approaches a limit: from the
 //! home pose the joint-velocity profile takes joint 4 from -1.57 rad to about -1.07 rad and
 //! joint 6 from 1.57 rad to about 2.07 rad.
 
@@ -161,7 +161,7 @@ fn joint_velocity_motion_moves_out_and_back() {
 
 /// The velocity profile of `examples/generate_joint_velocity_motion.cpp` with
 /// `time_max = 2.0` and `omega_max = 0.5`, so one full out-and-back cycle takes 4 s. The peak
-/// commanded velocity, 0.5 rad/s, is a fifth of the FER's flat 2.175 rad/s limit.
+/// commanded velocity, 0.5 rad/s, is under a quarter of the FER's 2.175 rad/s limit.
 fn velocity_profile(time: f64) -> [f64; 7] {
     let time_max = 2.0;
     let omega_max = 0.5;

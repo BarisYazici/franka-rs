@@ -197,20 +197,20 @@ fn joint_targets_and_postures_outside_the_inset_limits_are_refused_naming_the_jo
     for version in [FciVersion::V5, FciVersion::V10] {
         let limits = joint_position_limits(version);
         let ready = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785];
-        assert!(check_joint_limits(&ready, &limits, "target").is_ok());
+        assert!(check_joint_limits(&ready, &limits, JOINT_LIMIT_INSET, "target").is_ok());
         // The inset boundary itself is allowed; a hair past it is not.
         let mut q = ready;
         q[0] = limits.1[0] - JOINT_LIMIT_INSET;
-        assert!(check_joint_limits(&q, &limits, "target").is_ok());
+        assert!(check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target").is_ok());
         q[0] += 1e-9;
         assert!(is_invalid_argument(
-            check_joint_limits(&q, &limits, "target"),
+            check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target"),
             "target puts joint 1"
         ));
         q = ready;
         q[3] = limits.0[3];
         assert!(is_invalid_argument(
-            check_joint_limits(&q, &limits, "posture"),
+            check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "posture"),
             "posture puts joint 4"
         ));
         // The posture of an impedance backend is checked at the start, other backends have none.
@@ -224,4 +224,30 @@ fn joint_targets_and_postures_outside_the_inset_limits_are_refused_naming_the_jo
         assert!(check_posture(&Backend::Impedance(ImpedanceOptions::joint()), &limits).is_ok());
         assert!(check_posture(&Backend::RobotController, &limits).is_ok());
     }
+}
+
+#[test]
+fn the_impedance_backend_refuses_targets_and_postures_inside_its_margin() {
+    let limits = joint_position_limits(FciVersion::V5);
+    let impedance = ImpedanceOptions::joint().with_joint_position_margin(0.1);
+    let backend = Backend::Impedance(impedance);
+    assert_eq!(joint_limit_inset(&backend), 0.1);
+    assert_eq!(
+        joint_limit_inset(&Backend::RobotController),
+        JOINT_LIMIT_INSET
+    );
+    let default = Backend::Impedance(ImpedanceOptions::joint());
+    assert_eq!(joint_limit_inset(&default), 0.05);
+    let mut q = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785];
+    q[3] = limits.0[3] + 0.1;
+    let with = |q| Backend::Impedance(impedance.with_posture(Some(q)));
+    assert!(check_posture(&with(q), &limits).is_ok());
+    q[3] -= 1e-9;
+    assert!(is_invalid_argument(
+        check_posture(&with(q), &limits),
+        "0.1 rad inside"
+    ));
+    let result = check_joint_limits(&q, &limits, joint_limit_inset(&backend), "target");
+    assert!(is_invalid_argument(result, "target puts joint 4"));
+    assert!(check_joint_limits(&q, &limits, JOINT_LIMIT_INSET, "target").is_ok());
 }

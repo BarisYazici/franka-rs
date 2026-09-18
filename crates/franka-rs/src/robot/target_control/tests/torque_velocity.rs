@@ -303,8 +303,8 @@ fn a_turn_stopped_where_it_is_while_capped_brakes_from_what_was_sent() {
 fn the_loop_adds_the_barrier_to_the_law_before_the_clamp_and_reports_it() {
     let limits = max_joint_velocity(FciVersion::V5);
     let rated = ImpedanceOptions::cartesian().torque_limits;
-    // Joint 7 at 1 Nm: the law saturates at -1 and the barrier is bounded to -1, so only the
-    // clamp of the sum sends -1 rather than -2.
+    // Joint 7 at 1 Nm: the law saturates at -1, the barrier's gain is lowered with the clamp, and
+    // the clamp of the sum sends -1.
     let mut tight = rated;
     tight[6] = 1.0;
     for (fraction, engaged, torque_limits) in [
@@ -323,8 +323,9 @@ fn the_loop_adds_the_barrier_to_the_law_before_the_clamp_and_reports_it() {
         let output = torque.cycle(&arm.state);
         let sent = records.lock().unwrap()[0];
         let excess = 0.9 * limits[6] - fraction * limits[6];
+        let gain = VELOCITY_BARRIER_GAIN * (torque_limits[6] / rated[6]).min(1.0);
         let expected = if engaged {
-            (-VELOCITY_BARRIER_GAIN * excess).max(-torque_limits[6])
+            (-gain * excess).max(-torque_limits[6])
         } else {
             0.0
         };
@@ -344,10 +345,7 @@ fn the_loop_adds_the_barrier_to_the_law_before_the_clamp_and_reports_it() {
             &arm.model.coriolis(&arm.state),
         );
         if torque_limits == tight {
-            assert_eq!(
-                (law[6], sent.tau_envelope[6], sent.tau[6]),
-                (-1.0, -1.0, -1.0)
-            );
+            assert_eq!((law[6], sent.tau[6]), (-1.0, -1.0));
         }
         for (i, law) in law.iter().enumerate() {
             let limit = impedance.torque_limits[i];
@@ -425,8 +423,8 @@ const TOWARD_ALIGNMENT: [f64; 3] = [-0.45, -0.65, -0.44];
 
 #[test]
 fn a_turn_held_at_the_cap_brakes_at_its_jerk_when_the_target_reverses() {
-    // Half the limits: the goal meets the cap every cycle before the reversal, and keeps meeting
-    // it while the twist slows, as the wrist's amplification grows.
+    // Half the limits: joint 7 meets its cap before the reversal, as the solver routes part of the
+    // turn around it and the restart cuts the twist to what went out.
     let impedance = ImpedanceOptions::cartesian().with_joint_velocity_fraction(0.5);
     let mut arm = Arm::at(WRIST);
     let (records, observer) = recording::<CartesianSent>();
@@ -476,9 +474,37 @@ fn a_turn_held_at_the_cap_brakes_at_its_jerk_when_the_target_reverses() {
         .map(|r| along(&log(&(commanded(r) * reversed_at.transpose()))))
         .fold(0.0, f64::max);
     assert!(past < 0.075, "ran {past} rad past the reversal");
+    // Before the reversal joint 7 meets its bound and never passes it, and the turn goes on.
     let held = &records[reversal - 50..reversal];
+    let cap = impedance.joint_velocity_fraction * max_joint_velocity(FciVersion::V5)[6];
+    for r in held {
+        assert!(
+            r.dq_goal[6].abs() <= cap * (1.0 + 1e-9),
+            "{} over {cap}",
+            r.dq_goal[6]
+        );
+    }
+    let met = held.iter().filter(|r| r.pinned[6] == 2).count();
+    assert!(met >= 2, "joint 7 met its bound in {met} cycles");
+    // Nor does its goal velocity saw: the restart keeps the IK's lag behind the generator, which,
+    // dropped, took 0.13 to 0.32 rad/s off joint 7's goal every 13 cycles.
+    let jump = held
+        .windows(2)
+        .flat_map(|w| (0..7).map(move |i| (w[1].dq_goal[i] - w[0].dq_goal[i]).abs()))
+        .fold(0.0, f64::max);
     assert!(
-        held.iter().all(|r| r.cap_scale < 1.0),
-        "the goal was not held at the cap before the reversal"
+        jump < 0.02,
+        "a goal velocity jumped {jump} rad/s in a cycle"
     );
+    let turned: Vec<f64> = held
+        .iter()
+        .map(|r| along(&log(&(commanded(r) * orientation.transpose()))))
+        .collect();
+    assert!(turned.windows(2).all(|w| w[1] > w[0]), "{turned:?}");
+    let rate = (turned[49] - turned[0]) / (49.0 * DELTA_T);
+    let fastest = held
+        .iter()
+        .map(|r| along(&r.angular_velocity))
+        .fold(0.0, f64::max);
+    assert!(rate >= 0.9 * fastest, "{rate} rad/s against {fastest}");
 }

@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use nalgebra::Matrix3;
 
+use super::position::VelocityLimit;
 use super::rotation::{
     angle_between, checked_pose, distance, exp, from_quaternion, log, pose_from, rotation_of,
     to_quaternion, translation_of, unit_quaternion,
@@ -17,8 +18,8 @@ use super::rotation::{
 use super::runner::Step;
 use super::torque::{PoseTracker, TorqueLoop};
 use super::{
-    check_posture, joint_position_limits, max_joint_velocity, spawn, Backend, Handle,
-    ImpedanceOptions, Runner, Shared, TargetControlOptions,
+    check_posture, joint_position_limits, spawn, Backend, Handle, ImpedanceOptions, Runner, Shared,
+    TargetControlOptions,
 };
 use crate::control_types::CartesianPose;
 use crate::error::FrankaResult;
@@ -62,13 +63,21 @@ pub struct CartesianSent {
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
     /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
-    /// forward, under the joint velocity cap; zeros on the first cycle, while holding and with
-    /// [`Backend::RobotController`].
+    /// forward, under the joint velocity cap and after
+    /// [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set; zeros on the
+    /// first cycle, while holding and with [`Backend::RobotController`]. This is the value the
+    /// law and the recorder both see, not the raw difference.
     pub dq_goal: [f64; 7],
-    /// The scale this cycle's goal step was cut by to stay under
+    /// The fraction of the generator's step the goal carried on a cycle it fell short and the
+    /// generator was restarted from the goal: held at a joint position limit, cut to
     /// [`ImpedanceOptions::joint_velocity_fraction`](super::ImpedanceOptions::joint_velocity_fraction)
-    /// of the joint velocity limits: 1 when it was not, and with [`Backend::RobotController`].
+    /// of the joint velocity limits, or both. Exactly 1 on every other cycle, and with
+    /// [`Backend::RobotController`].
     pub cap_scale: f64,
+    /// Per joint, the bound of the IK's box the goal was held on: 0 none, -1 / +1 the lower /
+    /// upper position bound (the margin, or the braking toward it), -2 / +2 the velocity bound;
+    /// zeros with [`Backend::RobotController`].
+    pub pinned: [i8; 7],
     /// The torques sent, Nm, clamped to the torque limits; zeros with
     /// [`Backend::RobotController`].
     pub tau: [f64; 7],
@@ -79,14 +88,62 @@ pub struct CartesianSent {
     /// start ([`FADE_BAND`](super::FADE_BAND)); zeros below it and with
     /// [`Backend::RobotController`].
     pub tau_envelope: [f64; 7],
-    /// The IK's residual toward `pose` after this cycle's iterations, m plus rad in one norm;
-    /// 0 with [`Backend::RobotController`].
+    /// The position envelope's share of `tau`, Nm, before the clamp: the spring pushing a joint
+    /// measured inside the position barrier's onset out, less the law's torque toward a limit
+    /// faded out inside
+    /// [`ImpedanceOptions::joint_position_margin`](super::ImpedanceOptions::joint_position_margin);
+    /// `tau` is the clamped sum of the law, `tau_envelope` and this. Zeros away from the limits
+    /// and with [`Backend::RobotController`].
+    pub tau_position: [f64; 7],
+    /// The IK's residual toward `pose` after this cycle's iterations, the norm of the position
+    /// error, m, and the orientation error weighted by
+    /// [`IkOptions::rotation_weight`](super::IkOptions::rotation_weight); 0 with
+    /// [`Backend::RobotController`].
     pub ik_error: f64,
+    /// The IK's active-set passes this cycle, over its iterations; 0 with
+    /// [`Backend::RobotController`].
+    pub ik_passes: u32,
+    /// How hard the residual pushes on the goal's position pins, in the weighted task units of
+    /// `ik_error` (m) per cycle: the largest residual along a pinned joint's unit Jacobian
+    /// column, counted only into its bound; 0 with [`Backend::RobotController`].
+    pub stall_pressure: f64,
+    /// Whether the IK's goal is stalled at a joint position limit, the flag on
+    /// `stall_pressure` with its hysteresis; while it or a position pin after it holds, the
+    /// generator is restarted from the goal every cycle without its velocity into the limit.
+    /// Always false with [`Backend::RobotController`].
+    pub stalled: bool,
+    /// The largest raw step the cycle's IK solves asked for, rad: its norm with the nullspace
+    /// bias in and before the per-joint box clip. While `ik_blend` is above 0 each iteration
+    /// solves twice, and a position stage's norm is its own, before the blend scales it down.
+    /// 0 with [`Backend::RobotController`].
+    pub ik_step: f64,
+    /// How much of that same solve's `ik_step` the box took off, rad; 0 with
+    /// [`Backend::RobotController`].
+    pub ik_step_clipped: f64,
+    /// The IK's priority blend `β` this cycle: 0 the weighted solve, 1 position first (see
+    /// `stalled`); 0 with [`Backend::RobotController`].
+    pub ik_blend: f64,
+    /// Whether the generator was held at a wall this cycle: the IK stalled, or a wall still
+    /// within its life. Always false with [`Backend::RobotController`].
+    pub held: bool,
+    /// Per block (translation, rotation), cycles since that block was last pushed on a wall,
+    /// and -1 when it claims no wall; `[-1, -1]` with [`Backend::RobotController`].
+    ///
+    /// A block takes a wall only when the free joints' remainder in it exceeds the stall's wall
+    /// share of what the pins push, and keeps it for a while after. On this path, where
+    /// position first drives the translation residual down to micrometres, the translation age
+    /// normally stays -1 and only the rotation's varies.
+    pub wall_age: [i8; 2],
     /// How far, m, the leash pulled the generator's anchor back from the previous desired
     /// position toward the measured one: zero while the arm follows, positive while it is
     /// held back ([`Leash`](super::Leash)); 0 with [`Backend::RobotController`].
+    ///
+    /// What the leash took off, not the lead itself: 0 whenever the pose is inside the leash --
+    /// the common case -- so a recording of nothing but zeros says only that the arm kept up.
+    /// The leash scales both blocks together, so an orientation beyond its own leash pulls the
+    /// position back with it and this reads positive inside the translation leash.
     pub leash_alteration: f64,
-    /// The same for the orientation, rad.
+    /// The same for the orientation, rad, and zero on the same terms.
     pub leash_angular_alteration: f64,
 }
 
@@ -255,9 +312,19 @@ pub(super) fn sent(step: &Step<6, 7>, pose: [f64; 16]) -> CartesianSent {
         q_goal: [0.0; 7],
         dq_goal: [0.0; 7],
         cap_scale: 1.0,
+        pinned: [0; 7],
         tau: [0.0; 7],
         tau_envelope: [0.0; 7],
+        tau_position: [0.0; 7],
         ik_error: 0.0,
+        ik_passes: 0,
+        stall_pressure: 0.0,
+        stalled: false,
+        ik_step: 0.0,
+        ik_step_clipped: 0.0,
+        ik_blend: 0.0,
+        held: false,
+        wall_age: [-1, -1],
         leash_alteration: 0.0,
         leash_angular_alteration: 0.0,
     }
@@ -362,12 +429,13 @@ pub(super) fn torque_loop(
         options.settle,
         chart,
     )?;
+    let velocity = VelocityLimit::of(version);
     let tracker = PoseTracker::new(
         &options,
         &impedance,
         Arc::clone(&model),
         joint_position_limits(version),
-        max_joint_velocity(version),
+        velocity,
     );
     Ok(TorqueLoop::new(
         runner,
@@ -375,7 +443,6 @@ pub(super) fn torque_loop(
         impedance,
         tracker,
         options.observer,
-        max_joint_velocity(version),
     ))
 }
 
@@ -415,7 +482,7 @@ fn pose_loop(
             let echo = placement(&state.O_T_EE_c);
             let start = *start.get_or_insert(echo);
             let strayed = strayed(state, &start, max_deviation, max_angular_deviation);
-            let step = runner.cycle(state, slot_values(&echo.0, &echo.1), strayed);
+            let step = runner.cycle(state, slot_values(&echo.0, &echo.1), strayed, false);
 
             let (mut backstop_alteration, mut backstop_angular_alteration) = (0.0, 0.0);
             let pose = if step.hold {

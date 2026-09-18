@@ -9,6 +9,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **A continuous weight and a bandwidth bound on the impedance law's velocity feedforward**
+  (`ImpedanceOptions::velocity_feedforward_gain`, `velocity_feedforward_cutoff`,
+  `MIN_FEEDFORWARD_CUTOFF`): the damping term is now `Kd (g dq_goal - dq)`, and `dq_goal` may
+  pass a first-order low-pass before it is fed forward. `velocity_feedforward` off is exactly
+  `g = 0`, and the default cutoff leaves the path bit-identical to before, so no existing
+  configuration changes. The feedforward is what carries the joint reference's own ripple into
+  the torque; bounding its bandwidth keeps the lead without the ripple, where the boolean could
+  only drop both. With the feedforward off the damping acts on the absolute velocity, so holding
+  speed `v` costs a standing error of `(Kqd / Kq) v` -- which a leash on the command then turns
+  into a speed limit, the reason the weight is continuous rather than a switch.
+- **`franka-node` config keys for the impedance law and the IK**: `ik_damping`,
+  `ik_nullspace_gain`, `velocity_feedforward`, `velocity_feedforward_gain`,
+  `velocity_feedforward_cutoff`, `cutoff_frequency`, `joint_stiffness` and `joint_damping`, all
+  defaulting to the library's values and applied to both session kinds. A Cartesian session's
+  joint gains are soft by design -- the Cartesian spring does the work -- which is wrong for an
+  arm driven mostly by its joint law, and there was no way to say so without a rebuild.
+
 - **`franka-description`** (`crates/franka-description`, no dependencies, `no_std`): the FR3
   and FER link meshes, the Franka Hand and its finger from franka_description (Apache-2.0,
   commit `7aeeddc`) as built-in glTF binaries, decimated to about 15 % of their triangles
@@ -56,6 +73,56 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and `Recorder::push_torque_at` record `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`
   and `joints/tau_envelope`; franka-node takes `joint_velocity_fraction` and
   `velocity_barrier_fraction` per arm and records them every cycle.
+- **Joint position limit guard of target control's torque backend.** The Cartesian IK solves
+  each step inside a per-joint box instead of clamping it: the joint velocity cap, and toward
+  each limit a braking envelope, per arm, that brings the goal to rest a margin inside it
+  (`ImpedanceOptions::joint_position_margin`, 0.05 rad, in [0.035, 0.5]). A primal active set,
+  warm-started, at most 12 passes, fixed-size and allocation-free, gives the exact
+  box-constrained damped least-squares step, so the free joints take over what a pinned one
+  cannot. The posture is clamped 0.3 rad beyond the margin and its pull fades out as the nearest
+  joint closes on the margin. The orientation rows are weighted by the new
+  `IkOptions::rotation_weight` (0.1 m/rad): with several joints pinned the tool's position is
+  held, the rotation stops at the wall and the elbow does not swing, where the clamp stopped the
+  rotation and walked the elbow. While the goal is stalled, position comes first, µm off (the
+  translation solved alone, then the orientation with it held, the translation rows weighed 30
+  times against it), eased in and out over 0.5 s. A stall flag on the pins' pressure (on above
+  2e-5 weighted m per cycle, off on 20 of the last 40 cycles in which no position pin pushes
+  at all)
+  restarts the generator with the velocity into the wall removed per block and the rest cut to
+  what the goal's step carried, so it
+  neither winds up behind a wall nor lags a reversal. What went out is the goal's own step, and
+  the generator is re-anchored as far ahead of the goal as it was, never further than its own
+  step: the IK's lag behind it stays, so the goal velocity does not saw at the cap, and a goal
+  closing a lag does not drag the desired along. A `stop()` held at a wall the target lies
+  beyond counts as landed once the goal is within the settle tolerance of the target on every
+  other axis and has come no tolerance closer to it for the time a generator needs from rest to
+  cover two (0.1 s at the default budget). The
+  joint interface scales its step into the same box. At the measured arm the law's torque toward
+  a limit fades out over
+  `POSITION_FADE_BAND` (0.02 rad) inside the margin, and beyond it a spring of
+  `POSITION_BARRIER_STIFFNESS` (12.5 /rad × the torque clamp, at most the clamp, ramped in over
+  500 cycles) pushes the joint out; the velocity barrier's onset and fade start drop to the
+  braking envelope there. On the FR3 the box, the backstop, the restart, the fade and the
+  barrier use the robot specifications' position-dependent joint velocity envelope instead of
+  the flat limits, the step's limits taken where it ends and the loop's at the arm and a cycle
+  on (the recorded FR3 faults follow the specifications' parameters, not those of the deprecated
+  `rate_limiting::compute_{lower,upper}_limits_joint_velocity`, which are unchanged); Franka
+  publishes no such envelope for the FER and recorded FER sessions ran a joint at 2.26 times an
+  assumed one without a reflex, so there the robot's limit stays the published flat one and only
+  the guard's braking narrows toward a position limit. That braking profile is
+  `sqrt(k x + c²) − c` with `k = 2a`, under `sqrt(2 a x)`: `a` is the FR3's published `ddq_dec`
+  on that arm and half the FER's published joint acceleration limit on the FER, which unlike the
+  FR3 constants stays inside the FER's own rating on every joint. The velocity barrier's gain is
+  lowered in proportion under a torque clamp below the preset. `CartesianSent` and `JointSent`
+  carry `pinned` (0 free, ∓1 position, ∓2 velocity bound) and `tau_position` (the position
+  envelope's share of `tau`), `CartesianSent` also `stall_pressure`, `stalled` and `ik_passes`;
+  `franka_rerun::TorqueLog` records them as `joints/pinned`, `joints/tau_position`, `ik/stall`
+  and `ik/passes`, and franka-node takes `joint_position_margin` per arm, its joint gate
+  refusing targets inside it. Self-collision is not modelled, and the spring is sized for a 0.02
+  rad overshoot of the margin. Hardware evidence: in teleoperation on an FER with the torque
+  backend a goal clamped 0.02 rad inside joint 4's or joint 2's limit let the arm run up to 20
+  mrad past it, onto the limit, and turns of the hand near wrist limits stalled while the elbow
+  swung; the guard itself is tested on the model and a simulated plant, not yet on a robot.
 - **`franka-node`** (`crates/franka-node`): a Zenoh node in front of
   Cartesian target control. One process owns one or more robots and, per arm, runs the
   impedance backend on the library's realtime thread; clients publish 80-byte pose or joint
@@ -210,6 +277,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   new `franka::realtime::pin_current_thread_to_cpu`; a failure is `FrankaError::Realtime`
   under `RealtimeConfig::Enforce` and ignored under `Ignore`. `franka-node` passes the arm's
   `cpu` key through.
+- **Seven diagnostic channels of the torque backend.** `CartesianSent` gains `ik_step` and
+  `ik_step_clipped` (the cycle's largest raw IK step norm and what the per-joint box clipped
+  off it, rad), `ik_blend` (the priority blend, 0 the weighted solve, 1 position first), `held`
+  (the goal held at a wall) and `wall_age` (cycles since each block's wall was last pushed on,
+  -1 for no wall). `franka_rerun::TorqueLog` carries them beside `ee_velocity`, `ik_error` and
+  `leash`, and the recorder writes `ik/{step, blend, held, error}` and `ee/{velocity, leash}`,
+  plus `ee/orientation/commanded` (`flight::COMMANDED_ORIENTATION`), the rotation of the pose
+  the command carries, which is what the torque backend fills where `state.O_T_EE_c` is zero.
+  The default layout names every one of them. The addition is additive: an older recording opens
+  unchanged, and a record pushed without a `TorqueLog` writes none of the new series.
 
 ### Changed
 
@@ -221,6 +298,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   gain `dq_goal`, `cap_scale` and `tau_envelope`.
 - A `joint_velocity_fraction` above `velocity_barrier_fraction` (0.85) fails `validate`
   unless the barrier fraction is raised too.
+- `IkOptions::limit_margin` is removed; `ImpedanceOptions::joint_position_margin` (0.05 rad)
+  replaces the 0.02 rad clamp. `ImpedanceOptions` gains that field, `IkOptions` gains
+  `rotation_weight`, `CartesianSent` gains `pinned`, `tau_position`, `ik_passes`,
+  `stall_pressure` and `stalled`, `JointSent` gains `pinned` and `tau_position`, and
+  `franka_rerun::TorqueLog` the recorded ones: struct literals break.
+- The Cartesian IK weighs orientation by `rotation_weight` 0.1 m/rad instead of 1, also in free
+  space; set it to 1 for the previous trade. `ik_error` and `IkOptions::tolerance` are the
+  weighted norm (1e-6 is 1 µm or 10 µrad).
+- `cap_scale` is the fraction of the generator's step the goal carried on a cycle a joint limit,
+  position or velocity, cut it, and exactly 1 on every other cycle.
+- With the impedance backend a joint target or posture is refused inside `joint_position_margin`
+  of a joint limit (`JOINT_LIMIT_INSET`, 0.02 rad, with the robot's controller).
+- `CartesianSent` gains `ik_step`, `ik_step_clipped`, `ik_blend`, `held` and `wall_age`, and
+  `franka_rerun::TorqueLog` gains `ee_velocity`, `ik_step`, `ik_blend`, `held`, `wall_age`,
+  `ik_error` and `leash`: adding a field is semver-visible because neither is
+  `#[non_exhaustive]`, and both stay exhaustive on purpose so that a downstream test can still
+  build one field by field. `TorqueLog::default()` leaves `wall_age` at 0, which reads as a
+  wall; a producer with no walls sets `[-1; 2]` itself.
 
 ## [0.3.0] - 2026-09-10
 

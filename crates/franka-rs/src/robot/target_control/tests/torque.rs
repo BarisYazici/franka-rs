@@ -3,8 +3,10 @@
 use std::sync::mpsc;
 use std::sync::Arc;
 
-use super::super::cartesian;
+use super::super::cartesian::{self, axis_limits};
 use super::super::joint;
+use super::super::position::{JointLimits, VelocityLimit};
+use super::super::runner::identity;
 use super::super::torque::{JointTracker, PoseTracker, TorqueLoop};
 use super::super::*;
 use crate::model::Model;
@@ -55,6 +57,96 @@ pub(super) fn joint_loop(
     )
     .unwrap();
     (torque, shared, first_cycle)
+}
+
+/// The arm a loop of [`cartesian_loop_on`] or [`joint_loop_on`] runs on: its model, version and
+/// joint position limits.
+pub(super) struct Rig {
+    pub model: Arc<Model>,
+    pub version: FciVersion,
+    pub limits: ([f64; 7], [f64; 7]),
+}
+
+impl Rig {
+    pub(super) fn fer() -> Rig {
+        Rig {
+            model: Arc::new(Model::native_fer()),
+            version: FciVersion::V5,
+            limits: joint_position_limits(FciVersion::V5),
+        }
+    }
+
+    pub(super) fn fr3() -> Rig {
+        let urdf = include_str!("../../../../tests/data/fr3.urdf");
+        Rig {
+            model: Arc::new(Model::from_urdf(urdf).expect("fr3.urdf loads")),
+            version: FciVersion::V10,
+            limits: joint_position_limits(FciVersion::V10),
+        }
+    }
+
+    /// The same arm with `limits`.
+    pub(super) fn within(&self, limits: ([f64; 7], [f64; 7])) -> Rig {
+        Rig {
+            model: Arc::clone(&self.model),
+            version: self.version,
+            limits,
+        }
+    }
+}
+
+/// The Cartesian torque loop of [`cartesian::torque_loop`] on `rig`, and its slot.
+pub(super) fn cartesian_loop_on(
+    rig: &Rig,
+    options: TargetControlOptions,
+    impedance: ImpedanceOptions,
+) -> (PoseLoop, Arc<Shared<7>>) {
+    let shared = Arc::new(Shared::<7>::default());
+    let (started, _) = mpsc::sync_channel(1);
+    let axes = axis_limits(options.limits, options.rotation_limits);
+    let settle = options.settle;
+    let runner = Runner::new(Arc::clone(&shared), started, axes, settle, cartesian::chart);
+    let velocity = VelocityLimit::of(rig.version);
+    let model = Arc::clone(&rig.model);
+    let tracker = PoseTracker::new(
+        &options,
+        &impedance,
+        Arc::clone(&model),
+        rig.limits,
+        velocity,
+    );
+    let observer = options.observer;
+    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer);
+    (torque, shared)
+}
+
+/// The joint torque loop of [`joint::torque_loop`] on `rig` under `limits`, and its slot.
+pub(super) fn joint_loop_on(
+    rig: &Rig,
+    options: JointTargetControlOptions,
+    budget: [crate::otg::OtgLimits; 7],
+    impedance: ImpedanceOptions,
+) -> (JointLoop, Arc<Shared<7>>) {
+    let shared = Arc::new(Shared::<7>::default());
+    let (started, _) = mpsc::sync_channel(1);
+    let runner = Runner::new(
+        Arc::clone(&shared),
+        started,
+        budget,
+        options.settle,
+        identity,
+    );
+    let velocity = VelocityLimit::of(rig.version);
+    let limits = JointLimits {
+        position: rig.limits,
+        margin: impedance.joint_position_margin,
+        fraction: impedance.joint_velocity_fraction,
+        velocity,
+    };
+    let tracker = JointTracker::new(&options, limits);
+    let (model, observer) = (Arc::clone(&rig.model), options.observer);
+    let torque = TorqueLoop::new(runner.unwrap(), model, impedance, tracker, observer);
+    (torque, shared)
 }
 
 pub(super) fn bits<const N: usize>(p: &[f64; N]) -> [u64; N] {

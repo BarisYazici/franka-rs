@@ -35,3 +35,11 @@ libc = "0.2"
 urdf-rs = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The guard's tests solve thousands of cycles of inverse kinematics and of a plant; unoptimised
+# they take minutes each, and CI runs the library tests in debug. Optimise the crate under test
+# while `debug_assertions` (and so every `debug_assert!` in it) stay on. nalgebra needs no entry
+# of its own: it is generic and monomorphises into the crate under test (measured: 8.5 s either
+# way), and one only costs the rebuild.
+[profile.test.package.franka-rs]
+opt-level = 2

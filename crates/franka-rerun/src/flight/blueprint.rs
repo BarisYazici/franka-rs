@@ -10,7 +10,7 @@ use rerun::blueprint::{
 use rerun::RecordingStream;
 
 use super::cartesian::{AXES, DERIVATIVES_PREFIX, POSITION_PREFIX, TARGET_PREFIX, TARGET_SPEED};
-use super::ORIENTATION;
+use super::{COMMANDED_ORIENTATION, ORIENTATION};
 use crate::{Prefix, Result, TIMELINE};
 
 /// What a recording's layout has to name: one set of views per robot writing into it, and the
@@ -96,9 +96,10 @@ fn send(rec: &RecordingStream, root: Vertical, timeline: &str) -> Result<()> {
 /// One arm's views: the 3D scene on the left, with the arm's cameras behind it as a tab;
 /// the joint, end effector and flag plots on the right (commanded and measured `q` share
 /// one plot, the torques and the flags are tabs, the gripper is a tab of the flags, the position
-/// has the orientation, the per-axis plots and the derivatives of a Cartesian command as tabs
-/// behind it); the arm's event log along the bottom. Under a prefix every view's name carries
-/// it, so two arms' plots are told apart by their titles and not only by their row.
+/// has the measured and the sent orientation, the end effector twist, the per-axis plots and the
+/// derivatives of a Cartesian command as tabs behind it); the arm's event log along the bottom.
+/// Under a prefix every view's name carries it, so two arms' plots are told apart by their titles
+/// and not only by their row.
 ///
 /// The views name entities this crate does not write: `gripper/*` comes from the node that owns
 /// the hand and `cam/*` from a camera node recording into the same episode. Both are under the
@@ -115,6 +116,11 @@ fn arm_views(prefix: &Prefix) -> Vertical {
         plot(
             &prefix.label("tau_envelope"),
             &prefix.path("joints/tau_envelope"),
+        )
+        .into(),
+        plot(
+            &prefix.label("tau_position"),
+            &prefix.path("joints/tau_position"),
         )
         .into(),
     ]);
@@ -137,17 +143,38 @@ fn arm_views(prefix: &Prefix) -> Vertical {
     // `+ $origin` alone: the six-series entity, not its per-axis children.
     let all_axes =
         plot(&prefix.label("position"), &prefix.path(POSITION_PREFIX)).with_contents(["+ $origin"]);
-    let orientation = plot(&prefix.label("orientation"), &prefix.path(ORIENTATION));
+    // `+ $origin` here too: `ee/orientation/commanded` is a child of `ee/orientation` and would
+    // otherwise be drawn into the measured plot as well as into its own tab.
+    let orientation =
+        plot(&prefix.label("orientation"), &prefix.path(ORIENTATION)).with_contents(["+ $origin"]);
+    let commanded_orientation = plot(
+        &prefix.label("orientation sent"),
+        &prefix.path(COMMANDED_ORIENTATION),
+    );
+    let ee_velocity = plot(&prefix.label("ee velocity"), &prefix.path("ee/velocity"));
     let position = Tabs::new(
-        [all_axes.into(), orientation.into()]
-            .into_iter()
-            .chain(axis_plots(prefix).map(Into::into))
-            .chain(derivative_plots(prefix).map(Into::into)),
+        [
+            all_axes.into(),
+            orientation.into(),
+            commanded_orientation.into(),
+            ee_velocity.into(),
+        ]
+        .into_iter()
+        .chain(axis_plots(prefix).map(Into::into))
+        .chain(derivative_plots(prefix).map(Into::into)),
     );
     let velocities = Tabs::new([
         plot(&prefix.label("dq"), &prefix.path("joints/dq")).into(),
         plot(&prefix.label("dq_goal"), &prefix.path("joints/dq_goal")).into(),
         plot(&prefix.label("cap scale"), &prefix.path("joints/cap_scale")).into(),
+        plot(&prefix.label("pinned"), &prefix.path("joints/pinned")).into(),
+        plot(&prefix.label("ik stall"), &prefix.path("ik/stall")).into(),
+        plot(&prefix.label("ik passes"), &prefix.path("ik/passes")).into(),
+        plot(&prefix.label("ik step"), &prefix.path("ik/step")).into(),
+        plot(&prefix.label("ik blend"), &prefix.path("ik/blend")).into(),
+        plot(&prefix.label("ik held"), &prefix.path("ik/held")).into(),
+        plot(&prefix.label("ik error"), &prefix.path("ik/error")).into(),
+        plot(&prefix.label("leash"), &prefix.path("ee/leash")).into(),
     ]);
     let plots = Grid::new([
         q.into(),

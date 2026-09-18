@@ -19,6 +19,7 @@ use franka_rerun::{
     flight, FlightOptions, Layout, Prefix, Recorder, RecorderOptions, RobotKind, TorqueLog,
     HOST_TIMELINE, TIMELINE,
 };
+use rerun::external::arrow::array::{Array, Float64Array};
 use rerun::external::re_log_encoding::Decoder;
 use rerun::log::{Chunk, LogMsg};
 use rerun::{EntityPath, StoreKind, TimeColumn};
@@ -273,6 +274,33 @@ fn rows_at(path: &Path, entity: &str) -> usize {
             if *chunk.entity_path() == entity && !chunk.is_static() {
                 rows += chunk.num_rows();
             }
+        }
+    }
+    rows
+}
+
+/// The scalar rows logged at `entity`, each one's `N` components in the order they were sent:
+/// what a viewer plots, read back so a series can be checked by value and not only by row count.
+fn values_at<const N: usize>(path: &Path, entity: &str) -> Vec<[f64; N]> {
+    let mut rows = Vec::new();
+    for chunk in chunks_at(path, entity) {
+        // The components are an unordered map: take the one column and refuse the rest, or a
+        // second one logged here some day would concatenate behind the first in map order.
+        let mut columns = chunk.components().list_arrays();
+        let list = columns.next().expect("a scalar column");
+        assert!(
+            columns.next().is_none(),
+            "{entity} has more than one column"
+        );
+        for row in 0..list.len() {
+            let scalars = list.value(row);
+            let scalars = scalars
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .expect("a scalar series");
+            let values = scalars.values();
+            assert_eq!(values.len(), N, "{entity} row {row}");
+            rows.push(std::array::from_fn(|i| values[i]));
         }
     }
     rows
@@ -753,7 +781,21 @@ fn a_torque_log_is_recorded_beside_the_record_without_allocating() {
         q_goal: records[i].state.q,
         dq_goal: [1e-3 * i as f64; 7],
         cap_scale: if i.is_multiple_of(2) { 1.0 } else { 0.5 },
+        pinned: [0, 0, 0, -1, 2, 0, 1],
         tau_envelope: [-0.25; 7],
+        tau_position: [0.5; 7],
+        stall_pressure: 3e-5,
+        stalled: i.is_multiple_of(3),
+        ik_passes: 3,
+        ee_velocity: [0.1, 0.0, -0.2, 0.0, 0.3, 0.0],
+        ik_step: [0.02, 0.005],
+        ik_blend: 0.25,
+        // Not `stalled`'s period, so publishing the wrong flag under `ik/held` shows.
+        held: i.is_multiple_of(4),
+        // Distinct per component and varying per row, so a swap, a drop or a zeroing shows.
+        wall_age: [(i % 21) as i8 - 1, (i % 7) as i8],
+        ik_error: 4e-4,
+        leash: [0.01 + i as f64 * 1e-3, 0.02 + i as f64 * 1e-3],
     };
     let before = allocations();
     for (i, record) in records.iter().enumerate() {
@@ -767,22 +809,40 @@ fn a_torque_log_is_recorded_beside_the_record_without_allocating() {
     let stats = recorder.finish().unwrap();
     assert_eq!(stats.dropped, 0);
     let layout = blueprint_text(&path);
-    for entity in [
-        "L/joints/q_goal",
+    let entities = [
         "L/joints/dq_goal",
         "L/joints/cap_scale",
+        "L/joints/pinned",
         "L/joints/tau_envelope",
-    ] {
+        "L/joints/tau_position",
+        "L/ik/stall",
+        "L/ik/passes",
+        "L/ik/step",
+        "L/ik/blend",
+        "L/ik/held",
+        "L/ik/error",
+        "L/ee/velocity",
+        "L/ee/leash",
+    ];
+    for entity in ["L/joints/q_goal"].iter().chain(&entities) {
         assert_eq!(rows_at(&path, entity), RECORDS, "{entity}");
     }
-    for entity in [
-        "L/joints/dq_goal",
-        "L/joints/cap_scale",
-        "L/joints/tau_envelope",
-    ] {
+    for entity in entities {
         assert!(names(&layout, entity), "no view names {entity}");
     }
     assert!(layout.contains("q_goal"), "the q view does not show q_goal");
+    // The two channels whose hardware recordings read a constant value: what is published is
+    // what was pushed, component by component and row by row.
+    let leash = values_at::<2>(&path, "L/ee/leash");
+    let held = values_at::<3>(&path, "L/ik/held");
+    assert_eq!((leash.len(), held.len()), (RECORDS, RECORDS));
+    for i in 0..RECORDS {
+        let pushed = torque(i);
+        assert_eq!(leash[i], pushed.leash, "L/ee/leash row {i}");
+        let [age_t, age_r] = pushed.wall_age.map(f64::from);
+        let flag = f64::from(u8::from(pushed.held));
+        assert_eq!(held[i], [flag, age_t, age_r], "L/ik/held row {i}");
+    }
 
     // A record pushed without one logs none of it.
     let plain = temp_path("plain.rrd");
@@ -796,7 +856,15 @@ fn a_torque_log_is_recorded_beside_the_record_without_allocating() {
     .unwrap();
     push_all(&recorder, &records);
     recorder.finish().unwrap();
-    assert_eq!(rows_at(&plain, "joints/cap_scale"), 0);
+    for entity in [
+        "joints/cap_scale",
+        "joints/pinned",
+        "joints/tau_position",
+        "ik/stall",
+        "ik/passes",
+    ] {
+        assert_eq!(rows_at(&plain, entity), 0, "{entity}");
+    }
 }
 
 #[test]

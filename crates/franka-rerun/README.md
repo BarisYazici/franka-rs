@@ -132,7 +132,9 @@ default.
 |---|---|
 | `joints/q`, `joints/q_d` | measured joint positions; commanded ones -- the sent command's `q_c` when the cycle sent a joint-position command, else the robot's `q_d` |
 | `joints/dq`, `joints/tau_J`, `joints/tau_J_d`, `joints/tau_ext` | joint velocities, measured torques, desired torques, `tau_ext_hat_filtered` |
-| `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`, `joints/tau_envelope` | for records pushed with a `TorqueLog` (`Recorder::push_torque_at`): target control's joint goal and its velocity, the scale the joint velocity cap cut the goal's step by (1 when it did not), the velocity envelope's torque: the barrier's, less the law's torque faded out along a joint's motion above the fade's start |
+| `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`, `joints/pinned` | for records pushed with a `TorqueLog` (`Recorder::push_torque_at`): target control's joint goal and its velocity, the fraction of the generator's step the goal carried (1 when not cut), the bound each joint's goal was held on (0 none, ∓1 lower / upper position, ∓2 velocity) |
+| `joints/tau_envelope`, `joints/tau_position` | likewise: the velocity envelope's and the position envelope's shares of the torque sent |
+| `ik/stall`, `ik/passes` | likewise: the Cartesian IK's stall pressure (weighted task m per cycle) and flag (0/1), its active-set passes; zeros from a joint session |
 | `ee/F_ext` | `O_F_ext_hat_K`: force (N) and torque (Nm) on the stiffness frame, in the base frame |
 | `ee/position` | measured `O_T_EE` translation (`x`, `y`, `z`) against the commanded `O_T_EE_c` (`x_c`, `y_c`, `z_c`) |
 | `ee/orientation` | the same two poses' rotations as quaternions `xyzw` (`qx` .. `qw`, `qx_c` .. `qw_c`), every cycle, each continued in sign from the previous one; the 3D scene's pose is the same rotation but decimated by `every` |
