@@ -290,10 +290,19 @@ fn the_feedforward_switch_is_seeded_as_the_weight_that_means_the_same() {
         seed.velocity_feedforward_gain, 0.0,
         "the switch was dropped"
     );
-    let on = ImpedanceOptions::cartesian().with_velocity_feedforward_gain(0.4);
+    let on = ImpedanceOptions::cartesian()
+        .with_velocity_feedforward(true)
+        .with_velocity_feedforward_gain(0.4);
     assert_eq!(
         LiveTuning::from_options(&on, options.limits, options.rotation_limits)
             .velocity_feedforward_gain,
         0.4
+    );
+    // The default is off, so a default session's live weight starts at zero.
+    let default = ImpedanceOptions::cartesian();
+    assert_eq!(
+        LiveTuning::from_options(&default, options.limits, options.rotation_limits)
+            .velocity_feedforward_gain,
+        0.0
     );
 }

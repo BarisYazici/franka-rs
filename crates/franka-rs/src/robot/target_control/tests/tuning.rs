@@ -304,6 +304,8 @@ pub(super) fn impedance_of(tuning: &LiveTuning) -> ImpedanceOptions {
     };
     options.ik.damping = tuning.ik_damping;
     options.ik.nullspace_gain = tuning.ik_nullspace_gain;
+    // As the loop applies it: the switch rides in the weight.
+    options.velocity_feedforward = true;
     options.velocity_feedforward_gain = tuning.velocity_feedforward_gain;
     options.velocity_feedforward_cutoff = tuning.velocity_feedforward_cutoff;
     options

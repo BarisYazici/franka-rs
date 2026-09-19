@@ -151,7 +151,7 @@ The generator produces a setpoint stream; `backend` decides who tracks it.
 ```text
 Kp  = Jᵀ Kx J + diag(Kq)
 Kd  = Jᵀ Kxd J + diag(Kqd)
-tau = Kp (q_goal − q) + Kd (dq_goal − dq) + coriolis(q, dq)
+tau = Kp (q_goal − q) + Kd (g dq_goal − dq) + coriolis(q, dq)
       clamped to ±torque_limits, then low-pass filtered at cutoff_frequency
 ```
 
@@ -159,10 +159,14 @@ tau = Kp (q_goal − q) + Kd (dq_goal − dq) + coriolis(q, dq)
 gains act at the frame `O_T_EE` targets are in; `q_goal` is the generator's output on the
 joint interface and, on the Cartesian interface, the joint configuration a differential
 inverse kinematics finds for the generator's pose each cycle; `dq_goal` is that goal's
-velocity. Gravity is the robot's, as in every torque loop. Two things differ from DROID's law
-by default: the damping acts on the velocity *error*, not the velocity (DROID's form is
-`velocity_feedforward = false`, under which a goal moving at `v` is tracked `Kd v / Kp`
-behind), and the generator is leashed to the arm (below).
+velocity. Gravity is the robot's, as in every torque loop. `g` is 0 by default, DROID's form:
+the damping acts on the velocity, and a goal moving at `v` is tracked `Kd v / Kp` behind.
+`velocity_feedforward = true` sets `g` to `velocity_feedforward_gain` (default 1), damping the
+velocity *error* instead. It is off because real arms vibrated with it on: `dq_goal` is a
+finite difference (of the IK solution on the Cartesian interface), and `Kd` carries its noise
+into the torque. `velocity_feedforward_cutoff`, a first-order low-pass on `dq_goal`, is the
+knob to try against that; no value has been validated on hardware. What differs from DROID's
+law by default is that the generator is leashed to the arm (below).
 
 | `ImpedanceOptions` | Cartesian interface (`::cartesian()`) | joint interface (`::joint()`) |
 |---|---|---|
@@ -172,7 +176,7 @@ behind), and the generator is leashed to the arm (below).
 | `gains.joint_damping` Kqd (Nms/rad) | 4, 6, 5, 5, 3, 2, 1 | 50, 50, 50, 50, 30, 25, 15 |
 | `torque_limits` (Nm) | 86, 86, 86, 86, 11.5, 11.5, 11.5 | same |
 | `cutoff_frequency` (Hz) | 100 | 100 |
-| `velocity_feedforward` | `true` | `true` |
+| `velocity_feedforward` | `false` | `false` |
 | `leash: Leash` | 0.025 m, 0.15 rad | 0.1 rad per joint (the torque clamp, not the leash, bounds the torque: 600 × 0.1 = 60 Nm on joints 1 to 4, under their 86 Nm clamp; on joints 5 and 6 the 11.5 Nm clamp binds first) |
 | `project_joint_gains` | `false` | `false` |
 | `posture` (IK nullspace reference) | `None`: the start configuration | not used |
@@ -198,7 +202,7 @@ trained on it. The joint column is the `fer_joint_impedance` example's gains. Wh
   (below); on the joint interface they are the whole law.
 - `torque_limits`: the per-joint clamp on the command, before the filter.
 - `cutoff_frequency`: the low-pass filter on the torques; `MAX_CUTOFF_FREQUENCY` turns it off.
-- `velocity_feedforward`: `Kd (dq_goal − dq)` when on, `−Kd dq` when off.
+- `velocity_feedforward`: `Kd (g dq_goal − dq)` when on, `−Kd dq` when off (the default).
 - `leash`: how far the desired state may run ahead of the measured one. Every cycle the
   generator is anchored on the measured pose (the model's, for the measured `q`) pulled
   toward the previous desired by at most the leash, the torque-mode form of the third

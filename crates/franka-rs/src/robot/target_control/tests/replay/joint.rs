@@ -12,10 +12,14 @@ use super::sync::{check_oracle, joint_as_run, reproduced};
 use super::Config;
 use crate::rate_limiting::fer::JOINT_POSITION_LIMITS;
 
-/// The node's joint session: 0.2 of the limits, the joint preset.
+/// The node's joint session: 0.2 of the limits, the joint preset, feedforward on as it was
+/// when the recordings were taken.
 fn joint_session() -> ([crate::otg::OtgLimits; 7], ImpedanceOptions) {
     let budget = JointTargetControlOptions::scaled_limits(FciVersion::V5, DEFAULT_LIMIT_FRACTION);
-    (budget, ImpedanceOptions::joint())
+    (
+        budget,
+        ImpedanceOptions::joint().with_velocity_feedforward(true),
+    )
 }
 
 /// The runs of targets that hold joint 4 for at least `hold` cycles: first and last cycle, and

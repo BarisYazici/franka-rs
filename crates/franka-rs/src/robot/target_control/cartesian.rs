@@ -64,10 +64,10 @@ pub struct CartesianSent {
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
     /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
-    /// forward, under the joint velocity cap and after
-    /// [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set; zeros on the
-    /// first cycle, while holding and with [`Backend::RobotController`]. This is the value the
-    /// law and the recorder both see, not the raw difference.
+    /// forward with [`ImpedanceOptions::velocity_feedforward`] on, under the joint velocity cap
+    /// and after [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set;
+    /// zeros on the first cycle, while holding and with [`Backend::RobotController`]. This is
+    /// the value the law and the recorder both see, not the raw difference.
     pub dq_goal: [f64; 7],
     /// The fraction of the generator's step the goal carried on a cycle it fell short and the
     /// generator was restarted from the goal: held at a joint position limit, cut to

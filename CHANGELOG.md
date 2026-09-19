@@ -16,6 +16,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Velocity feedforward now defaults to off**: `ImpedanceOptions::velocity_feedforward` is
+  `false` on both interfaces, and with it the node's `velocity_feedforward` key and the live
+  weight it seeds (0). Real arms vibrated with it on: `dq_goal` is a finite difference (of the
+  IK solution on the Cartesian interface) and `Kd` carries its noise into the torque. Off, a
+  goal moving at `v` is tracked `(Kd / Kp) v` behind, which the leash turns into a speed cap.
+  `velocity_feedforward_gain` stays 1, so switching it on means all of it;
+  `velocity_feedforward_cutoff` is the knob to try against the ripple. A node config that sets
+  only `velocity_feedforward_gain` now runs without feedforward and needs
+  `velocity_feedforward = true` to keep it. Python's `velocity_feedforward` keyword now defaults
+  to `None` (the Rust default), and `backend='robot'` refuses any explicit value, `True`
+  included. `nonrealtime_commander`'s `--no-feedforward` became `--feedforward`.
+
 - The `model-library` feature is now off by default. Both robots use the native Rust
   model through `Robot::load_model()`. Applications that explicitly download the Panda's
   shared library must enable `model-library`; the optional comparison path remains available.
@@ -77,8 +89,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`ImpedanceOptions::velocity_feedforward_gain`, `velocity_feedforward_cutoff`,
   `MIN_FEEDFORWARD_CUTOFF`): the damping term is now `Kd (g dq_goal - dq)`, and `dq_goal` may
   pass a first-order low-pass before it is fed forward. `velocity_feedforward` off is exactly
-  `g = 0`, and the default cutoff leaves the path bit-identical to before, so no existing
-  configuration changes. The feedforward is what carries the joint reference's own ripple into
+  `g = 0`, and the default cutoff leaves the path bit-identical to before, so neither changes
+  an existing configuration. The feedforward is what carries the joint reference's own ripple into
   the torque; bounding its bandwidth keeps the lead without the ripple, where the boolean could
   only drop both. With the feedforward off the damping acts on the absolute velocity, so holding
   speed `v` costs a standing error of `(Kqd / Kq) v` -- which a leash on the command then turns

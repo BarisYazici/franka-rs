@@ -167,7 +167,8 @@ fn assert_law_follows_the_crossing(
 
 #[test]
 fn each_law_field_reaches_the_law_and_moves_it() {
-    let impedance = ImpedanceOptions::cartesian();
+    // Feedforward on, so that its weight has somewhere to move from.
+    let impedance = ImpedanceOptions::cartesian().with_velocity_feedforward(true);
     let changes: [(&str, Change); 4] = [
         ("joint_stiffness", |t| t.joint_stiffness = [200.0; 7]),
         ("joint_damping", |t| t.joint_damping = [20.0; 7]),
@@ -205,7 +206,7 @@ fn the_shared_options_are_the_values_in_force() {
     // Every live field at once, so the record the loop keeps is checked whole: the law reads it
     // afresh every cycle, and what it does not read -- the feedforward's cutoff, the nullspace
     // gain -- is what a later reader would take for the truth.
-    let impedance = ImpedanceOptions::cartesian();
+    let impedance = ImpedanceOptions::cartesian().with_velocity_feedforward(true);
     let target = tuned(&impedance, |t| {
         t.joint_stiffness = [200.0; 7];
         t.joint_damping = [20.0; 7];

@@ -10,6 +10,7 @@ use franka::{Backend, ImpedanceOptions, Leash};
 /// The impedance keyword arguments as Python objects; `joint_targets` leaves the Cartesian
 /// gains and the posture `None`. `leash` is `(metres, radians)` on the Cartesian interface
 /// and one float, radians, on the joint interface (`joint_leash`).
+#[derive(Default)]
 pub(crate) struct ImpedanceArgs<'py> {
     pub cartesian_stiffness: Option<Bound<'py, PyAny>>,
     pub cartesian_damping: Option<Bound<'py, PyAny>>,
@@ -18,28 +19,10 @@ pub(crate) struct ImpedanceArgs<'py> {
     pub torque_limits: Option<Bound<'py, PyAny>>,
     pub posture: Option<Bound<'py, PyAny>>,
     pub torque_cutoff: Option<f64>,
-    pub velocity_feedforward: bool,
+    pub velocity_feedforward: Option<bool>,
     pub leash: Option<Bound<'py, PyAny>>,
     pub joint_leash: bool,
     pub project_joint_gains: bool,
-}
-
-impl Default for ImpedanceArgs<'_> {
-    fn default() -> Self {
-        ImpedanceArgs {
-            cartesian_stiffness: None,
-            cartesian_damping: None,
-            joint_stiffness: None,
-            joint_damping: None,
-            torque_limits: None,
-            posture: None,
-            torque_cutoff: None,
-            velocity_feedforward: true,
-            leash: None,
-            joint_leash: false,
-            project_joint_gains: false,
-        }
-    }
 }
 
 /// `value` as the leash: `(metres, radians)` for a pose, one float (radians) for joints.
@@ -131,9 +114,10 @@ impl ImpedanceArgs<'_> {
         if let Some(v) = &self.leash {
             options = options.with_leash(leash(v, self.joint_leash, options.leash)?);
         }
-        Ok(options
-            .with_velocity_feedforward(self.velocity_feedforward)
-            .with_project_joint_gains(self.project_joint_gains))
+        if let Some(on) = self.velocity_feedforward {
+            options = options.with_velocity_feedforward(on);
+        }
+        Ok(options.with_project_joint_gains(self.project_joint_gains))
     }
 
     /// The first argument that was given, for the `backend='robot'` refusal.
@@ -147,7 +131,7 @@ impl ImpedanceArgs<'_> {
             ("posture", self.posture.is_some()),
             ("torque_cutoff", self.torque_cutoff.is_some()),
             ("leash", self.leash.is_some()),
-            ("velocity_feedforward=False", !self.velocity_feedforward),
+            ("velocity_feedforward", self.velocity_feedforward.is_some()),
             ("project_joint_gains=True", self.project_joint_gains),
         ]
         .into_iter()

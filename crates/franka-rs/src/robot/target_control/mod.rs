@@ -15,17 +15,17 @@
 //! The [`Backend`] of the options decides what the generator's output becomes. The default,
 //! [`Backend::Impedance`], sends **torques**: the hybrid joint and Cartesian impedance law of
 //! [`ImpedanceGains`] (`Kp = J^T Kx J + Kq`, `Kd = J^T Kxd J + Kqd`, the damping on the
-//! velocity error `dq_goal - dq` with the goal's own velocity as the feedforward, plus the
-//! Coriolis term, clamped to the torque limits) tracks a joint target `q_goal` -- the
-//! generator's own output on the joint interface, the solution of a differential inverse
-//! kinematics following the generator's pose one cycle at a time on the Cartesian one
-//! ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's low-pass filter
-//! ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. The goal never moves a joint
-//! faster than [`ImpedanceOptions::joint_velocity_fraction`] of the arm's limit
-//! ([`max_joint_velocity`], which narrows toward the position limits on the FR3): a faster step
-//! is scaled down as a whole and the generator re-anchored on what went out. A joint *measured*
-//! faster than the cap, or than [`FADE_BAND`] of its limit under the barrier's onset if that is
-//! lower, keeps less and less of the law's torque along its motion, none from
+//! measured velocity, or with [`ImpedanceOptions::velocity_feedforward`] on the velocity error
+//! `dq_goal - dq`, plus the Coriolis term, clamped to the torque limits) tracks a joint target
+//! `q_goal` -- the generator's own output on the joint interface, the solution of a
+//! differential inverse kinematics following the generator's pose one cycle at a time on the
+//! Cartesian one ([`IkOptions`]) -- through [`Robot::control_torques`] with the crate's
+//! low-pass filter ([`ImpedanceOptions::cutoff_frequency`]) and torque rate limiter. The goal
+//! never moves a joint faster than [`ImpedanceOptions::joint_velocity_fraction`] of the arm's limit
+//! ([`max_joint_velocity`], which narrows toward the position limits on the FR3): a faster step is
+//! scaled down as a whole and the generator re-anchored on what went out. A joint *measured* faster
+//! than the cap, or than [`FADE_BAND`] of its limit under the barrier's onset if that is lower,
+//! keeps less and less of the law's torque along its motion, none from
 //! [`ImpedanceOptions::velocity_barrier_fraction`] of its limit, where it meets a damping of
 //! [`VELOCITY_BARRIER_GAIN`] on the excess, added before the clamp. Toward a joint
 //! position limit the goal brakes to stop [`ImpedanceOptions::joint_position_margin`] inside it; a

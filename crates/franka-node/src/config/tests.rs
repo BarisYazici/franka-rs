@@ -593,22 +593,24 @@ fn the_nullspace_gain_and_the_feedforward_reach_both_session_kinds() {
     let library = IkOptions::default();
     let defaults = &minimal("").unwrap().arms[0];
     assert_eq!(defaults.ik_nullspace_gain, library.nullspace_gain);
-    assert!(defaults.velocity_feedforward);
+    // Off when the key is absent, as the library's default is.
+    assert!(!defaults.velocity_feedforward);
+    assert!(!ImpedanceOptions::cartesian().velocity_feedforward);
 
-    let arm = &minimal("ik_nullspace_gain = 0.0\nvelocity_feedforward = false")
+    let arm = &minimal("ik_nullspace_gain = 0.0\nvelocity_feedforward = true")
         .unwrap()
         .arms[0];
     let Backend::Impedance(cartesian) = arm.target_control_options().backend else {
         panic!("expected the impedance backend");
     };
     assert_eq!(cartesian.ik.nullspace_gain, 0.0);
-    assert!(!cartesian.velocity_feedforward);
+    assert!(cartesian.velocity_feedforward);
     let limits = JointTargetControlOptions::scaled_limits(franka::FciVersion::V10, 0.2);
     let Backend::Impedance(joint) = arm.joint_control_options(limits).backend else {
         panic!("expected the impedance backend");
     };
     assert_eq!(joint.ik.nullspace_gain, 0.0);
-    assert!(!joint.velocity_feedforward);
+    assert!(joint.velocity_feedforward);
 
     // Switching the posture bias off must not disturb the damping, which is the other IK knob
     // a session sweeps.
@@ -727,7 +729,8 @@ fn live_tuning_is_what_a_session_of_the_same_config_starts_at() {
     let arm = &minimal(
         "cartesian_stiffness = 1500.0\nbudget = [0.4, 0.6, 30.0]\n\
          rotation_budget = [0.2, 0.4, 8.0]\nik_damping = 0.2\nik_nullspace_gain = 0.0\n\
-         velocity_feedforward_gain = 0.5\nvelocity_feedforward_cutoff = 40.0\n\
+         velocity_feedforward = true\nvelocity_feedforward_gain = 0.5\n\
+         velocity_feedforward_cutoff = 40.0\n\
          joint_stiffness = [600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0]\n\
          joint_damping = [50.0, 50.0, 50.0, 50.0, 20.0, 20.0, 15.0]",
     )
@@ -760,6 +763,11 @@ fn live_tuning_is_what_a_session_of_the_same_config_starts_at() {
 fn the_feedforward_switch_reaches_the_tuning_as_a_zero_gain() {
     let off = &minimal("velocity_feedforward = false").unwrap().arms[0];
     assert_eq!(off.live_tuning().velocity_feedforward_gain, 0.0);
-    let on = &minimal("velocity_feedforward_gain = 0.75").unwrap().arms[0];
+    // Off is the default: with the key absent the live weight starts at zero too.
+    let default = &minimal("").unwrap().arms[0];
+    assert_eq!(default.live_tuning().velocity_feedforward_gain, 0.0);
+    let on = &minimal("velocity_feedforward = true\nvelocity_feedforward_gain = 0.75")
+        .unwrap()
+        .arms[0];
     assert_eq!(on.live_tuning().velocity_feedforward_gain, 0.75);
 }

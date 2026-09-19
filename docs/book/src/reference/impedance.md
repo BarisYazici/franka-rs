@@ -14,7 +14,7 @@ defaults are on the how-to page; the code is `robot/target_control/impedance.rs`
 
 ```text
 Kp  = Jᵀ Kx J + diag(Kq)          Kd = Jᵀ Kxd J + diag(Kqd)
-tau = Kp (q_goal − q) + Kd (dq_goal − dq) + coriolis(q, dq),   clamped to ±torque_limits
+tau = Kp (q_goal − q) + Kd (g dq_goal − dq) + coriolis(q, dq),   clamped to ±torque_limits
 ```
 
 This is the structure of `HybridJointImpedanceControl` from
@@ -23,16 +23,19 @@ This is the structure of `HybridJointImpedanceControl` from
 that DROID (Khazatsky et al., 2024, *DROID: A Large-Scale In-The-Wild Robot Manipulation
 Dataset*, [arXiv:2403.12945](https://arxiv.org/abs/2403.12945)) ran on its Panda arms for
 76k teleoperated trajectories. `ImpedanceGains::DROID` is its gains as they were, and with
-`velocity_feedforward` off (`dq_goal = 0`, the damping on the absolute velocity) the law is
-polymetis's. The default differs in two places. `ImpedanceGains::CARTESIAN` raises the
+`velocity_feedforward` off (`g = 0`, the damping on the absolute velocity, the default) the
+law is polymetis's. `ImpedanceGains::CARTESIAN` differs from it: it raises the
 translational damping from 37 to 50, 50, 90 Ns/m: the arm's apparent mass at the end effector
 near the ready pose is about 0.94 kg along x and y and 3.9 kg along z (from the model's mass
 matrix), so 37 Ns/m against 750 N/m leaves z at a damping ratio of 0.34, which rings; the
-defaults bring all three to about 0.8. And the damping acts on the velocity
-error by default, with `dq_goal` the goal's velocity: the generator's on the joint interface,
-the finite difference of the IK solution on the Cartesian one, zero while holding. Damping the
-absolute velocity resists the motion the goal asks for, and a goal moving at `v` is tracked
-`Kd v / Kp` behind it. `J` is `Model::zero_jacobian(Frame::EndEffector, state)`, the
+defaults bring all three to about 0.8. Damping the absolute velocity resists the motion the
+goal asks for, and a goal moving at `v` is tracked `Kd v / Kp` behind it.
+`velocity_feedforward = true` makes `g` the `velocity_feedforward_gain` (default 1), with
+`dq_goal` the goal's velocity: the generator's on the joint interface, the finite difference of
+the IK solution on the Cartesian one, zero while holding. It is off by default because real
+arms vibrated with it on: `Kd` carries the finite difference's noise into the torque.
+`velocity_feedforward_cutoff` low-pass filters `dq_goal` and is the knob to try against it; no
+value has been validated on hardware. `J` is `Model::zero_jacobian(Frame::EndEffector, state)`, the
 6x7 base-frame Jacobian at the *measured* `q`, so `Kx` acts at the configured end-effector
 frame, the frame the `O_T_EE` targets are in. Gravity is compensated by the robot; `coriolis`
 is the model's, as in every torque example of the crate. The clamp comes before the low-pass

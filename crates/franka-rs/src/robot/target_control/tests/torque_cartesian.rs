@@ -229,7 +229,7 @@ fn feedforward_removes_the_damping_torque_of_a_moving_goal() {
     // Following one cycle behind, the position error is one cycle of motion and the velocity
     // error one cycle of acceleration: a fraction of a newton metre. Without feedforward the
     // damping fights the whole velocity, Kd v.
-    let with = peak(ImpedanceOptions::cartesian());
+    let with = peak(ImpedanceOptions::cartesian().with_velocity_feedforward(true));
     let without = peak(ImpedanceOptions::cartesian().with_velocity_feedforward(false));
     assert!(with < 0.5, "peak torque with feedforward {with} Nm");
     assert!(

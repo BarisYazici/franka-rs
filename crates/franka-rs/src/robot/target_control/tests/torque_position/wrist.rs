@@ -36,7 +36,8 @@ fn joint_2_driven_into_its_margin_under_a_pinned_wrist_stops_there_without_ringi
         let (mut torque, shared) = cartesian_loop_on(
             &rig,
             teleop().with_observer(observer),
-            ImpedanceOptions::cartesian(),
+            // Feedforward on, the harder overshoot case.
+            ImpedanceOptions::cartesian().with_velocity_feedforward(true),
         );
         // Joint 2's reference up at `speed`, up to 0.65 rad past its margin, so that the rest of
         // the arm cannot make up for it; the wrist's turned 0.35 rad past joints 5 and 7's over

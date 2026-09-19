@@ -123,7 +123,9 @@ pub(super) fn loop_options(
             .max(f),
         _ => f64::INFINITY,
     };
+    // Feedforward on: the recordings were taken with it on, the default then.
     let impedance = ImpedanceOptions::cartesian()
+        .with_velocity_feedforward(true)
         .with_gains(gains)
         .with_leash(config.leash)
         .with_joint_velocity_fraction(config.fraction)

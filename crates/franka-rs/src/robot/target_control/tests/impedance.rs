@@ -133,19 +133,12 @@ fn the_damping_acts_on_the_velocity_error_unless_feedforward_is_off() {
     let gains = ImpedanceGains::CARTESIAN;
     let jacobian = random_jacobian();
     let dq_goal = [0.2, -0.1, 0.25, 0.15, 0.0, 0.1, -0.2];
-    let with = impedance_torques(
-        &unclamped(gains),
-        &jacobian,
-        &goal(),
-        &dq_goal,
-        &Q,
-        &DQ,
-        &ZERO,
-    );
+    let on = unclamped(gains).with_velocity_feedforward(true);
+    let with = impedance_torques(&on, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO);
     let de: [f64; 7] = std::array::from_fn(|i| dq_goal[i] - DQ[i]);
     assert_close(&with, &reference(&gains, &jacobian, &DELTA, &de), 1e-9);
     // Moving with the goal, the damping is silent.
-    let riding = impedance_torques(&unclamped(gains), &jacobian, &Q, &DQ, &Q, &DQ, &ZERO);
+    let riding = impedance_torques(&on, &jacobian, &Q, &DQ, &Q, &DQ, &ZERO);
     assert_close(&riding, &ZERO, 1e-12);
     let parity = unclamped(gains).with_velocity_feedforward(false);
     let without = impedance_torques(&parity, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO);
@@ -161,21 +154,14 @@ fn the_feedforward_gain_interpolates_between_riding_the_goal_and_damping_on_meas
     let gains = ImpedanceGains::CARTESIAN;
     let jacobian = random_jacobian();
     let dq_goal = [0.3, -0.2, 0.1, 0.4, -0.1, 0.2, -0.3];
+    let on = unclamped(gains).with_velocity_feedforward(true);
     let at = |g: f64| {
-        let options = unclamped(gains).with_velocity_feedforward_gain(g);
+        let options = on.with_velocity_feedforward_gain(g);
         impedance_torques(&options, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO)
     };
     // Gain 1 is the velocity error, gain 0 is `-dq` alone -- i.e. the same law the boolean
     // switches off -- so the gain subsumes it rather than adding a second way to say it.
-    let full = impedance_torques(
-        &unclamped(gains),
-        &jacobian,
-        &goal(),
-        &dq_goal,
-        &Q,
-        &DQ,
-        &ZERO,
-    );
+    let full = impedance_torques(&on, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO);
     assert_close(&at(1.0), &full, 1e-12);
     let off = unclamped(gains).with_velocity_feedforward(false);
     let none = impedance_torques(&off, &jacobian, &goal(), &dq_goal, &Q, &DQ, &ZERO);
@@ -339,7 +325,9 @@ fn defaults_validate() {
     ImpedanceOptions::joint().validate().unwrap();
     assert_eq!(cartesian.gains, ImpedanceGains::CARTESIAN);
     assert_eq!(ImpedanceOptions::joint().gains, ImpedanceGains::JOINT);
-    assert!(cartesian.velocity_feedforward);
+    // Feedforward is off by default on both interfaces: on, it shook real arms.
+    assert!(!cartesian.velocity_feedforward);
+    assert!(!ImpedanceOptions::joint().velocity_feedforward);
     assert!(!cartesian.project_joint_gains);
     // The default is DROID's preset with the Cartesian damping raised, nothing else.
     assert_eq!(

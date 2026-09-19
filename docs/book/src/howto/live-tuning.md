@@ -89,20 +89,15 @@ each realtime cycle. `slewing` estimates the fraction of the latest change **sti
 near 1 just after acceptance, approaching 0. It is calculated from elapsed time, not fed back
 from the controller; overlapping changes and missed cycles limit its accuracy.
 
-## Why feedforward can read zero
+## Why feedforward reads zero
 
-This TOML starts with feedforward disabled:
-
-```toml
-# Inside an [[arm]] table
-velocity_feedforward = false
-velocity_feedforward_gain = 1.0
-```
-
-The boolean takes precedence at session start, so the live weight is **0**, despite the
-gain line. Setting `velocity_feedforward_gain` above zero live enables its contribution for
-that session. To enable it in future sessions, set `velocity_feedforward = true` and the
-desired gain in TOML, then restart the node to load the configuration.
+Velocity feedforward is off by default (`velocity_feedforward = false`); with it on, real arms
+vibrated. The boolean takes precedence at session start, so the live weight is **0** whatever
+`velocity_feedforward_gain` says. Setting `velocity_feedforward_gain` above zero live enables
+its contribution for that session; lowering `velocity_feedforward_cutoff` filters the goal
+velocity it feeds forward, and is the knob to try against vibration (no value has been
+validated on hardware). To enable it in future sessions, set `velocity_feedforward = true` and
+the desired gain in TOML, then restart the node to load the configuration.
 
 ## What is saved
 

@@ -1,5 +1,5 @@
 //! The torque backend's impedance law, the structure of DROID / polymetis
-//! `HybridJointImpedanceControl` with the damping on the velocity error:
+//! `HybridJointImpedanceControl`, optionally with the damping on the velocity error:
 //!
 //! ```text
 //! Kp  = Jᵀ Kx J + diag(Kq)        Kd = Jᵀ Kxd J + diag(Kqd)
@@ -166,13 +166,18 @@ pub struct ImpedanceOptions {
     /// the goal's velocity, its own finite difference on both interfaces (of the boxed step on
     /// the joint one, of the IK solution on the Cartesian one), so a goal held at the leash
     /// feeds nothing forward; `false` damps the absolute velocity, DROID parity,
-    /// and a goal moving at `v` is then tracked `Kd v / Kp` behind. Default `true`.
+    /// and a goal moving at `v` is then tracked `Kd v / Kp` behind. Default `false`: on real
+    /// arms the full feedforward shook them, since `dq_goal` is a finite difference (of the IK
+    /// solution on the Cartesian interface) and `Kd` carries its noise into the torque. Try
+    /// [`velocity_feedforward_cutoff`](Self::velocity_feedforward_cutoff) against that ripple
+    /// when switching it on.
     pub velocity_feedforward: bool,
     /// Weight of the goal velocity in the damping term when `velocity_feedforward` is on, in
     /// [0, 1]. At 1 the damping acts on the velocity *error* `dq_goal - dq`, so a joint at steady
     /// speed needs no lag; at 0 it acts on `-dq` alone and holding speed `v` costs a standing
     /// error of `(Kqd / Kq) v`, which a leash then caps into a speed limit. Values between trade
-    /// that lag against how much of the goal's own ripple the law forwards. Default 1.
+    /// that lag against how much of the goal's own ripple the law forwards. Default 1, so
+    /// switching the feedforward on means all of it.
     pub velocity_feedforward_gain: f64,
     /// Cutoff, Hz, of a first-order low-pass on `dq_goal` before it is fed forward;
     /// [`MAX_CUTOFF_FREQUENCY`](crate::lowpass_filter::MAX_CUTOFF_FREQUENCY) switches it off.
@@ -241,7 +246,7 @@ impl ImpedanceOptions {
             cutoff_frequency: 100.0,
             posture: None,
             ik: IkOptions::default(),
-            velocity_feedforward: true,
+            velocity_feedforward: false,
             velocity_feedforward_gain: 1.0,
             velocity_feedforward_cutoff: crate::lowpass_filter::MAX_CUTOFF_FREQUENCY,
             leash: Leash::default(),
