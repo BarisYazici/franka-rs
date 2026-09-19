@@ -45,6 +45,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **`franka-vr-teleop`: drive a node-served arm from a Meta Quest controller**
+  (`tools/vr-teleop`, on PyPI with the other packages). `franka-vr-bridge` reads the headset
+  over adb and publishes each controller on its own ZMQ channel; `franka-vr-teleop` follows
+  one channel with a clutch on the grip, clamps every target against the arm's measured pose
+  and reads the node's limits from the node before it acquires anything. The node's bytes are
+  `franka-node-client`'s, which it pins to its own version. The headset APK is fetched and
+  hash-checked by `franka-vr-fetch-apk` into the user's data directory, never shipped.
+
 - A live-tuning guide and node parameter protocol reference, including accepted-versus-applied
   values, feedforward configuration, confirmation gates and session lifetime. A portable
   two-arm node example retains the shipped defaults and shows optional CPU pinning and Hands.

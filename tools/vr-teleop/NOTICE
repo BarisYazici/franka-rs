@@ -1,0 +1,53 @@
+franka-vr-teleop (tools/vr-teleop, VR teleoperation for franka-node)
+Copyright 2026 Baris Yazici
+
+Licensed under the Apache License, Version 2.0, like the rest of this
+repository; LICENSE beside this file is the licence text.
+
+Third-party code carried or derived here:
+
+1. franka_vr/quest_bridge/oculus_reader/
+   github.com/rail-berkeley/oculus_reader at commit
+   1168953a0f4fe9ac761a0ef6139a511bb24c67a2, Apache License 2.0. Upstream's
+   licence text is kept verbatim beside the sources as
+   franka_vr/quest_bridge/oculus_reader/LICENSE.
+
+   Modifications:
+     - reader.py, install.py: imports made package-relative, because the
+       package lives at franka_vr.quest_bridge.oculus_reader rather than at
+       the import root.
+     - reader.py, install.py: the APK comes from fetch_apk.fetch(), the
+       user's data directory rather than the package, and is hash-checked
+       before every install, the reader's own automatic one included.
+     - reader.py: the Wi-Fi retry in get_network_device() calls
+       get_network_device() as upstream main does. The pinned commit calls
+       get_device(), which takes no arguments, so the retry raised TypeError
+       instead of retrying.
+     - fetch_apk.py is ours, added: see 2.
+   Nothing else is changed. buttons_parser.py and FPS_counter.py are
+   byte-identical to upstream.
+
+2. The Quest APK (com.rail.oculus.teleop) is NOT distributed here.
+   It is a build of upstream's app_source/ and it embeds Meta's Oculus Mobile
+   SDK (lib/arm64-v8a/libvrapi.so, libvrinputstandard.so) under Meta's SDK
+   licence, which is not Apache-2.0 and which we cannot restate or sublicense.
+   franka_vr/quest_bridge/oculus_reader/fetch_apk.py downloads it from the
+   upstream commit above and verifies sha256
+   97b49f94682a732e14d131d50bcc7885e183d73b977e19a1752c28502519cd4b
+   (4,865,715 bytes) before writing it. Upstream's code is Apache-2.0; the
+   embedded libraries are Meta's, under Meta's terms, and installing the APK
+   on a headset is an agreement with those terms, not with us.
+
+3. franka_vr/quest_bridge/mapping.py began as a port of the front half of
+   DROID's VRPolicy (github.com/droid-dataset/droid,
+   droid/controllers/oculus_controller.py), which publishes no licence. It
+   has since been reimplemented: no DROID function or block remains. It
+   keeps DROID's names and ideas -- the signed `rmat_reorder` axis-map
+   encoding and `vec_to_reorder_mat`, the
+   forward-direction latch to inv(pose) with an identity fallback -- and a few
+   one-line matrix expressions the maths forces.
+
+Oculus and Quest are trademarks of Meta Platforms, Inc. Franka, Franka Emika,
+Panda and FR3 are trademarks of Franka Robotics GmbH. This project is not
+affiliated with, endorsed by or supported by either company; the names are
+used only to identify the hardware it talks to.

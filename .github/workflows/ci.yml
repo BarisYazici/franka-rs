@@ -253,6 +253,23 @@ jobs:
           pip install ./crates/franka-node/python pytest
           pytest crates/franka-node/python/tests -v
 
+  # The VR teleop package (tools/vr-teleop) on its offline suite: no simulator, no node, no
+  # headset and no adb. The client comes from the checkout, since the package pins its version.
+  vr-teleop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: VR teleop (franka-vr-teleop)
+        working-directory: tools/vr-teleop
+        run: |
+          pip install ../../crates/franka-node/python . pytest
+          python -m pytest -v
+          tests/teleop/run_tests.sh
+
   # The Python bindings (crates/franka-py) against the same --enforce-motion-limits server:
   # maturin builds the wheel, pip installs it, and pytest drives the target loops from Python
   # (crates/franka-py/tests/test_sim.py, FRANKA_SIM_ADDR attaching as above).

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.bak*
+
+/dist/
+
+# Operator-local settings sourced by vr.sh (headset IP, Zenoh endpoint, ids).
+vr.env

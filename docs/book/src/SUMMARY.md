@@ -31,6 +31,7 @@
 - [Use the gripper](./howto/gripper.md)
 - [Record and replay a run](./howto/flight-recorder.md)
 - [Serve arms over Zenoh: franka-node](./howto/franka-node.md)
+- [Teleoperate with a Quest: franka-vr-teleop](./howto/vr-teleop.md)
 - [Tune a running controller](./howto/live-tuning.md)
 - [Run the examples](./howto/examples.md)
 

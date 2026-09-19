@@ -1,0 +1,318 @@
+{
+  "_source": "generated from franka-node's params-schema.json by wire_tools/make_node_limits.py -- do not edit; regenerate",
+  "_regenerate": "python wire_tools/make_node_limits.py",
+  "schema": {
+    "owner": "node",
+    "arm": "L",
+    "boot_id": "dump",
+    "schema_version": 1,
+    "params": {
+      "budget": {
+        "type": "f64[3]",
+        "min": [
+          0.05,
+          0.1,
+          1.0
+        ],
+        "max": [
+          1.2,
+          20.0,
+          800.0
+        ],
+        "default": [
+          0.3,
+          0.5,
+          20.0
+        ],
+        "unit": [
+          "m/s",
+          "m/s^2",
+          "m/s^3"
+        ],
+        "policy": "step_up_gate_down",
+        "group": "envelope",
+        "danger": "confirm_above",
+        "confirm_above": [
+          0.85,
+          10.0,
+          400.0
+        ],
+        "scale": "linear",
+        "norm": true
+      },
+      "cartesian_stiffness": {
+        "type": "f64",
+        "min": 50.0,
+        "max": 3000.0,
+        "default": 750.0,
+        "unit": "N/m",
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "gains",
+        "danger": "advise",
+        "scale": "log"
+      },
+      "ik_damping": {
+        "type": "f64",
+        "min": 0.001,
+        "max": 1.0,
+        "default": 0.05,
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "ik",
+        "scale": "log"
+      },
+      "ik_nullspace_gain": {
+        "type": "f64",
+        "min": 0.0,
+        "max": 20.0,
+        "default": 1.0,
+        "unit": "1/s",
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "ik",
+        "scale": "linear",
+        "slider_max": 5.0,
+        "off_at": 0.0
+      },
+      "joint_damping": {
+        "type": "f64[7]",
+        "min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max": [
+          60.0,
+          60.0,
+          60.0,
+          60.0,
+          60.0,
+          60.0,
+          60.0
+        ],
+        "default": [
+          4.0,
+          6.0,
+          5.0,
+          5.0,
+          3.0,
+          2.0,
+          1.0
+        ],
+        "unit": [
+          "Nm s/rad",
+          "Nm s/rad",
+          "Nm s/rad",
+          "Nm s/rad",
+          "Nm s/rad",
+          "Nm s/rad",
+          "Nm s/rad"
+        ],
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "gains",
+        "danger": "advise",
+        "scale": "linear"
+      },
+      "joint_stiffness": {
+        "type": "f64[7]",
+        "min": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max": [
+          1200.0,
+          1200.0,
+          1200.0,
+          1200.0,
+          1200.0,
+          1200.0,
+          1200.0
+        ],
+        "default": [
+          40.0,
+          30.0,
+          50.0,
+          25.0,
+          35.0,
+          25.0,
+          10.0
+        ],
+        "unit": [
+          "Nm/rad",
+          "Nm/rad",
+          "Nm/rad",
+          "Nm/rad",
+          "Nm/rad",
+          "Nm/rad",
+          "Nm/rad"
+        ],
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "gains",
+        "danger": "advise",
+        "scale": "linear"
+      },
+      "rotation_budget": {
+        "type": "f64[3]",
+        "min": [
+          0.05,
+          0.1,
+          1.0
+        ],
+        "max": [
+          2.5,
+          30.0,
+          800.0
+        ],
+        "default": [
+          0.5,
+          1.0,
+          20.0
+        ],
+        "unit": [
+          "rad/s",
+          "rad/s^2",
+          "rad/s^3"
+        ],
+        "policy": "step_up_gate_down",
+        "group": "envelope",
+        "danger": "confirm_above",
+        "confirm_above": [
+          1.0,
+          15.0,
+          400.0
+        ],
+        "scale": "linear",
+        "norm": true
+      },
+      "velocity_feedforward_cutoff": {
+        "type": "f64",
+        "min": 1.0,
+        "max": 1000.0,
+        "default": 1000.0,
+        "unit": "Hz",
+        "policy": "step",
+        "group": "feedforward",
+        "scale": "log",
+        "off_at": 1000.0
+      },
+      "velocity_feedforward_gain": {
+        "type": "f64",
+        "min": 0.0,
+        "max": 1.0,
+        "default": 1.0,
+        "policy": "slew",
+        "slew_tau_s": 0.3,
+        "group": "feedforward",
+        "danger": "advise",
+        "scale": "linear",
+        "off_at": 0.0
+      }
+    },
+    "relations": [
+      {
+        "rule": "joint_damping[i] >= 0.25 * sqrt(joint_stiffness[i])"
+      }
+    ],
+    "derived": {
+      "leash": {
+        "translation": 0.025,
+        "rotation": 0.15
+      },
+      "max_lead": 0.05,
+      "max_lead_rotation": 0.26,
+      "max_step": 0.05,
+      "max_step_rotation": 0.26,
+      "max_step_joint": 0.2,
+      "rate_hz": 250.0,
+      "state_hz": 100,
+      "stop_after_ms": 2000,
+      "delta_t": 0.001,
+      "dq_limit": [
+        2.62,
+        2.62,
+        2.62,
+        2.62,
+        5.26,
+        4.18,
+        5.26
+      ],
+      "cutoff_frequency": 100.0,
+      "cartesian_preset": {
+        "stiffness": [
+          750.0,
+          750.0,
+          750.0,
+          15.0,
+          15.0,
+          15.0
+        ],
+        "damping": [
+          50.0,
+          50.0,
+          90.0,
+          2.0,
+          2.0,
+          2.0
+        ],
+        "reference": 750.0
+      }
+    }
+  },
+  "get": {
+    "owner": "node",
+    "arm": "L",
+    "boot_id": "fixture",
+    "version": 0,
+    "t_node_ns": 0,
+    "origin": null,
+    "params": {
+      "budget": [
+        0.3,
+        0.5,
+        20.0
+      ],
+      "cartesian_stiffness": 750.0,
+      "ik_damping": 0.05,
+      "ik_nullspace_gain": 1.0,
+      "joint_damping": [
+        4.0,
+        6.0,
+        5.0,
+        5.0,
+        3.0,
+        2.0,
+        1.0
+      ],
+      "joint_stiffness": [
+        40.0,
+        30.0,
+        50.0,
+        25.0,
+        35.0,
+        25.0,
+        10.0
+      ],
+      "rotation_budget": [
+        0.5,
+        1.0,
+        20.0
+      ],
+      "velocity_feedforward_cutoff": 1000.0,
+      "velocity_feedforward_gain": 1.0
+    },
+    "slewing": {},
+    "dirty": false
+  }
+}

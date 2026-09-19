@@ -47,9 +47,18 @@ about 15 % of their triangles (30 % for the hand, the finger whole); kinematics
 unchanged. franka_description's full LICENSE, word for word:
 crates/franka-description/LICENSE-franka_description.
 
+The franka-vr-teleop package (tools/vr-teleop) carries the sources of
+oculus_reader (https://github.com/rail-berkeley/oculus_reader), commit
+1168953, under the Apache License, Version 2.0. Its LICENSE, word for word:
+tools/vr-teleop/franka_vr/quest_bridge/oculus_reader/LICENSE; the
+modifications are listed in tools/vr-teleop/NOTICE. The headset APK that
+reader installs embeds Meta's Oculus Mobile SDK under Meta's licence and is
+not distributed here: it is downloaded from upstream and hash-checked.
+
 No code from marcbone/libfranka-rs (EUPL-1.2) is used, copied or derived here;
 its API shape informed the design of this crate.
 
-Franka, Franka Emika, Panda and FR3 are trademarks of Franka Robotics GmbH.
-This project is not affiliated with, endorsed by or supported by Franka
-Robotics GmbH; the names are used only to identify the hardware it talks to.
+Franka, Franka Emika, Panda and FR3 are trademarks of Franka Robotics GmbH;
+Oculus and Quest are trademarks of Meta Platforms, Inc. This project is not
+affiliated with, endorsed by or supported by either company; the names are
+used only to identify the hardware it talks to.

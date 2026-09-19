@@ -1,11 +1,11 @@
 name: Release
 
 # On a `v*` tag: the Python wheels (x86_64 and aarch64 manylinux, plus the sdist, and the pure
-# franka-node-client wheel and sdist) to PyPI through trusted publishing, the franka-node and
-# franka-cam tarballs to the tag's GitHub release, and `franka-rs`, `franka-description`,
-# `franka-rerun`, `franka-node` and `franka-cam` to crates.io. From the Actions tab
-# (`workflow_dispatch`) the wheels and tarballs are built and the crate publish is a
-# `--dry-run`; nothing is uploaded.
+# franka-node-client and franka-vr-teleop wheels and sdists) to PyPI through trusted publishing,
+# the franka-node and franka-cam tarballs to the tag's GitHub release, and `franka-rs`,
+# `franka-description`, `franka-rerun`, `franka-node` and `franka-cam` to crates.io. From the
+# Actions tab (`workflow_dispatch`) the wheels and tarballs are built and the crate publish is
+# a `--dry-run`; nothing is uploaded.
 
 on:
   push:
@@ -70,12 +70,34 @@ jobs:
           name: wheels-node-client
           path: dist
 
+  # franka-vr-teleop (tools/vr-teleop), the Quest bridge and teleop client, pure Python like
+  # the client above and pinned to it. Its static version must be the tag's.
+  vr-teleop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' tools/vr-teleop/pyproject.toml)
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "tag $GITHUB_REF_NAME is not v$version of franka-vr-teleop"; exit 1
+          fi
+          pip install build
+          python -m build tools/vr-teleop --outdir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-vr-teleop
+          path: dist
+
   # Trusted publishing: PyPI accepts the job's OIDC token for the `pypi` environment of
   # this repository and workflow (docs/book/src/contributing.md, "Releasing"), for
-  # `franka-rs` and for `franka-node-client`.
+  # `franka-rs`, `franka-node-client` and `franka-vr-teleop`; `wheels-*` collects all three.
   publish-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, sdist, node-client, binaries]
+    needs: [wheels, sdist, node-client, vr-teleop, binaries]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

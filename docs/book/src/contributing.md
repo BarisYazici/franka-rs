@@ -159,14 +159,16 @@ stable cargo (multi-package publish needs 1.90), `cargo publish -p franka-rs -p
 franka-description -p franka-rerun -p franka-cam -p franka-node` (cargo publishes them in
 that dependency order), before the tag is pushed; then each new crate gets
 the same trusted publisher on crates.io, and the tag's run skips the versions crates.io has.
-The Python client `franka-node-client` (`crates/franka-node/python`, job `node-client`) goes to
-PyPI in the same upload. Before the first tag that ships it, register a *pending* trusted
-publisher for `franka-node-client` on PyPI with the same repository, workflow `release.yml` and
-environment `pypi`, since trusted publishing cannot create the project otherwise.
+The Python client `franka-node-client` (`crates/franka-node/python`, job `node-client`) and the
+VR teleop package `franka-vr-teleop` (`tools/vr-teleop`, job `vr-teleop`) go to PyPI in the
+same upload. Before the first tag that ships each, register a *pending* trusted publisher for
+it on PyPI with the same repository, workflow `release.yml` and environment `pypi`, since
+trusted publishing cannot create the project otherwise.
 
 A release is: bump `version` in the root `Cargo.toml`'s `[workspace.package]` (all five crates
-and the wheel share it, and `crates/franka-node/python/pyproject.toml` repeats it, which a test
-checks; on a minor bump also the `version = "0.x"` of `franka`,
+and the wheel share it; `crates/franka-node/python/pyproject.toml` and
+`tools/vr-teleop/pyproject.toml` repeat it, the latter also in its `franka-node-client==` pin,
+which tests check; on a minor bump also the `version = "0.x"` of `franka`,
 `franka-description` and `franka-rerun` in `[workspace.dependencies]`), date the section in `CHANGELOG.md`, and push a
 `v*` tag matching it (the tarball job refuses another, since `cargo binstall` looks for
 `v<version>`).
