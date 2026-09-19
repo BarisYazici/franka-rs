@@ -109,9 +109,10 @@ impl ImpedanceGains {
 /// the previous desired and nothing changes; held back (a hand, an obstacle, an unreachable
 /// target) the desired stays within the leash, the force on the arm is bounded by the
 /// stiffness times the leash, and on release the generator resumes from where the arm is
-/// under its budget. Once a stop holds, the leash pulls toward the held state instead, so an
-/// arm moved during the hold meets the same bound. The observer reports what the leash took
-/// off as `leash_alteration`.
+/// under its budget. The leash bounds the force, not the release: the arm closes the gap it
+/// was held back by under the spring alone, which can outrun the budget. Once a stop holds,
+/// the leash pulls toward the held state instead, so an arm moved during the hold meets the
+/// same bound. The observer reports what the leash took off as `leash_alteration`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leash {
     /// Cartesian interface, translation, m. Default 0.025. The leash bounds the spring, so
@@ -162,8 +163,9 @@ pub struct ImpedanceOptions {
     /// The Cartesian interface's inverse kinematics. Ignored by the joint interface.
     pub ik: IkOptions,
     /// Whether the damping acts on the velocity *error*, `Kd (dq_goal - dq)`, with `dq_goal`
-    /// the goal's velocity (the generator's on the joint interface, the IK solution's finite
-    /// difference on the Cartesian one); `false` damps the absolute velocity, DROID parity,
+    /// the goal's velocity, its own finite difference on both interfaces (of the boxed step on
+    /// the joint one, of the IK solution on the Cartesian one), so a goal held at the leash
+    /// feeds nothing forward; `false` damps the absolute velocity, DROID parity,
     /// and a goal moving at `v` is then tracked `Kd v / Kp` behind. Default `true`.
     pub velocity_feedforward: bool,
     /// Weight of the goal velocity in the damping term when `velocity_feedforward` is on, in
