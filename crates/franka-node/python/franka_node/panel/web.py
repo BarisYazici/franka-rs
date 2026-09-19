@@ -1,5 +1,6 @@
 """HTTP front of the tuning bridge: static files, the JSON routes, SSE. Owner refusals are
-HTTP 200 with ok:false (the panel branches on `ok`); 422 only for a malformed request body.
+HTTP 200 with ok:false (the panel branches on `ok`); 422 only for a malformed request body, 413
+for one over 64 KiB, 404 for an <arm> that is not [A-Za-z0-9_-]+.
 
   GET  /  and  /static/<file>              the panel
   GET  /api/arms                           {arms: {L: {node: bool, teleop: bool}}}
@@ -22,8 +23,9 @@ import json
 import logging
 import os
 import queue
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import zenoh
@@ -49,33 +51,58 @@ def resolve_bind(host: str, expose: bool) -> str:
     logging.getLogger("tuning-bridge").warning(EXPOSE_WARNING, host)
     return host
 CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css"}
+# An <arm> segment becomes part of a Zenoh key expression, where `*` and `**` reach every arm.
+ARM_NAME = re.compile(r"[A-Za-z0-9_-]+")
+MAX_BODY = 64 * 1024
+NOT_FOUND = {"ok": False, "error": "not found"}
 
 
 class Handler(BaseHTTPRequestHandler):
     bridge: Bridge  # set by serve()
     protocol_version = "HTTP/1.1"
+    # A socket read or write that stalls this long ends the connection, so a client that sends
+    # its body slowly cannot hold a thread; above the SSE keepalive's 5 s.
+    timeout = 30.0
 
     def log_message(self, fmt, *args):  # quiet
         pass
 
-    def _json(self, code: int, body: Any) -> None:
+    def _json(self, code: int, body: Any, close: bool = False) -> None:
         data = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        if close:
+            self.send_header("Connection", "close")  # also ends the keep-alive loop
         self.end_headers()
         self.wfile.write(data)
 
     def _body(self) -> Optional[Dict[str, Any]]:
-        n = int(self.headers.get("Content-Length") or 0)
-        try:
-            v = json.loads(self.rfile.read(n) or b"{}")
-        except ValueError:
+        """The request's JSON object, or None once a refusal is sent. A Content-Length that is
+        missing, not a byte count or over MAX_BODY also closes the connection: nothing after the
+        headers can be framed, or is worth reading."""
+        n = self.headers.get("Content-Length", "")
+        if not re.fullmatch(r"[0-9]+", n):
+            self._json(422, {"ok": False, "reason": "type", "error": "Content-Length must be a byte count"},
+                       close=True)
             return None
-        return v if isinstance(v, dict) else None
+        if len(n) > 6 or int(n) > MAX_BODY:
+            self._json(413, {"ok": False, "reason": "size", "error": f"body over {MAX_BODY} bytes"}, close=True)
+            return None
+        try:
+            v = json.loads(self.rfile.read(int(n)) or b"{}")
+        except (ValueError, RecursionError):
+            v = None
+        if not isinstance(v, dict):
+            self._json(422, {"ok": False, "reason": "type", "error": "body must be a JSON object"})
+            return None
+        return v
 
-    def _route(self):
+    def _route(self) -> Optional[List[str]]:
+        """The path's segments; None (a 404) for an /api/<arm>/... whose arm is not a name."""
         parts = [p for p in urlparse(self.path).path.split("/") if p]
+        if len(parts) >= 3 and parts[0] == "api" and not ARM_NAME.fullmatch(parts[1]):
+            return None
         return parts
 
     def do_GET(self) -> None:
@@ -83,12 +110,14 @@ class Handler(BaseHTTPRequestHandler):
         b = self.bridge
         if self._refused(write=False):
             return
+        if p is None:
+            return self._json(404, NOT_FOUND)
         if not p:
             return self._file("index.html")
         if p[0] == "static" and len(p) == 2:
             return self._file(p[1])
         if p[0] != "api":
-            return self._json(404, {"ok": False, "error": "not found"})
+            return self._json(404, NOT_FOUND)
         if p[1:] == ["arms"]:
             return self._json(200, {"ok": True, "arms": b.discover()})
         if len(p) == 4 and p[2] in zbus.OWNERS and p[3] == "schema":
@@ -101,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, b.presets_for(p[1]))
         if len(p) == 3 and p[2] == "events":
             return self._sse(b.arm(p[1]))
-        self._json(404, {"ok": False, "error": "not found"})
+        self._json(404, NOT_FOUND)
 
     def _foreign_host(self) -> bool:
         """DNS rebinding makes an attacker's page same-origin with whatever name it rebinds to
@@ -136,7 +165,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = self._body()
         if body is None:
-            return self._json(422, {"ok": False, "reason": "type", "error": "body must be a JSON object"})
+            return
+        if p is None:
+            return self._json(404, NOT_FOUND)
         if len(p) == 4 and p[0] == "api" and p[2] in zbus.OWNERS and p[3] == "params":
             return self._json(200, b.set_params(p[1], p[2], body))
         if len(p) == 3 and p[0] == "api" and p[2] == "apply":
@@ -148,23 +179,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "marker": m})
         if len(p) == 3 and p[0] == "api" and p[2] == "presets":
             return self._json(200, b.save_preset(p[1], body))
-        self._json(404, {"ok": False, "error": "not found"})
+        self._json(404, NOT_FOUND)
 
     def do_DELETE(self) -> None:
         p = self._route()
         if self._refused(write=True):
             return
+        if p is None:
+            return self._json(404, NOT_FOUND)
         if len(p) == 3 and p[0] == "api" and p[2] == "markers":
             self.bridge.arm(p[1]).metrics.clear_markers()
             return self._json(200, {"ok": True})
         if len(p) == 4 and p[0] == "api" and p[2] == "presets":
             return self._json(200, {"ok": self.bridge.presets.remove(p[3], p[1])})
-        self._json(404, {"ok": False, "error": "not found"})
+        self._json(404, NOT_FOUND)
 
     def _file(self, name: str) -> None:
         path = os.path.join(STATIC, os.path.basename(name))
         if not os.path.isfile(path):
-            return self._json(404, {"ok": False, "error": "not found"})
+            return self._json(404, NOT_FOUND)
         with open(path, "rb") as f:
             data = f.read()
         self.send_response(200)

@@ -253,6 +253,18 @@ impl Guard {
         }
     }
 
+    /// `q` moved into the joint limits inset by [`GuardOptions::joint_limit_inset`], the band
+    /// the library's `set_joints` accepts; unchanged for a Cartesian gate.
+    pub fn inside_joint_limits(&self, mut q: [f64; 7]) -> [f64; 7] {
+        if let Some((lower, upper)) = &self.joints {
+            let inset = self.options.joint_limit_inset;
+            for (i, value) in q.iter_mut().enumerate() {
+                *value = value.clamp(lower[i] + inset, upper[i] - inset);
+            }
+        }
+        q
+    }
+
     /// Whether both lead limits are on, which is what bounds an anchored target.
     pub fn lead_bounded(&self) -> bool {
         self.options.max_lead > 0.0 && self.options.max_lead_rotation > 0.0

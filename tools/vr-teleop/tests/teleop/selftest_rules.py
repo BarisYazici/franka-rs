@@ -370,6 +370,61 @@ def _():
     assert _whys(sink, n) == ["keepalive"], _whys(sink, n)
 
 
+def _finite_targets(sink):
+    return all(math.isfinite(c) for _, p, q, _ in sink.targets for c in (*p, *q))
+
+
+@check("rule 7: a non-finite arm state is no state: the clutch releases, nothing is driven")
+def _():
+    app, sink, t = _engaged()
+    good, n = sink.measured, len(sink.targets)
+    sink.measured = ((math.nan, 0.0, 0.5), good[1])           # NaN passes every `>` leash
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        for k in range(1, 11):                               # 0.4 m of hand, 40 mm per sample
+            t = _tick(app, HELD, t, x=0.04 * k)
+        app.keepalive(t * MS)
+    assert "drive" not in _whys(sink, n) and not app.armed, _whys(sink, n)
+    assert app.refusals["no_state"] >= 1 and _finite_targets(sink)
+    assert out.getvalue().count("not finite") == 1, out.getvalue()
+    sink.measured = good                                      # back: a new squeeze drives
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(3):
+            t = _tick(app, HELD, t)
+        assert "drive" not in _whys(sink, n)
+        for _ in range(15):
+            t = _tick(app, AWAKE, t)
+        t = _tick(app, HELD, t)
+    assert app.n_engage == 2 and _whys(sink)[-1] == "drive"
+
+
+@check("rule 7: a squeeze on a non-finite state latches nothing and publishes no NaN")
+def _():
+    app, sink = _app("--quiet")
+    sink.measured = ((0.3, 0.0, 0.5), (math.nan,) * 4)        # decode_state's non-finite O_T_EE
+    t = 0
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(20):
+            t = _tick(app, AWAKE, t)
+        for _ in range(5):
+            t = _tick(app, HELD, t)
+    assert app.n_engage == 0 and "drive" not in _whys(sink), _whys(sink)
+    assert _finite_targets(sink)
+
+
+@check("decode_state: any non-finite O_T_EE entry makes a state that is not finite()")
+def _():
+    def decode(m):
+        return sinks.decode_state(STATE.pack(1, 2, 2, 0, 0, 7200, 0, 0, 0, 0, 1.0,
+                                             *(0.0,) * 21, *m, *(0.0,) * 6, 0.31, 0.0, 0.49,
+                                             1.0, 0.0, 0.0, 0.0, 3, 0, 0), 0)[0]
+    assert decode(sinks.READY_O_T_EE).finite()
+    for i in (*range(0, 3), *range(4, 7), *range(8, 11), *range(12, 15)):
+        for bad in (math.nan, math.inf, -math.inf):
+            m = list(sinks.READY_O_T_EE)
+            m[i] = bad
+            assert not decode(m).finite(), (i, bad, decode(m))
+
+
 @check("rule 7: in run(), a state that stops mid-drive ends the session 500 ms later")
 def _():
     rows = [(k * 20 * MS, _vr(AWAKE if k < 20 else HELD)) for k in range(150)]

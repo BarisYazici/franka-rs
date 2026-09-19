@@ -15,6 +15,7 @@ errors before acquire is recovered first; mid-session teleop.py calls `recover()
 the state decides, polled until it reads Idle with no errors.
 """
 import json
+import math
 import sys
 import time
 from typing import NamedTuple, Optional, Tuple
@@ -44,6 +45,11 @@ class ArmState(NamedTuple):
     desired: Tuple              # (p, q) of the node's current target
     dq: Optional[Tuple]         # measured joint velocities, rad/s; None without joints
 
+    def finite(self):
+        """Every pose and dq number is finite: a NaN passes every `>` leash check."""
+        (p, q), (tp, tq) = self.measured, self.desired
+        return all(math.isfinite(c) for c in (*p, *q, *tp, *tq, *(self.dq or ())))
+
 
 def fmt3(p):
     return "(" + ", ".join(f"{c:+.4f}" for c in p) + ")"
@@ -63,7 +69,8 @@ def decode_state(raw, t_ns):
     """(ArmState, the non-motion fields) of one StateMsg."""
     f = _fields(raw, _wire.STATE, "state")
     m, target = f["o_t_ee"], f["target"]                # O_T_EE column-major
-    arm = ArmState(t_ns, ((m[12], m[13], m[14]), quat_of(m)),
+    q = quat_of(m) if all(math.isfinite(c) for c in m) else (math.nan,) * 4
+    arm = ArmState(t_ns, ((m[12], m[13], m[14]), q),
                    (tuple(target[0:3]), tuple(target[3:7])), tuple(f["dq"]))
     info = dict(phase=f["phase"], robot_mode=f["robot_mode"], has_errors=f["has_errors"],
                 flags=f["flags"], holder=f["client_id"], success=f["success_rate"],

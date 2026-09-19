@@ -150,7 +150,7 @@ Idle ──acquire──▶ Acquired ──enable──▶ Active ──stop | w
 |---|---|---|
 | `acquire` | Idle, Acquired | needs the client's liveliness token and a free arm (`"no lease"`, `"held by <id>"`) |
 | `enable` | Idle with the lease, Acquired | reads the state, sets the collision thresholds, starts the Cartesian or the joint loop (`mode`); the guard steps from the loop's start target |
-| `stop` | Active, Homing | blocks for the library's settle (about 0.3 s, at most 5 s; state publishing pauses), then Idle (Acquired after a `home`) with the holder kept; a failing stop is Faulted. A stop during `home` decelerates in place: the loop is re-targeted to the measured configuration before it stops |
+| `stop` | Active, Homing | blocks for the library's settle (about 0.3 s, at most 5 s; state publishing pauses), then Idle (Acquired after a `home`) with the holder kept; a failing stop is Faulted. A stop of a joints session or a `home` decelerates in place: the loop is re-targeted to the measured configuration before it stops |
 | `release` | Idle, Acquired, Faulted | clears the holder; Acquired goes to Idle, Faulted stays Faulted |
 | `recover` | all but Active, Homing | `automatic_error_recovery` over TCP, no motion, then Idle; the holder is kept |
 | `home` | Acquired | a joints session at `speed` of the limits (0.05..=0.5, default 0.2; first runs on an arm at 0.2 or below) towards the ready pose `[0, -π/4, 0, -3π/4, 0, π/2, π/4]`; the reply comes when every joint is within 0.02 rad of it, at rest or for 10 consecutive state ticks (then Acquired), or `"home timed out"` after 60 s. Every early end (stop, lost lease, timeout, shutdown) decelerates in place |
@@ -161,7 +161,9 @@ In Active, a target passes the guard and reaches `set_target`, or is counted as 
 with the reason in the debug log. `hold_after_ms` without an accepted target sets the holding
 flag, `stop_after_ms` without any target from the commander stops the loop; the holder keeps
 the lease and may `enable` again. A lost lease stops the loop and clears the holder. A loop that
-ended on its own is Faulted.
+ended on its own is Faulted. Every stop of a joints session (the verb, the watchdog, a lost lease,
+shutdown) first re-targets the loop to the measured configuration, so the arm decelerates where
+it is rather than on towards the last accepted target.
 
 The two watchdogs measure different things, and the difference matters for anything that
 streams a human's hand. `hold_after_ms` measures from the last **accepted** target, so the
@@ -186,6 +188,9 @@ accepted rather than stopping where it is. `max_lead` is the bound on that: an a
 Cartesian target is never further than 0.05 m, as a norm, from `o_t_ee`, nor its orientation
 more than `max_lead_rotation` from the measured one, so whatever the commander does the arm
 coasts at most that plus its own brake distance. Either limit set to 0 turns that check off.
+A joints session has no lead bound: until `stop_after_ms` it tracks its last accepted target
+however far that is, and only the stop cuts it short. The stop lands where the arm was when it
+began (braking past that and returning), not on the last accepted target.
 A commander that follows a human hand should still keep its own leash, tighter than this one,
 so that the node's limit never binds in ordinary use; a lead limit at or below `leash` is a
 config error, because the backend's own leash is the tracking error a healthy commander already

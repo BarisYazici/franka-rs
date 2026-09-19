@@ -122,8 +122,10 @@ different frames, which is fine: the clutch anchors position and orientation ind
 7. **Arm-state freshness.** A state older than `STATE_STALE_MS` (**50 ms**, five of the
    node's ticks) drives nothing: no clutch latch, no lead clamp, no dq release. The sample
    is refused as `no_state` and the grip must be released and squeezed again once state is
-   back. No state for `STATE_LOST_MS` (**500 ms**) ends the session through the clean stop
-   and release. The node's `stop` can freeze its state publication for seconds, and a frozen
+   back. A fresh state with a non-finite pose or dq drives nothing either (a NaN passes every
+   leash comparison), and the client prints `[state] the arm's state is not finite` once. No
+   state for `STATE_LOST_MS` (**500 ms**) ends the session through the clean stop and
+   release. The node's `stop` can freeze its state publication for seconds, and a frozen
    phase would otherwise hide it.
 
 ## Scales, because a human is in the loop

@@ -72,6 +72,7 @@ class Teleop:
         self.prev_engaged = False
         self.armed = False                          # fail closed: needs a grip release
         self.dq_tripped = False                     # RULE 6, until slow again (or --dq-latch)
+        self.state_nonfinite = False                # RULE 7: the latest state is not finite
         self.dq_releases = []                       # (s, joint 1..7, |dq| rad/s, limit)
         self.worst_dq = None                        # (fraction of its limit, joint 1..7)
         self.need_relatch = True
@@ -164,7 +165,8 @@ class Teleop:
         state = self.fresh_state()
         if state is None:                            # RULE 7: release and squeeze again
             self.need_relatch, self.prev_engaged, self.armed = True, False, False
-            return self.refuse("no_state", t, f"no arm state within {STATE_STALE_MS:.0f} ms")
+            return self.refuse("no_state", t,
+                               f"no finite arm state within {STATE_STALE_MS:.0f} ms")
         p_arm, q_arm = state.measured
 
         if self.need_relatch:                        # RULE 3
@@ -311,9 +313,18 @@ class Teleop:
         return state, (self.sink.clock_ns() - state.t_ns) / 1e6
 
     def fresh_state(self):
-        """RULE 7: the latest arm state, or None once it is older than STATE_STALE_MS."""
+        """RULE 7: the latest arm state, or None once it is older than STATE_STALE_MS or is
+        not finite (a NaN would pass both leash checks and poison a latch)."""
         state, age = self.state_age_ms()
-        return state if age <= STATE_STALE_MS else None
+        if age > STATE_STALE_MS:
+            return None
+        nonfinite = not state.finite()
+        if nonfinite != self.state_nonfinite:        # said once on each change
+            self.state_nonfinite = nonfinite
+            print("[state] the arm's state is not finite: nothing is driven until it is, then "
+                  "release and squeeze the grip" if nonfinite else
+                  "[state] the arm's state is finite again", flush=True)
+        return None if nonfinite else state
 
     def state_lost(self):
         """RULE 7: a reason to end the session once no state has arrived for STATE_LOST_MS."""
@@ -389,7 +400,7 @@ class Teleop:
         self.apply_params()
         if self.last_target is None:
             state = self.sink.state()
-            if state is not None:                    # seed on the loop's own desired pose
+            if state is not None and state.finite():  # seed on the loop's own desired pose
                 self.last_target = state.desired
         self.joint_speed(t)
 

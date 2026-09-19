@@ -55,7 +55,7 @@ impl<R: RobotSide> Machine<R> {
                 }
                 Err(why) => Err(why),
             },
-            Verb::GripperHome => match (&self.gripper, client != 0 && self.holder == client) {
+            Verb::GripperHome => match (&self.gripper, self.holds(client)) {
                 (_, false) => Err(Reason::NotHolder(client).to_string()),
                 (None, true) => Err("no gripper".into()),
                 (Some(gripper), true) => {
@@ -103,8 +103,13 @@ impl<R: RobotSide> Machine<R> {
         }
     }
 
+    /// Whether `client` holds the arm; client 0 never does, not even a free arm's 0 holder.
+    fn holds(&self, client: u32) -> bool {
+        client != 0 && self.holder == client
+    }
+
     fn release(&mut self, client: u32) -> Result<(), String> {
-        if self.holder != client {
+        if !self.holds(client) {
             return Err(Reason::NotHolder(client).to_string());
         }
         if matches!(self.phase, Phase::Active | Phase::Homing) {
@@ -121,7 +126,7 @@ impl<R: RobotSide> Machine<R> {
 
     fn enable(&mut self, request: &CmdRequest) -> Result<(), String> {
         let client = request.client_id;
-        if self.holder != client {
+        if !self.holds(client) {
             return Err(Reason::NotHolder(client).to_string());
         }
         if !matches!(self.phase, Phase::Idle | Phase::Acquired) {
@@ -147,7 +152,7 @@ impl<R: RobotSide> Machine<R> {
     /// one target; the reply waits for `finish_home`.
     fn start_home(&mut self, request: &CmdRequest) -> Result<(), String> {
         let client = request.client_id;
-        if self.holder != client {
+        if !self.holds(client) {
             return Err(Reason::NotHolder(client).to_string());
         }
         if self.phase != Phase::Acquired {
@@ -311,13 +316,8 @@ impl<R: RobotSide> Machine<R> {
         outcome: Result<(), &str>,
     ) -> Result<(), String> {
         let homing = self.homing.take();
-        if let (Err(_), Some(control)) = (outcome, &self.control) {
-            if let Err(e) = control.set_target(control.state().q) {
-                warn!(
-                    "arm {}: hold in place before the stop: {e}",
-                    self.config.name
-                );
-            }
+        if outcome.is_err() {
+            self.hold_in_place();
         }
         let stopped = self.stop_to(why, Phase::Acquired);
         if let Some(homing) = homing {
@@ -330,9 +330,32 @@ impl<R: RobotSide> Machine<R> {
         stopped
     }
 
-    /// Active → Stopping → Idle, or Faulted with the loop's error; the holder is kept.
+    /// Active → Stopping → Idle, or Faulted with the loop's error; the holder is kept. A
+    /// joints session is first re-targeted to where the arm is: it has no lead bound, so its
+    /// last target may be far ahead.
     pub(super) fn stop(&mut self, why: &str) -> Result<(), String> {
+        if self.joints_session() {
+            self.hold_in_place();
+        }
         self.stop_to(why, Phase::Idle)
+    }
+
+    /// Re-targets the joint loop to the measured configuration, moved inside the limits' inset
+    /// so that `set_joints` cannot refuse it, and the stop decelerates in place.
+    fn hold_in_place(&self) {
+        if let Some(control) = &self.control {
+            let q = control.state().q;
+            let q = self
+                .guard
+                .as_ref()
+                .map_or(q, |guard| guard.inside_joint_limits(q));
+            if let Err(e) = control.set_target(q) {
+                warn!(
+                    "arm {}: hold in place before the stop: {e}",
+                    self.config.name
+                );
+            }
+        }
     }
 
     fn stop_to(&mut self, why: &str, landing: Phase) -> Result<(), String> {

@@ -9,6 +9,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- franka-node: `enable`, `release` and `home` refuse `client_id` 0 (`"client 0 is not the
+  holder"`), as `acquire` and `gripper_home` already did; a free arm's holder is 0, so an
+  `enable` from client 0 used to start a session nobody held.
+- franka-node: every stop of a joints session (the `stop` verb, the watchdog, a lost lease,
+  shutdown) first re-targets the loop to the measured configuration, clamped inside the joint
+  limits less the guard's margin, as an early end of `home` already did, so the arm decelerates
+  where it is instead of travelling on to the last accepted target.
+- Tuning panel: an `<arm>` path segment that is not `[A-Za-z0-9_-]+` is a 404 before it reaches
+  a Zenoh key expression, so `*` or `**` can no longer fan one request out to every arm; a
+  `Content-Length` that is missing, not a byte count or over 64 KiB is refused (422, or 413 for
+  the size) and the connection closed, and a stalled request times out after 30 s.
+- VR teleop: a fresh arm state with a non-finite pose or joint velocity is treated as no state:
+  the clutch releases, nothing is driven, and the client says so once. Before, a NaN passed both
+  leash checks and a latch on it made every target NaN.
 - The Python node client gives queued state callbacks up to 250 ms to catch up after a
   long local streamer stall, preventing a false disconnect on the next tick. Repeated
   stalls cannot extend that deadline; normal node-silence detection and explicit
