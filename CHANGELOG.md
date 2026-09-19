@@ -5,74 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- franka-node: `enable`, `release` and `home` refuse `client_id` 0 (`"client 0 is not the
-  holder"`), as `acquire` and `gripper_home` already did; a free arm's holder is 0, so an
-  `enable` from client 0 used to start a session nobody held.
-- franka-node: every stop of a joints session (the `stop` verb, the watchdog, a lost lease,
-  shutdown) first re-targets the loop to the measured configuration, clamped inside the joint
-  limits less the guard's margin, as an early end of `home` already did, so the arm decelerates
-  where it is instead of travelling on to the last accepted target.
-- Tuning panel: an `<arm>` path segment that is not `[A-Za-z0-9_-]+` is a 404 before it reaches
-  a Zenoh key expression, so `*` or `**` can no longer fan one request out to every arm; a
-  `Content-Length` that is missing, not a byte count or over 64 KiB is refused (422, or 413 for
-  the size) and the connection closed, and a stalled request times out after 30 s.
-- VR teleop: a fresh arm state with a non-finite pose or joint velocity is treated as no state:
-  the clutch releases, nothing is driven, and the client says so once. Before, a NaN passed both
-  leash checks and a latch on it made every target NaN.
-- The Python node client gives queued state callbacks up to 250 ms to catch up after a
-  long local streamer stall, preventing a false disconnect on the next tick. Repeated
-  stalls cannot extend that deadline; normal node-silence detection and explicit
-  session-end handling remain unchanged.
-- The `franka-rs` wheel carries `LICENSE` and `NOTICE`, libfranka's notice included, under
-  its `dist-info/licenses/`; only the sdist had them.
-
-### Changed
-
-- **Live tuning caps the wrist's `joint_damping` at 40 Nm s/rad** (joints 5 to 7; 60 on 1 to
-  4): with the velocity barrier's 20 added, `K × 1 ms / I` on the wrist's 0.074 kg m² is 0.81
-  there and would be 1.08 at 60, past the stability rule in the impedance reference.
-
-- **Raising `velocity_feedforward_gain` above 0 needs the operator's confirmation**
-  (`confirm_above` 0), as crossing a budget's threshold does; the tuning panel puts the
-  feedforward group behind its lock.
-
-- Lowering a budget's acceleration or jerk while the arm moves never steps the command but
-  lengthens the stop (toward `v² / 2a`, plus the jerk's ramp): at the default 0.3 m/s (0.17 m/s
-  per axis), an acceleration dragged from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots
-  it by about 20 cm, and faster motion or a lower acceleration overshoots further.
-  `CartesianTargetControl::tune`, the live-tuning guide and the tuning panel's envelope
-  advisory now say to lower the velocity first.
-
-- **Velocity feedforward now defaults to off**: `ImpedanceOptions::velocity_feedforward` is
-  `false` on both interfaces, and with it the node's `velocity_feedforward` key and the live
-  weight it seeds (0). Real arms vibrated with it on: `dq_goal` is a finite difference (of the
-  IK solution on the Cartesian interface) and `Kd` carries its noise into the torque. Off, a
-  goal moving at `v` is tracked `(Kd / Kp) v` behind, which the leash turns into a speed cap.
-  `velocity_feedforward_gain` stays 1, so switching it on means all of it;
-  `velocity_feedforward_cutoff` is the knob to try against the ripple. A node config that sets
-  only `velocity_feedforward_gain` now runs without feedforward and needs
-  `velocity_feedforward = true` to keep it. Python's `velocity_feedforward` keyword now defaults
-  to `None` (the Rust default), and `backend='robot'` refuses any explicit value, `True`
-  included. `nonrealtime_commander`'s `--no-feedforward` became `--feedforward`.
-
-- The `model-library` feature is now off by default. Both robots use the native Rust
-  model through `Robot::load_model()`. Applications that explicitly download the Panda's
-  shared library must enable `model-library`; the optional comparison path remains available.
-
-- **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
-  is now an `Option<Workspace>` defaulting to `None`, and `ArmConfig::workspace` is optional in
-  the TOML. The retired default -- x 0.2..0.8, y -0.5..0.5, z 0..0.8 in the base frame --
-  assumed a forward-facing bench and refused good poses anywhere else, and the box had no off
-  switch: `max_lead` and `max_lead_rotation` are disabled by a zero, but a zero is a legitimate
-  coordinate, so "no box" could only be written as an absurdly large one. A config that names a
-  box still gets exactly that box, and an inverted or non-finite one is still refused. With no
-  box a target is still bounded by the step and lead limits, the rate bucket, the leash and the
-  session's own deviation guard. `Workspace` moved from `config` to `guard`, beside the check
-  that enforces it.
+## [0.4.0] - 2026-09-19
 
 ### Added
 
@@ -169,10 +102,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `SessionEnded`, `ProtocolError`. `crates/franka-node/tests/wire.json` is the wire layout
   machine-readable, checked against the Rust types and the client's; the client runs against
   the node binary and franka-sim in CI.
-- **`franka-rerun`, `franka-node` and `franka-cam` on crates.io**, released with `franka-rs`
-  under one workspace version. A `v*` tag also attaches prebuilt `franka-node` and
-  `franka-cam` tarballs (aarch64 gnu and static musl, x86_64 gnu; built with `record`) to the
-  GitHub release, which `cargo binstall franka-node` installs.
+- **`franka-description`, `franka-rerun`, `franka-node` and `franka-cam` on crates.io**,
+  released with `franka-rs` under one workspace version. A `v*` tag also attaches prebuilt
+  `franka-node` and `franka-cam` tarballs (aarch64 gnu and static musl, x86_64 gnu; built
+  with `record`) to the GitHub release, which `cargo binstall franka-node` installs.
 - **Joint velocity cap, fade and barrier of target control's torque backend.** No joint of
   the goal moves faster than `ImpedanceOptions::joint_velocity_fraction` (0.7) of the arm's
   velocity limit (`target_control::max_joint_velocity`, by the negotiated FCI version): a
@@ -186,9 +119,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `JointSent` carry `dq_goal`, `cap_scale` and `tau_envelope` (the velocity envelope's share
   of `tau`). The goal is capped before a fast turn of the hand near a wrist singularity
   reaches `joint_velocity_violation`; an ignored test replays a recorded teleoperation
-  session with the cap on and off (`tests/replay.rs`), and a simulator test turns a nearly
-  aligned wrist fast (`tests/sim_target_control/velocity_cap.rs`). `franka_rerun::TorqueLog`
-  and `Recorder::push_torque_at` record `joints/q_goal`, `joints/dq_goal`, `joints/cap_scale`
+  session with the cap on and off (`target_control/tests/replay.rs`), and a simulator test
+  turns a nearly aligned wrist fast (`tests/sim_target_control/velocity_cap.rs`).
+  `franka_rerun::TorqueLog` and `Recorder::push_torque_at` record `joints/q_goal`,
+  `joints/dq_goal`, `joints/cap_scale`
   and `joints/tau_envelope`; franka-node takes `joint_velocity_fraction` and
   `velocity_barrier_fraction` per arm and records them every cycle.
 - **Joint position limit guard of target control's torque backend.** The Cartesian IK solves
@@ -406,6 +340,48 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Live tuning caps the wrist's `joint_damping` at 40 Nm s/rad** (joints 5 to 7; 60 on 1 to
+  4): with the velocity barrier's 20 added, `K × 1 ms / I` on the wrist's 0.074 kg m² is 0.81
+  there and would be 1.08 at 60, past the stability rule in the impedance reference.
+
+- **Raising `velocity_feedforward_gain` above 0 needs the operator's confirmation**
+  (`confirm_above` 0), as crossing a budget's threshold does; the tuning panel puts the
+  feedforward group behind its lock.
+
+- Lowering a budget's acceleration or jerk while the arm moves never steps the command but
+  lengthens the stop (toward `v² / 2a`, plus the jerk's ramp): at the default 0.3 m/s (0.17 m/s
+  per axis), an acceleration dragged from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots
+  it by about 20 cm, and faster motion or a lower acceleration overshoots further.
+  `CartesianTargetControl::tune`, the live-tuning guide and the tuning panel's envelope
+  advisory now say to lower the velocity first.
+
+- **Velocity feedforward now defaults to off**: `ImpedanceOptions::velocity_feedforward` is
+  `false` on both interfaces, and with it the node's `velocity_feedforward` key and the live
+  weight it seeds (0). Real arms vibrated with it on: `dq_goal` is a finite difference (of the
+  IK solution on the Cartesian interface) and `Kd` carries its noise into the torque. Off, a
+  goal moving at `v` is tracked `(Kd / Kp) v` behind, which the leash turns into a speed cap.
+  `velocity_feedforward_gain` stays 1, so switching it on means all of it;
+  `velocity_feedforward_cutoff` is the knob to try against the ripple. A node config that sets
+  only `velocity_feedforward_gain` now runs without feedforward and needs
+  `velocity_feedforward = true` to keep it. Python's `velocity_feedforward` keyword now defaults
+  to `None` (the Rust default), and `backend='robot'` refuses any explicit value, `True`
+  included. `nonrealtime_commander`'s `--no-feedforward` became `--feedforward`.
+
+- The `model-library` feature is now off by default. Both robots use the native Rust
+  model through `Robot::load_model()`. Applications that explicitly download the Panda's
+  shared library must enable `model-library`; the optional comparison path remains available.
+
+- **The guard's workspace box is off unless a config asks for one.** `GuardOptions::workspace`
+  is now an `Option<Workspace>` defaulting to `None`, and `ArmConfig::workspace` is optional in
+  the TOML. The retired default -- x 0.2..0.8, y -0.5..0.5, z 0..0.8 in the base frame --
+  assumed a forward-facing bench and refused good poses anywhere else, and the box had no off
+  switch: `max_lead` and `max_lead_rotation` are disabled by a zero, but a zero is a legitimate
+  coordinate, so "no box" could only be written as an absurdly large one. A config that names a
+  box still gets exactly that box, and an inverted or non-finite one is still refused. With no
+  box a target is still bounded by the step and lead limits, the rate bucket, the leash and the
+  session's own deviation guard. `Workspace` moved from `config` to `guard`, beside the check
+  that enforces it.
+
 - The minimum Rust version is 1.89, what `nalgebra` 0.35 already required; 1.85 was stale.
 - The torque backend caps the goal at 0.7 of each joint's velocity limit by default.
   `IkOptions::max_step` (10 rad/s) is removed; the cap bounds the IK's step instead.
@@ -432,6 +408,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `#[non_exhaustive]`, and both stay exhaustive on purpose so that a downstream test can still
   build one field by field. `TorqueLog::default()` leaves `wall_age` at 0, which reads as a
   wall; a producer with no walls sets `[-1; 2]` itself.
+
+### Fixed
+
+- franka-node: `enable`, `release` and `home` refuse `client_id` 0 (`"client 0 is not the
+  holder"`), as `acquire` and `gripper_home` already did; a free arm's holder is 0, so an
+  `enable` from client 0 used to start a session nobody held.
+- franka-node: every stop of a joints session (the `stop` verb, the watchdog, a lost lease,
+  shutdown) first re-targets the loop to the measured configuration, clamped inside the joint
+  limits less the guard's margin, as an early end of `home` already did, so the arm decelerates
+  where it is instead of travelling on to the last accepted target.
+- Tuning panel: an `<arm>` path segment that is not `[A-Za-z0-9_-]+` is a 404 before it reaches
+  a Zenoh key expression, so `*` or `**` can no longer fan one request out to every arm; a
+  `Content-Length` that is missing, not a byte count or over 64 KiB is refused (422, or 413 for
+  the size) and the connection closed, and a stalled request times out after 30 s.
+- VR teleop: a fresh arm state with a non-finite pose or joint velocity is treated as no state:
+  the clutch releases, nothing is driven, and the client says so once. Before, a NaN passed both
+  leash checks and a latch on it made every target NaN.
+- The Python node client gives queued state callbacks up to 250 ms to catch up after a
+  long local streamer stall, preventing a false disconnect on the next tick. Repeated
+  stalls cannot extend that deadline; normal node-silence detection and explicit
+  session-end handling remain unchanged.
+- The `franka-rs` wheel carries `LICENSE` and `NOTICE`, libfranka's notice included, under
+  its `dist-info/licenses/`; only the sdist had them.
 
 ## [0.3.0] - 2026-09-10
 
@@ -667,6 +666,7 @@ differs from libfranka.
   version negotiation recognise an FER on the simulator; no effect against
   a real FR3 or FER.
 
+[0.4.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.4.0
 [0.3.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.3.0
 [0.2.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BarisYazici/franka-rs/releases/tag/v0.1.0

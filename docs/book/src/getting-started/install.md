@@ -20,21 +20,19 @@ For JSON serialization, enable the optional `serde` feature; see
 
 ## A Raspberry Pi or another remote control host
 
-Use `franka-node` on the realtime host and `franka-node-client` on your laptop,
-installed from source until matching releases are available.
-These are optional: a direct Rust or Python program needs neither.
-The [Raspberry Pi guide](./raspberry-pi.md) explains prerequisites, source installation,
-configuration, and the first connection. The nodes are development features in this
-checkout; build them from the repository root:
+Use `franka-node` on the realtime host and `franka-node-client` (the same version) on your
+laptop. These are optional: a direct Rust or Python program needs neither.
+The [Raspberry Pi guide](./raspberry-pi.md) explains prerequisites, installation,
+configuration, and the first connection.
 
 ```sh
-cargo install --path crates/franka-node --locked
+cargo install franka-node --locked
 # Optional camera process:
-cargo install --path crates/franka-cam --locked
+cargo install franka-cam --locked
 ```
 
-For available release packages and the full configuration, see
-[Serve arms over Zenoh](../howto/franka-node.md#installing).
+From a checkout, `cargo install --path crates/franka-node --locked` (and `crates/franka-cam`).
+Prebuilt binaries and the full configuration: [Serve arms over Zenoh](../howto/franka-node.md#installing).
 
 ## Python
 

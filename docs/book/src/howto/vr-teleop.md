@@ -4,8 +4,8 @@
 controller. It is two processes on the machine beside the robot: `franka-vr-bridge` reads the
 headset over adb and publishes each controller on its own ZMQ channel, and `franka-vr-teleop`
 follows one channel and drives one arm, with a clutch on the grip. A second `franka-vr-teleop`
-drives a second arm from the other hand. Until 0.4.0 is on PyPI, install it from a checkout
-with `pip install ./crates/franka-node/python ./tools/vr-teleop`.
+drives a second arm from the other hand. From a checkout, install both packages with
+`pip install ./crates/franka-node/python ./tools/vr-teleop`.
 
 ```sh
 pip install franka-vr-teleop                 # the bridge and the teleop client

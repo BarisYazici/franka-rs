@@ -40,8 +40,7 @@ pip install franka-vr-teleop              # the bridge and the teleop client
 
 The teleop client talks to the node through
 [`franka-node-client`](https://pypi.org/project/franka-node-client/), which it pins to its
-own version. Until 0.4.0 is on PyPI, and always from a checkout:
-`pip install ./crates/franka-node/python ./tools/vr-teleop`.
+own version. From a checkout: `pip install ./crates/franka-node/python ./tools/vr-teleop`.
 
 | command | what it does |
 |---|---|

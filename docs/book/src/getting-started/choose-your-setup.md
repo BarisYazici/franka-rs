@@ -58,8 +58,8 @@ and lease handling for a disconnected commander; link delay still affects how re
 your application feels. Use a trusted network and read the
 [node's stop behavior](../howto/franka-node.md) before streaming targets.
 
-The node and its Python client are development features: the guide installs both from
-the same source revision until matching packages are released.
+Install the node and its Python client at the same version: both from one release, or both
+from one source revision.
 
 Read next: [Run the control loop on a Raspberry Pi 5](./raspberry-pi.md), then
 [Serve arms over Zenoh: franka-node](../howto/franka-node.md) for the full picture.

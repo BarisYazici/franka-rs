@@ -6,7 +6,9 @@ on your laptop, then reads the arm's state. Motion is a separate, marked section
 
 ## Install franka-node on the Pi
 
-**From this source checkout.** Install Rust 1.89 or newer with [rustup](https://rustup.rs).
+**From a release**, `cargo binstall franka-node` (prebuilt) or `cargo install franka-node --locked`.
+
+**From a source checkout.** Install Rust 1.89 or newer with [rustup](https://rustup.rs).
 Put a copy of this repository on the Pi, at a revision that contains `crates/franka-node`,
 and from its root run:
 
@@ -68,7 +70,8 @@ log shows no `Realtime` error and that port 7447 is open on any firewall the Pi 
 
 ## Install the Python client on the laptop
 
-From the root of the same repository revision, with Python 3.9 or newer:
+With Python 3.9 or newer, the release of the node's version is `pip install franka-node-client`;
+from the root of the node's repository revision:
 
 ```sh
 python3 -m venv .venv

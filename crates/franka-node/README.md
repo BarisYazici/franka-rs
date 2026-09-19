@@ -445,19 +445,12 @@ few milliseconds before it arrives belongs to the episode but cannot be attribut
 
 ## Install
 
-As of 18 September 2026, the node is not yet published on crates.io. From the repository
-root, install this checkout with:
-
-```sh
-cargo install --path crates/franka-node --locked
-```
-
-The following commands require a matching crates.io and GitHub release:
-
 ```sh
 cargo binstall franka-node             # prebuilt: aarch64 (gnu, static musl) and x86_64, with record
 cargo install franka-node --locked     # or compiled, on a Pi too: Rust 1.89, 1.96 with --features record
 ```
+
+From a checkout, `cargo install --path crates/franka-node --locked` from the repository root.
 
 Without cargo, a release's `franka-node-<version>-<target>.tar.gz` holds the binary,
 `config.example.toml`, the systemd unit, LICENSE and NOTICE; the latest for Raspberry Pi OS 64-bit:

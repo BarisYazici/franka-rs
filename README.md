@@ -28,7 +28,7 @@ It implements the Franka Control Interface in Rust, without libfranka or C++.
 | Your setup | What to install | Where control runs |
 |---|---|---|
 | A Rust or Python program connected directly to the arm | `franka-rs` | Your Linux realtime machine |
-| A laptop or GPU workstation commanding an arm through a Raspberry Pi 5 | `franka-node` on the Pi, `franka-node-client` on the laptop (from source until released) | The Pi, running `franka-rs` |
+| A laptop or GPU workstation commanding an arm through a Raspberry Pi 5 | `franka-node` on the Pi, `franka-node-client` on the laptop | The Pi, running `franka-rs` |
 
 For direct control, install the published library in your project:
 
@@ -60,8 +60,6 @@ separate Zenoh router.
 
 **[Set up a Raspberry Pi 5](docs/book/src/getting-started/raspberry-pi.md)** has the
 installation, configuration, first state read, and a short Python motion example.
-The node and its peripherals are development features at this repository revision; that guide
-includes source installation instead of assuming that release packages are available.
 
 ## Add only what you need
 

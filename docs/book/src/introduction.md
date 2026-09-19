@@ -55,9 +55,7 @@ repository does not supply a trained policy or a complete input-device integrati
 ## Status and scope
 
 The [changelog](./changelog.md) separates released features from development work.
-The repository at this revision includes the node and camera tools; use the source-install paths in the
-new guides until matching packages are published. Published library packages may trail
-this checkout.
+Published packages may trail this checkout.
 
 The node docs report Pi 5 runs with one or two arms. Hardware validation is specific to
 each path: the core impedance reference still carries an FR3 validation caveat; the
