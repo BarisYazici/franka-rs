@@ -22,7 +22,7 @@
       "{\"client_id\":7,\"mode\":\"joints\",\"speed\":0.3,\"episode\":\"pick-0042\"}"
     ],
     "EpisodeMsg": [
-      "{\"arm\":\"fr3\",\"recording_id\":\"fr3-20260101T101500Z\",\"file\":\"fr3-20260101T101500Z.rrd\",\"t_node_ns\":8123456789,\"phase\":\"start\"}"
+      "{\"arm\":\"fr3\",\"recording_id\":\"fr3-20260101T120000Z\",\"file\":\"fr3-20260101T120000Z.rrd\",\"t_node_ns\":8123456789,\"phase\":\"start\"}"
     ]
   },
   "kinds": {

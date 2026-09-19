@@ -308,7 +308,7 @@ fn an_episode_id_that_is_not_a_file_name_is_refused() {
     }
     assert!(!dir.path().exists());
     assert_eq!(state(&target).recording, None);
-    assert!(usable_id("L-20260101T101500Z") && usable_id("L-20260101T101500Z-2"));
+    assert!(usable_id("L-20260101T120000Z") && usable_id("L-20260101T120000Z-2"));
 
     // A garbage start must not end a good episode: anything on the network can publish one.
     writer.apply(vec![start("L-1", now)], Vec::new());

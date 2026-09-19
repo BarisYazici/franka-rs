@@ -119,7 +119,8 @@ fn the_bounds_served_are_the_ones_the_design_settled_on() {
     let schema = schema();
     let field = |name: &str| schema.params[name].clone();
     assert_eq!(at(&field("joint_stiffness").max, 0), 1200.0);
-    // 60, not reference-stack's 80: the velocity barrier's gain is added on top of this one.
+    // 60, not the reference joint-impedance stack's 80: the velocity barrier's gain is added
+    // on top of this one.
     assert_eq!(at(&field("joint_damping").max, 0), 60.0);
     assert_ne!(at(&field("joint_damping").max, 0), 80.0);
     assert_eq!(at(&field("joint_damping").min, 0), 0.0);

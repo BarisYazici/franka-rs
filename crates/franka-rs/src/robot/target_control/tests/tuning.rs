@@ -148,7 +148,8 @@ fn the_bounds_are_the_numbers_the_design_settled() {
     let at = |word: usize| (LiveTuning::BOUNDS[word].min, LiveTuning::BOUNDS[word].max);
     for joint in 0..7 {
         assert_eq!(at(joint), (0.0, 1200.0));
-        // 60, not reference-stack's 80, because the barrier adds its 20 on top near the velocity limit.
+        // 60, not the reference joint-impedance stack's 80, because the barrier adds its 20
+        // on top near the velocity limit.
         assert_eq!(at(7 + joint), (0.0, 60.0));
         assert_eq!(
             LiveTuning::BOUNDS[7 + joint].max + VELOCITY_BARRIER_GAIN,

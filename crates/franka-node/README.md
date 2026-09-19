@@ -419,8 +419,8 @@ told.
 ## Episodes
 
 Every session's start and end go out on `franka/<arm>/episode` as one JSON line, whether the
-`record` feature is built or not: `{"arm": "fr3", "recording_id": "fr3-20260101T101500Z",
-"file": "fr3-20260101T101500Z.rrd", "t_node_ns": 8123456789, "phase": "start"}`, and the same
+`record` feature is built or not: `{"arm": "fr3", "recording_id": "fr3-20260101T120000Z",
+"file": "fr3-20260101T120000Z.rrd", "t_node_ns": 8123456789, "phase": "start"}`, and the same
 `recording_id` with `"phase": "end"` once the loop has stopped and the file is closed.
 
 With the feature and a `record_dir`, `recording_id` is the Rerun `RecordingId` of the arm's

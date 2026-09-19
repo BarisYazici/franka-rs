@@ -228,8 +228,8 @@ fn json_examples() -> Value {
     };
     let episode = EpisodeMsg {
         arm: "fr3".into(),
-        recording_id: "fr3-20260101T101500Z".into(),
-        file: Some("fr3-20260101T101500Z.rrd".into()),
+        recording_id: "fr3-20260101T120000Z".into(),
+        file: Some("fr3-20260101T120000Z.rrd".into()),
         t_node_ns: 8_123_456_789,
         phase: EpisodePhase::Start,
     };

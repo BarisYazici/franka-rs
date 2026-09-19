@@ -211,7 +211,7 @@
         "type": "f64",
         "min": 0.0,
         "max": 1.0,
-        "default": 1.0,
+        "default": 0.0,
         "policy": "slew",
         "slew_tau_s": 0.3,
         "group": "feedforward",
@@ -310,7 +310,7 @@
         20.0
       ],
       "velocity_feedforward_cutoff": 1000.0,
-      "velocity_feedforward_gain": 1.0
+      "velocity_feedforward_gain": 0.0
     },
     "slewing": {},
     "dirty": false

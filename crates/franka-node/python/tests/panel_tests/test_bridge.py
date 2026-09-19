@@ -25,7 +25,7 @@ def test_schema_is_the_owners_and_carries_design_rt_bounds(stack):
     http, _ = stack
     s = http.get("/api/L/node/schema")
     p = s["params"]
-    assert p["joint_damping"]["max"] == [60] * 7        # not reference-stack's 80
+    assert p["joint_damping"]["max"] == [60] * 7        # not the reference stack's 80
     assert p["ik_damping"]["min"] == 1e-3 and p["ik_damping"]["policy"] == "slew"
     assert p["budget"]["max"][0] == 1.2 and p["budget"]["policy"] == "step_up_gate_down"
     # The one limit no per-field row can express, published as the rule the node enforces.

@@ -201,10 +201,10 @@ impl LiveTuning {
     ///
     /// Publish this; never copy the numbers, and publish
     /// [`joint_damping_floor`](Self::joint_damping_floor) with it. Every derivation is in the
-    /// design record: the joint ceilings are reference-stack's, less the crate's own velocity barrier
-    /// gain, which is added on top of the law's damping and is what the stability bound
-    /// applies to; the budget ceilings sit at the measured edge of the robot's own
-    /// joint-velocity guard.
+    /// design record: the joint ceilings are the reference joint-impedance stack's, less the
+    /// crate's own velocity barrier gain, which is added on top of the law's damping and is
+    /// what the stability bound applies to; the budget ceilings sit at the measured edge of the
+    /// robot's own joint-velocity guard.
     pub const BOUNDS: &'static [FieldBound] = &{
         let blank = FieldBound::new("", None, "", 0.0, 0.0, "", TuningPolicy::Step);
         let mut rows = [blank; Self::WORDS];
@@ -221,10 +221,11 @@ impl LiveTuning {
                 SLEW,
             )
             .advise();
-            // The ceiling is 60 rather than reference-stack's 80 because near the joint's velocity
-            // limit `VELOCITY_BARRIER_GAIN` is added to this, and it is the sum the barrier's
-            // stability note bounds. Away from that limit the barrier contributes nothing, so
-            // this `min` of zero is not the floor in force: `joint_damping_floor` is.
+            // The ceiling is 60 rather than the reference joint-impedance stack's 80 because
+            // near the joint's velocity limit `VELOCITY_BARRIER_GAIN` is added to this, and it
+            // is the sum the barrier's stability note bounds. Away from that limit the barrier
+            // contributes nothing, so this `min` of zero is not the floor in force:
+            // `joint_damping_floor` is.
             rows[7 + i] =
                 FieldBound::new("joint_damping", Some(i), GAINS, 0.0, 60.0, "Nm s/rad", SLEW)
                     .advise();
