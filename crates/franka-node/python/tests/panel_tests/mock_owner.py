@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Mock of the two parameter owners (franka-node and teleop.py) plus a synthetic state stream.
 
 Serves `franka/<arm>/params/{schema,get,set}` and `franka/<arm>/teleop/params/{schema,get,set}`,
@@ -9,7 +8,8 @@ types -> merge -> relations -> clamp -> confirm_above -> store.
 
 `franka/<arm>/mock/ctl` accepts
 {"robot_mode": n, "has_errors": b, "phase": s, "silent": b} so tests can drive the reflex path
-and a node that has gone quiet.
+and a node that has gone quiet. A developer and test tool, not in the wheel; run it from the
+repository with the client installed: `python crates/franka-node/python/tests/panel_tests/mock_owner.py`.
 """
 
 from __future__ import annotations
@@ -26,10 +26,11 @@ from typing import Any, Dict, List, Optional
 
 import zenoh
 
-import statemsg
-import zbus
+from franka_node._wire import PHASES
+from franka_node.panel import zbus
+from franka_node.panel.validation import Rejection, check_params, crossings, parse_type
 from mock_schemas import DQ_LIMIT, SLEW_TAU_S, node_schema, teleop_schema
-from validation import Rejection, check_params, crossings, parse_type
+from mock_state import encode_state
 
 class Owner:
     """One parameter owner: schema, effective values, version, slew bookkeeping."""
@@ -202,11 +203,11 @@ class StateStream(threading.Thread):
             # headroom follows the budget: at the schema's confirm threshold j2 sits at ~60 % of its limit
             dq[1] = 0.6 * DQ_LIMIT[1] * p["budget"][0] / self.node.schema["params"]["budget"]["confirm_above"][0]
             o_t_ee = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ee[0], ee[1], ee[2], 1]
-            self.pub.put(statemsg.encode(
-                phase=self.ctl["phase"], robot_mode=self.ctl["robot_mode"], has_errors=self.ctl["has_errors"],
-                client_id=self.ctl["holder"], t_node_ns=time.monotonic_ns(), robot_time_ms=int(t * 1e3),
-                success_rate=1.0, q=[0.0, -0.78, 0.0, -2.36, 0.0, 1.57, 0.78], dq=dq, o_t_ee=o_t_ee,
-                target=target + [0.0, 0.0, 0.0, 1.0], accepted=i))
+            self.pub.put(encode_state(
+                phase=PHASES.index(self.ctl["phase"]), robot_mode=self.ctl["robot_mode"],
+                has_errors=self.ctl["has_errors"], client_id=self.ctl["holder"], t_node_ns=time.monotonic_ns(),
+                robot_time_ms=int(t * 1e3), success_rate=1.0, q=[0.0, -0.78, 0.0, -2.36, 0.0, 1.57, 0.78],
+                dq=dq, o_t_ee=o_t_ee, target=target + [0.0, 0.0, 0.0, 1.0], accepted=i))
             if t - last_status >= 1.0:
                 last_status = t
                 self.status_pub.put(zbus.dumps({

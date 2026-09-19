@@ -19,13 +19,11 @@ session returns `not_ready` when asked to change parameters.
 ## Open the optional panel
 
 Start the node and your Cartesian client using [Serve arms over Zenoh](./franka-node.md).
-The panel is a source tool in `tools/tuning-panel`, separate from the Python client package.
-From the repository root, in a Python virtual environment:
+The panel is the `franka-tuning-panel` command of the Python client; install the client as
+described in [From Python](./franka-node.md#from-python), then:
 
 ```sh
-python -m pip install 'eclipse-zenoh>=1.10,<2'
-python tools/tuning-panel/web.py \
-  --connect tcp/127.0.0.1:7447 --no-multicast \
+franka-tuning-panel --connect tcp/127.0.0.1:7447 --no-multicast \
   --presets ./tuning-presets.json
 ```
 
@@ -37,18 +35,23 @@ ssh -N -L 8765:127.0.0.1:8765 <pi-user>@<pi-address>
 ```
 
 Then open the same local URL on the laptop. The bridge binds to loopback by default and has
-no authentication; keep that default. Access to the node's Zenoh bus also permits parameter
-changes: tuning requests identify their sender but do not require the motion lease holder.
+no authentication; keep that default. `--host` refuses a non-loopback address unless
+`--expose-to-network` is given, which hands every live parameter of every arm to anyone who
+can reach the port. Access to the node's Zenoh bus also permits parameter changes: tuning
+requests identify their sender but do not require the motion lease holder.
 
-To explore the interface without a robot, run these in two terminals instead:
+`--presets` names the panel's preset file, by default
+`~/.local/state/franka-tuning/presets.json`. Presets never change the node's TOML.
+
+To explore the interface without a robot, run these in two terminals from the repository
+root instead; the mock is a test tool that stays in the repository:
 
 ```sh
-python tools/tuning-panel/mock_owner.py --listen tcp/127.0.0.1:17447 --no-multicast
+python crates/franka-node/python/tests/panel_tests/mock_owner.py --listen tcp/127.0.0.1:17447 --no-multicast
 ```
 
 ```sh
-python tools/tuning-panel/web.py \
-  --connect tcp/127.0.0.1:17447 --no-multicast \
+franka-tuning-panel --connect tcp/127.0.0.1:17447 --no-multicast \
   --presets ./tuning-presets.json
 ```
 

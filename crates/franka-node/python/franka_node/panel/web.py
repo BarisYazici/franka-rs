@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """HTTP front of the tuning bridge: static files, the JSON routes, SSE. Owner refusals are
 HTTP 200 with ok:false (the panel branches on `ok`); 422 only for a malformed request body.
 
@@ -29,8 +28,8 @@ from urllib.parse import urlparse
 
 import zenoh
 
-import zbus
-from bridge import ArmMonitor, Bridge, SseClient
+from . import zbus
+from .bridge import ArmMonitor, Bridge, SseClient
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
@@ -212,7 +211,8 @@ def serve(bridge: Bridge, host: str, port: int) -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description="The tuning panel: a running franka-node's live parameters "
+                                             "in the browser, served on loopback.")
     ap.add_argument("--host", default="127.0.0.1", help="bind address; loopback unless --expose-to-network")
     ap.add_argument("--expose-to-network", action="store_true",
                     help="allow a non-loopback --host: every live parameter of every arm becomes settable by "

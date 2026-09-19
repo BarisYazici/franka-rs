@@ -14,17 +14,19 @@ from typing import Any, Callable, Dict, List, Optional
 
 import zenoh
 
-import zbus
-import statemsg
-from metrics import MetricsEngine, Sample
-from presets import Presets
-from validation import Rejection, check_schema, check_set_request
+from .._errors import ProtocolError
+from .._wire import ROBOT_MODES, decode_state
+from . import zbus
+from .metrics import MetricsEngine, Sample
+from .presets import Presets
+from .validation import Rejection, check_schema, check_set_request
 
 log = logging.getLogger("tuning-bridge")
 UNREACHABLE_S = 3.0
 METRICS_HZ = 10.0
 SEED_PERIOD_S = 2.0  # how often the seeder retries an owner that has not answered yet
-CONDITION_KEYS = ("phase", "robot_mode", "has_errors", "holding", "joints", "client_id")
+MODE_CODES = {name: code for code, name in enumerate(ROBOT_MODES)}
+REFLEX_MODES = ("reflex", "user_stopped", "automatic_error_recovery")
 
 
 class SseClient:
@@ -89,18 +91,19 @@ class ArmMonitor:
 
     def on_state(self, payload: bytes) -> None:
         try:
-            s = statemsg.decode(payload)
-        except statemsg.DecodeError as e:
+            s = decode_state(payload)
+        except ProtocolError as e:
             self.decode_failures += 1
             if self.decode_failures == 1:
                 log.error("state on arm %s cannot be decoded (%s); the page will say so", self.arm, e)
             return
-        reflex = statemsg.is_reflex(s)
+        reflex = s.has_errors or s.robot_mode in REFLEX_MODES
         self.state_at = time.monotonic()
-        self.metrics.push(Sample(t=s["t_node_ns"] / 1e9, dq=s["dq"], target=s["target"][:3],
-                                 ee=s["o_t_ee"][12:15], valid=not reflex))
-        condition = {k: s[k] for k in CONDITION_KEYS}
-        condition["reflex"] = reflex
+        self.metrics.push(Sample(t=s.t_node_ns / 1e9, dq=s.dq.tolist(), target=s.target[:3].tolist(),
+                                 ee=s.position.tolist(), valid=not reflex))
+        condition = {"phase": s.phase, "robot_mode": MODE_CODES.get(s.robot_mode),
+                     "robot_mode_name": s.robot_mode, "has_errors": s.has_errors,
+                     "holding": s.holding, "joints": s.joints, "client_id": s.holder, "reflex": reflex}
         if condition != self.condition:  # phase, mode or errors changed: tell the page now, not at 1 Hz
             self.condition = condition
             self.broadcast("status", self.status_event())
@@ -112,8 +115,6 @@ class ArmMonitor:
         if self.condition:
             out.update(self.condition)
             out["holder"] = self.condition["client_id"]
-            out["robot_mode_name"] = statemsg.ROBOT_MODES[self.condition["robot_mode"]] \
-                if self.condition["robot_mode"] < len(statemsg.ROBOT_MODES) else "?"
         out["reflex"] = bool(self.condition and self.condition["reflex"])
         out["channels"] = self.channels()
         return out

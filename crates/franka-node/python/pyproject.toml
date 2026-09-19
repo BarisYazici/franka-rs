@@ -17,6 +17,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 
+[project.scripts]
+franka-tuning-panel = "franka_node.panel.web:main"
+
 [project.urls]
 Homepage = "https://barisyazici.github.io/franka-rs/howto/franka-node.html"
 Repository = "https://github.com/BarisYazici/franka-rs"

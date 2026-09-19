@@ -19,9 +19,8 @@ import json
 import os
 from typing import Any, Dict
 
-TOOL = os.path.dirname(os.path.abspath(__file__))
-NODE_SCHEMA_PATH = os.path.normpath(
-    os.path.join(TOOL, "..", "..", "crates", "franka-node", "schema", "params-schema.json"))
+NODE_SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "schema",
+                                "params-schema.json")
 
 
 def _dump() -> Dict[str, Any]:

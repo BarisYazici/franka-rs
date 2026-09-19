@@ -10,10 +10,9 @@ import subprocess
 
 import pytest
 
-from mock_schemas import node_schema, teleop_schema
+from franka_node.panel.web import STATIC
 
-TOOL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC = os.path.join(TOOL, "static")
+from .mock_schemas import node_schema, teleop_schema
 
 
 def published_numbers():
@@ -231,7 +230,7 @@ def math_sqrt(x):
     return x ** 0.5
 
 
-def test_feedforward_warning_values():
+def test_feedforward_note_values():
     derived = {"leash": {"translation": 0.025, "rotation": 0.15},
                "cartesian_preset": {"stiffness": [750, 750, 750, 15, 15, 15], "damping": [50, 50, 90, 2, 2, 2], "reference": 750}}
     r = run_js(f"""
@@ -242,7 +241,7 @@ def test_feedforward_warning_values():
       const stiff = feedforwardCap(0, 3000, [0.3, 0.5, 20], d);
       console.log(JSON.stringify({{at0, at0hi, at1, stiff}}));
     """)
-    assert r["at0"]["severity"] == "warn" and "z 0.208 m/s (τ 0.120 s)" in r["at0"]["text"]
+    assert r["at0"]["severity"] == "info" and "z 0.208 m/s (τ 0.120 s)" in r["at0"]["text"]
     assert r["at0hi"]["severity"] == "bad" and "z BINDS" in r["at0hi"]["text"]  # share 0.49 > cap 0.208
     assert r["at1"]["severity"] == "ok"
     assert "z 0.417 m/s (τ 0.060 s)" in r["stiff"]["text"]  # tau scales with 1/sqrt(K/K_ref)

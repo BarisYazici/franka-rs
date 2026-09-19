@@ -8,9 +8,12 @@ import urllib.request
 
 import pytest
 
-from conftest import TOOL, build_stack, free_port, start_mock
+from franka_node.panel import zbus
+from franka_node.panel.bridge import ArmMonitor
+from franka_node.panel.web import STATIC, resolve_bind
 
-pytestmark = pytest.mark.usefixtures("zenoh_mod")
+from .conftest import build_stack, free_port, start_mock
+from .mock_state import encode_state
 
 
 def test_discovery(stack):
@@ -33,12 +36,12 @@ def test_schema_is_the_owners_and_carries_design_rt_bounds(stack):
                       "velocity_feedforward_cutoff", "ik_damping", "ik_nullspace_gain", "budget", "rotation_budget"}
 
 
-def test_headroom_limits_follow_the_owners(zenoh_mod, tmp_path):
+def test_headroom_limits_follow_the_owners(tmp_path):
     """dq_limit from the node's derived block, the release line from the teleop client's own
     parameter; neither is a constant in the bridge."""
     port = free_port()
     proc = start_mock(port, ["--schema-override", json.dumps({"derived": {"dq_limit": [1.0] * 7}})])
-    http, bridge, stop = build_stack(zenoh_mod, port, str(tmp_path / "p.json"))
+    http, bridge, stop = build_stack(port, str(tmp_path / "p.json"))
     try:
         engine = bridge.arm("L").metrics
         for _ in range(30):  # the seeder thread retries every SEED_PERIOD_S
@@ -60,10 +63,10 @@ def test_headroom_limits_follow_the_owners(zenoh_mod, tmp_path):
         proc.terminate()
 
 
-def test_malformed_schema_is_reported_not_rendered(zenoh_mod, tmp_path):
+def test_malformed_schema_is_reported_not_rendered(tmp_path):
     port = free_port()
     proc = start_mock(port, ["--schema-override", json.dumps({"ik_damping": {"min": 0}})])
-    http, _, stop = build_stack(zenoh_mod, port, str(tmp_path / "p.json"))
+    http, _, stop = build_stack(port, str(tmp_path / "p.json"))
     try:
         s = http.get("/api/L/node/schema")
         assert s["ok"] is False and s["reason"] == "bad_schema" and "ik_damping: log scale" in s["error"]
@@ -73,11 +76,11 @@ def test_malformed_schema_is_reported_not_rendered(zenoh_mod, tmp_path):
         proc.terminate()
 
 
-def test_bounds_come_from_the_published_schema_not_a_constant(zenoh_mod, tmp_path):
+def test_bounds_come_from_the_published_schema_not_a_constant(tmp_path):
     """A different owner schema changes what the bridge serves and what the owner clamps to."""
     port = free_port()
     proc = start_mock(port, ["--schema-override", json.dumps({"joint_damping": {"max": [45] * 7}})])
-    http, _, stop = build_stack(zenoh_mod, port, str(tmp_path / "p.json"))
+    http, _, stop = build_stack(port, str(tmp_path / "p.json"))
     try:
         assert http.get("/api/L/node/schema")["params"]["joint_damping"]["max"] == [45] * 7
         _, r = http.post("/api/L/node/params", {"client_id": 1, "params": {"joint_damping": [50] * 7}})
@@ -153,7 +156,6 @@ def test_metrics_from_state_and_reflex(stack):
     assert s["reach"] == {"node": True, "teleop": True}
     rows = bridge.arm("L").metrics.rows
     assert rows[0].t <= s["markers"][-1]["t"] <= rows[-1].t  # markers live on the state stream's clock
-    import zbus
     zbus.query_one(bridge.session, "franka/L/mock/ctl", {"robot_mode": 4})
     time.sleep(0.3)
     s = http.get("/api/L/metrics")
@@ -185,11 +187,23 @@ def test_undecodable_state_is_counted_logged_and_said(stack, caplog):
     assert mon.decode_failures == before + 4
 
 
+def test_reflex_from_state():
+    """Reflex is robot mode 4, 5 or 6 (reflex, user stopped, error recovery) or `has_errors`."""
+    mon = ArmMonitor("X", lambda owner, verb: {})
+
+    def reflex(**fields):
+        mon.on_state(encode_state(**fields))
+        return mon.condition["reflex"]
+    assert not reflex(robot_mode=2) and not reflex(robot_mode=3)
+    assert all(reflex(robot_mode=mode) for mode in (4, 5, 6))
+    assert reflex(robot_mode=2, has_errors=True)
+    assert mon.status_event()["robot_mode_name"] == "move" and mon.decode_failures == 0
+
+
 def test_status_comes_from_the_node_key_and_reflex_from_state(stack):
     """`franka/node/<node>/status` fans out per arm; the reflex flag is the state's, and a mode
     change reaches the page at once, not at the 1 Hz status."""
     http, bridge = stack
-    import zbus
     zbus.query_one(bridge.session, "franka/L/mock/ctl", {"robot_mode": 2, "has_errors": False})
     time.sleep(1.2)
     mon = bridge.arm("L")
@@ -222,7 +236,6 @@ def test_status_comes_from_the_node_key_and_reflex_from_state(stack):
 
 def test_dead_node_is_reported_not_frozen(stack):
     http, bridge = stack
-    import zbus
     zbus.query_one(bridge.session, "franka/L/mock/ctl", {"silent": True})
     try:
         time.sleep(3.5)
@@ -296,7 +309,7 @@ def test_delete_as_the_panel_sends_it(stack):
     http, _ = stack
     port = http.base.rsplit(":", 1)[1]
     same = {"Origin": f"http://127.0.0.1:{port}"}
-    api_js = open(os.path.join(TOOL, "static", "api.js")).read()
+    api_js = open(os.path.join(STATIC, "api.js")).read()
     assert "method: 'DELETE', headers: { 'Content-Type': 'application/json' }" in api_js
     assert http.delete("/api/L/markers", headers=same) == {"ok": True}
     bare = urllib.request.Request(http.base + "/api/L/markers", method="DELETE", headers=same)
@@ -352,14 +365,13 @@ def test_sse_delivers_hello_current_and_metrics(stack):
     assert seen["metrics"]["ok"] and "reach" in seen["metrics"]
 
 
-def test_bind_is_loopback_unless_exposed(zenoh_mod, caplog):
-    from web import resolve_bind
+def test_bind_is_loopback_unless_exposed(caplog):
     assert resolve_bind("127.0.0.1", False) == "127.0.0.1"
     assert resolve_bind("::1", False) == "::1"
     with pytest.raises(SystemExit, match="not loopback"):
         resolve_bind("0.0.0.0", False)
     with pytest.raises(SystemExit):
-        resolve_bind("172.16.0.56", False)
+        resolve_bind("192.0.2.10", False)
     with caplog.at_level("WARNING", logger="tuning-bridge"):
         assert resolve_bind("0.0.0.0", True) == "0.0.0.0"
     assert "no authentication" in caplog.text

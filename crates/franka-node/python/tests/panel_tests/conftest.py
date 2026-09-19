@@ -1,6 +1,7 @@
 """Fixtures: a mock owner subprocess on a private TCP endpoint and an in-process bridge + web
-server connected to it. Both need `eclipse-zenoh`; tests that use them skip without it."""
+server connected to it."""
 
+import argparse
 import json
 import os
 import socket
@@ -11,9 +12,13 @@ import time
 import urllib.request
 
 import pytest
+import zenoh
 
-TOOL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, TOOL)
+from franka_node.panel import zbus
+from franka_node.panel.bridge import Bridge
+from franka_node.panel.web import serve
+
+MOCK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_owner.py")
 
 
 def free_port() -> int:
@@ -49,13 +54,8 @@ class Http:
         return self._call("DELETE", path, headers=headers)[1]
 
 
-@pytest.fixture(scope="session")
-def zenoh_mod():
-    return pytest.importorskip("zenoh")
-
-
 def start_mock(port: int, extra=()):
-    proc = subprocess.Popen([sys.executable, os.path.join(TOOL, "mock_owner.py"), "--listen",
+    proc = subprocess.Popen([sys.executable, MOCK, "--listen",
                              f"tcp/127.0.0.1:{port}", "--no-multicast", *extra],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     line = proc.stdout.readline()
@@ -64,7 +64,7 @@ def start_mock(port: int, extra=()):
 
 
 @pytest.fixture(scope="module")
-def mock(zenoh_mod):
+def mock():
     port = free_port()
     proc = start_mock(port)
     yield port
@@ -72,16 +72,12 @@ def mock(zenoh_mod):
     proc.wait(5)
 
 
-def build_stack(zenoh_mod, mock_port: int, presets_path: str):
+def build_stack(mock_port: int, presets_path: str):
     """In-process Bridge + web server connected to a mock; returns (Http, Bridge, stop)."""
-    import argparse
-    import zbus
-    from bridge import Bridge
-    from web import serve
     ap = argparse.ArgumentParser()
     zbus.add_zenoh_args(ap)
     args = ap.parse_args(["--connect", f"tcp/127.0.0.1:{mock_port}", "--no-multicast"])
-    session = zenoh_mod.open(zbus.config_from_args(args))
+    session = zenoh.open(zbus.config_from_args(args))
     bridge = Bridge(session, presets_path, timeout=2.0)
     srv = serve(bridge, "127.0.0.1", free_port())
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -98,7 +94,7 @@ def build_stack(zenoh_mod, mock_port: int, presets_path: str):
 
 
 @pytest.fixture(scope="module")
-def stack(zenoh_mod, mock, tmp_path_factory):
-    http, bridge, stop = build_stack(zenoh_mod, mock, str(tmp_path_factory.mktemp("presets") / "presets.json"))
+def stack(mock, tmp_path_factory):
+    http, bridge, stop = build_stack(mock, str(tmp_path_factory.mktemp("presets") / "presets.json"))
     yield http, bridge
     stop()

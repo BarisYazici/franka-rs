@@ -2,7 +2,8 @@ import math
 
 import pytest
 
-from validation import Rejection, check_params, check_schema, check_set_request, crossings, parse_type
+from franka_node.panel.validation import (Rejection, check_params, check_schema, check_set_request, crossings,
+                                          parse_type)
 
 SCHEMA = {"owner": "node", "arm": "L", "boot_id": "x", "schema_version": 1, "params": {
     "k": {"type": "f64[3]", "min": [0, 0, 0], "max": [1, 1, 1], "default": [0.5, 0.5, 0.5]},

@@ -5,8 +5,8 @@ import pytest
 import threading
 import time
 
-from metrics import (STALE_S, MetricsEngine, Sample, SosFilter, WindowStats, butter_highpass_sos, compare,
-                     lag_samples)
+from franka_node.panel.metrics import (STALE_S, MetricsEngine, Sample, SosFilter, WindowStats,
+                                       butter_highpass_sos, compare, lag_samples)
 
 FS = 100.0
 

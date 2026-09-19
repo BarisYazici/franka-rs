@@ -48,7 +48,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A live-tuning guide and node parameter protocol reference, including accepted-versus-applied
   values, feedforward configuration, confirmation gates and session lifetime. A portable
   two-arm node example retains the shipped defaults and shows optional CPU pinning and Hands.
-  The tuning panel instructions now use a dedicated environment and a standalone preset path.
+
+- **The tuning panel ships in `franka-node-client`** as the `franka-tuning-panel` command
+  (`pip install franka-node-client`, then `franka-tuning-panel --connect tcp/<host>:7447`); it
+  decodes state with the client's own wire module instead of a copy.
 
 - **Live tuning: a running Cartesian session takes a change to the law and the plan, and
   `franka-node` serves it over Zenoh.** `LiveTuning` is the set of parameters an operator may
@@ -83,7 +86,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   start at, and a session ending puts them back to the TOML's, deliberately, because an
   experiment nobody saved is not one a new session should inherit.
   `cargo run -p franka-node --example params_schema` dumps that schema without a robot, which
-  is what `tools/tuning-panel`'s mock owner serves instead of a copy of the numbers.
+  is what the tuning panel's mock owner serves instead of a copy of the numbers.
 
 - **A continuous weight and a bandwidth bound on the impedance law's velocity feedforward**
   (`ImpedanceOptions::velocity_feedforward_gain`, `velocity_feedforward_cutoff`,

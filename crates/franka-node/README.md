@@ -349,7 +349,8 @@ its own `Gripper` and reuse everything else.
 A running Cartesian impedance session accepts parameter updates over
 `franka/<arm>/params/{schema,get,set}` and publishes `params/current`. The node derives its
 schema from the library's bounds table; changes use the controller's slew and budget gates.
-The optional [browser panel](../../tools/tuning-panel/README.md) provides schema-driven controls.
+The optional [browser panel](python/README.md#tuning-panel), `franka-tuning-panel` from the
+Python client, provides schema-driven controls.
 
 Read [Tune a running controller](../../docs/book/src/howto/live-tuning.md) for the workflow,
 feedforward settings and session lifetime; [Live parameter protocol](../../docs/book/src/reference/node-parameters.md)

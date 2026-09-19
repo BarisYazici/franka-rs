@@ -239,7 +239,8 @@ jobs:
             -- --test-threads=1
 
       # The Python client (crates/franka-node/python) against the node binary and the same
-      # server: its offline tests, then tests/test_sim_node.py (target/release/franka-node).
+      # server: its offline tests (tests/panel_tests: the tuning panel against its mock owner), then
+      # tests/test_sim_node.py (target/release/franka-node).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

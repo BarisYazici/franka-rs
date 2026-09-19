@@ -53,4 +53,11 @@ What the client does for you (the lease, the keepalive, pacing under the node's 
 `max_lead`, the anchor flag, `wait`, `SessionEnded`) is described on the book page
 [Serve arms over Zenoh](https://barisyazici.github.io/franka-rs/howto/franka-node.html).
 
+## Tuning panel
+
+The client installs `franka-tuning-panel`, a browser page for the live parameters of a running
+Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It binds to
+loopback; see [Tune a running controller](https://barisyazici.github.io/franka-rs/howto/live-tuning.html)
+for the tunnel, presets and limits.
+
 The package version is the `franka-rs` workspace version. Apache-2.0.
