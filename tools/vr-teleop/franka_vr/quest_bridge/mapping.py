@@ -173,6 +173,8 @@ class VrMapper:
         `movement_enabled` at False forever, i.e. teleop silently stopped
         working with no error anywhere. Skipping the frame is the fix; the
         caller publishes a not-fresh message for that tick and carries on.
+        A pose with no rotation in it (singular, or left-handed) is skipped
+        the same way, before it can touch the latch or the freshness clock.
         """
         cid = self.controller_id
         grip_key = cid.upper() + "G"
@@ -189,13 +191,6 @@ class VrMapper:
         grip = bool(buttons[grip_key])
         stick = bool(buttons[stick_key])
 
-        # --- freshness: CHANGE in the raw matrix, not arrival of a frame ---
-        if self._last_matrix is None or not np.array_equal(pose, self._last_matrix):
-            self._last_change_t = now
-        self._last_matrix = pose.copy()
-        fresh = (now - self._last_change_t) < self.fresh_timeout_s
-        controller_on = (now - self._last_change_t) < self.controller_on_timeout_s
-
         # --- forward-direction latch ---
         # Relatch whenever the grip is NOT held (continuous "stand anywhere"
         # re-anchoring while disengaged), OR the thumbstick was just clicked
@@ -204,25 +199,30 @@ class VrMapper:
         # that frame happens to already be gripping). Frozen only when
         # grip-held AND already latched AND no RJ this tick.
         relatch = (not grip) or stick or not self._latched
-        if relatch:
-            try:
-                self._vr_to_global = np.linalg.inv(pose)
-                self._latched = True
-            except np.linalg.LinAlgError:
-                # A singular pose matrix is garbage; fall back to identity and
-                # keep asking for a relatch next tick (DROID's own behaviour).
-                self._vr_to_global = np.eye(4)
-                self._latched = False
+        try:
+            vr_to_global = np.linalg.inv(pose) if relatch else self._vr_to_global
+            # --- orientation: relative to the latched forward direction ---
+            if self.spatial_rotation:
+                rot_mat = self.global_to_env_mat @ pose @ vr_to_global
+            else:
+                rot_mat = self.global_to_env_mat @ vr_to_global @ pose
+            quat = rmat_to_quat(rot_mat[:3, :3])
+        except (np.linalg.LinAlgError, ValueError):
+            # Singular or left-handed: garbage, and an unusable frame like a
+            # NaN one. The previous latch stays; the caller rides out the gap.
+            return None
+        self._vr_to_global = vr_to_global
+        self._latched = True
+
+        # --- freshness: CHANGE in the raw matrix, not arrival of a frame ---
+        if self._last_matrix is None or not np.array_equal(pose, self._last_matrix):
+            self._last_change_t = now
+        self._last_matrix = pose.copy()
+        fresh = (now - self._last_change_t) < self.fresh_timeout_s
+        controller_on = (now - self._last_change_t) < self.controller_on_timeout_s
 
         # --- translation: fixed remap ONLY (decoupled from controller tilt) --
         pos = self.spatial_scale * (self.global_to_env_mat @ pose)[:3, 3]
-
-        # --- orientation: relative to the latched forward direction ---
-        if self.spatial_rotation:
-            rot_mat = self.global_to_env_mat @ pose @ self._vr_to_global
-        else:
-            rot_mat = self.global_to_env_mat @ self._vr_to_global @ pose
-        quat = rmat_to_quat(rot_mat[:3, :3])
 
         trig = buttons.get(trig_key)
         try:

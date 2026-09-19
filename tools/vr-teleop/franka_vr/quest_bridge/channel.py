@@ -108,10 +108,10 @@ class _Channel:
 
         A usable sample passes straight through and re-arms the hold. An
         unusable one (`None`: this controller missing from the frame, its
-        buttons missing, the reader raised, or an empty frame) republishes the
-        last usable sample VERBATIM for up to `hold_s`, then gives up and
-        returns None -- which is the sustained-gap verdict `_update_forced_
-        open` latches the clutch on.
+        buttons missing or its pose garbage, the reader raised, or an empty
+        frame) republishes the last usable sample VERBATIM for up to
+        `hold_s`, then gives up and returns None -- which is the sustained-gap
+        verdict `_update_forced_open` latches the clutch on.
 
         FAIL CLOSED AT THE EDGES: with nothing yet to republish (startup, or a
         gap that already gave up) the answer is None immediately. Giving up

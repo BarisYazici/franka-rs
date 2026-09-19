@@ -44,8 +44,8 @@ Third-party code carried or derived here:
    has since been reimplemented: no DROID function or block remains. It
    keeps DROID's names and ideas -- the signed `rmat_reorder` axis-map
    encoding and `vec_to_reorder_mat`, the
-   forward-direction latch to inv(pose) with an identity fallback -- and a few
-   one-line matrix expressions the maths forces.
+   forward-direction latch to inv(pose) -- and a few one-line matrix
+   expressions the maths forces.
 
 Oculus and Quest are trademarks of Meta Platforms, Inc. Franka, Franka Emika,
 Panda and FR3 are trademarks of Franka Robotics GmbH. This project is not

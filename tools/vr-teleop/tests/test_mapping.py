@@ -207,22 +207,28 @@ def test_the_very_first_frame_latches_even_if_it_is_already_gripping():
     assert np.allclose(q if q[3] > 0 else -q, RECORDED_DISENGAGED_QUAT, atol=1e-12)
 
 
-def test_a_singular_pose_relatches_to_identity_and_then_scipy_rejects_it():
-    """TODAY'S BEHAVIOUR, PINNED -- and it is not what the code comment claims.
-
-    `np.linalg.inv` raises, the mapper falls back to identity as DROID does,
-    and then `rmat_to_quat` rejects the singular rotation, so `update()`
-    raises. `QuestBridge.tick()` does not guard `mapper.update`, so a singular
-    pose from the reader would end the bridge process. Left alone on purpose:
-    parcel B is structure, not behaviour. If it is ever fixed, this test is
-    where the change gets declared.
-    """
+def test_a_pose_with_no_rotation_is_an_unusable_frame_and_keeps_the_latch():
+    """A singular pose (no inverse to latch) and a left-handed one under a
+    frozen grip (no quaternion) map to None like any unusable frame. They used
+    to raise out of `update()` and end the bridge. Neither touches the latch
+    nor the freshness clock, and the next good frame carries on from both."""
     m = VrMapper(controller_id="r")
-    m.update(*frame(rot=rot_z(0.3)), now=0.0)
-    buttons = {"RG": False, "RJ": False, "rightTrig": [0.0]}
-    with pytest.raises(ValueError):
-        m.update({"r": np.zeros((4, 4))}, buttons, 0.01)
-    assert np.array_equal(m.vr_to_global_mat, np.eye(4))
+    m.update(*frame(t=(0.1, 0.0, 0.0), rot=rot_z(0.3)), now=0.0)
+    m.update(*frame(t=(0.2, 0.0, 0.0), rot=rot_z(0.4), grip=True), now=0.01)
+    latched = m.vr_to_global_mat.copy()
+
+    released = {"RG": False, "RJ": False, "rightTrig": [0.0]}
+    assert m.update({"r": np.zeros((4, 4))}, released, 0.02) is None
+    mirrored = pose(t=(0.3, 0.0, 0.0), rot=np.diag([1.0, 1.0, -1.0]))
+    assert m.update(*frame(grip=True), now=0.03) is not None      # still frozen
+    assert m.update({"r": mirrored}, dict(released, RG=True), 0.04) is None
+    assert np.array_equal(m.vr_to_global_mat, latched)
+    # Nor a change: the 0.03 pose again 260 ms later is stale, garbage in between or not.
+    assert m.update(*frame(grip=True), now=0.29).fresh is False
+
+    s = m.update(*frame(t=(0.2, 0.0, 0.0), rot=rot_z(0.4), grip=True), now=0.30)
+    assert s is not None and s.engaged
+    assert np.array_equal(m.vr_to_global_mat, latched)
 
 
 def test_spatial_rotation_false_is_the_body_frame_form():

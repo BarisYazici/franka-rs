@@ -117,6 +117,24 @@ def test_an_empty_frame_still_publishes_not_fresh_rather_than_nothing():
     assert m["gripper"] == 0.0
 
 
+def test_a_pose_with_no_rotation_is_not_fatal():
+    """A singular pose used to raise out of tick() and run() and end the bridge.
+    It is an unusable frame now: the gap hold, then not-fresh, then recovery."""
+    br, reader, pubs, clock = make(rate_hz=0)
+    reader.frame = frame("r")
+    br.tick()
+    good = last(pubs[0])
+    reader.frame = ({"r": np.zeros((4, 4))}, frame("r")[1])
+    br.tick()
+    assert last(pubs[0])["pos"] == good["pos"] and last(pubs[0])["fresh"] is True  # held
+    clock.t += 0.2
+    assert br.run(max_ticks=3) == 0
+    assert last(pubs[0])["fresh"] is False and br.forced_open == [True]
+    reader.frame = frame("r", t=(0.01, 0.0, 0.0))
+    br.tick()
+    assert last(pubs[0])["fresh"] is True and br.forced_open == [False]
+
+
 def test_the_reader_raising_is_not_fatal():
     br, reader, pubs, clock = make()
     reader.raises = RuntimeError("adb went away")
