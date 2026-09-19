@@ -273,7 +273,29 @@ fn a_stiffness_update_never_lowers_a_damping_it_does_not_carry() {
         })
         .unwrap();
     assert_eq!(clamped.len(), 7, "{clamped:?}");
-    assert_eq!(tuning.joint_damping, [LiveTuning::BOUNDS[7].max; 7]);
+    let ceilings: [f64; 7] = std::array::from_fn(|j| LiveTuning::BOUNDS[7 + j].max);
+    assert_eq!(tuning.joint_damping, ceilings);
+}
+
+/// The wrist's damping ceiling is its own: a value the shoulder keeps is clamped there.
+#[test]
+fn the_wrist_damping_is_clamped_below_the_shoulder_ceiling() {
+    let mut tuning = probe();
+    let clamped = tuning
+        .apply_update(&TuningUpdate {
+            joint_damping: Some([55.0; 7]),
+            ..TuningUpdate::default()
+        })
+        .unwrap();
+    assert_eq!(
+        tuning.joint_damping,
+        [55.0, 55.0, 55.0, 55.0, 40.0, 40.0, 40.0]
+    );
+    let indices: Vec<_> = clamped.iter().map(|b| (b.name, b.index)).collect();
+    assert_eq!(
+        indices,
+        [4, 5, 6].map(|j| ("joint_damping", Some(j))).to_vec()
+    );
 }
 
 /// An uncarried word was never checked, so a seeded NaN reaches the clamp. It must come back

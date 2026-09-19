@@ -22,6 +22,10 @@ exclude = ["/target", "**/*.pcap", "**/*.pcapng", "**/*.log"]
 name = "franka"
 path = "src/lib.rs"
 
+# docs.rs renders the optional `serde` and `model-library` API too; neither needs a system library.
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = []
 # Opt-in FCI v5 (Franka Emika Robot / FER) shared-object loader: `LoadModelLibrary` plus

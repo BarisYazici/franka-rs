@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.7,<2"]
+requires = ["maturin>=1.9.3,<2"]
 build-backend = "maturin"
 
 [project]
@@ -7,6 +7,8 @@ name = "franka-rs"
 description = "Python bindings for franka-rs: drive a Franka FR3 or Panda from a low-rate policy, with the 1 kHz loop in Rust"
 readme = "README.md"
 license = "Apache-2.0"
+# The NOTICE is the franka crate's, libfranka's notice included: the extension is built from it.
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.21"]
 classifiers = [

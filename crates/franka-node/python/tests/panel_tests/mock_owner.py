@@ -3,7 +3,7 @@
 Serves `franka/<arm>/params/{schema,get,set}` and `franka/<arm>/teleop/params/{schema,get,set}`,
 publishes `.../params/current` on change and every second, the packed `StateMsg` on
 `franka/<arm>/state` at 100 Hz and the node-scoped `franka/node/mock-<arm>/status` at 1 Hz, both
-in the node's own wire shapes. The `set` path runs the owner-side order from DESIGN-ui 1.4:
+in the node's own wire shapes. The `set` path runs the owner-side order:
 types -> merge -> relations -> clamp -> confirm_above -> store.
 
 `franka/<arm>/mock/ctl` accepts
@@ -140,8 +140,8 @@ class Owner:
 
 
 def node_domain_checks(p: Dict[str, Any]) -> None:
-    """Runs in the relations step, before the clamp: DESIGN-rt 5.4's two hard-invalid domains are
-    refused rather than snapped to the bound. v1 has no cross-field rule."""
+    """Runs in the relations step, before the clamp: the two hard-invalid domains are refused
+    rather than snapped to the bound. v1 has no cross-field rule."""
     for k in ("ik_damping", "cartesian_stiffness"):
         if p[k] <= 0:
             raise Rejection("invalid", k, f"{k} must be > 0, got {p[k]}")

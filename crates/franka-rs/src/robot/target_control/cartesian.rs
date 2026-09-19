@@ -256,6 +256,13 @@ impl CartesianTargetControl {
     /// So a lowered budget takes `(current - target) / rate` seconds to be wholly in force; the
     /// jerks step, either way.
     ///
+    /// The command never steps, but lowering the acceleration or jerk while the arm moves
+    /// lengthens the stop (toward `v² / 2a`, plus the jerk's ramp), so a near goal is overshot and
+    /// returned to. For example, at the default 0.3 m/s (0.17 m/s per axis), an acceleration
+    /// dragged from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots it by about 20 cm; faster
+    /// motion or a lower acceleration overshoots further. Lower the velocity first, apply it, then
+    /// lower the acceleration or jerk.
+    ///
     /// # Errors
     /// [`crate::error::FrankaError::InvalidArgument`] naming the field if a value is not finite
     /// or is a zero that means something other than "softer", with nothing written;

@@ -88,9 +88,9 @@
         60.0,
         60.0,
         60.0,
-        60.0,
-        60.0,
-        60.0
+        40.0,
+        40.0,
+        40.0
       ],
       "default": [
         4.0,
@@ -212,7 +212,8 @@
       "policy": "slew",
       "slew_tau_s": 0.3,
       "group": "feedforward",
-      "danger": "advise",
+      "danger": "confirm_above",
+      "confirm_above": 0.0,
       "scale": "linear",
       "off_at": 0.0
     }

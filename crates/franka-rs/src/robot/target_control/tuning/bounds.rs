@@ -200,11 +200,11 @@ impl LiveTuning {
     /// How far each scalar may be moved, in the order of [`to_words`](Self::to_words).
     ///
     /// Publish this; never copy the numbers, and publish
-    /// [`joint_damping_floor`](Self::joint_damping_floor) with it. Every derivation is in the
-    /// design record: the joint ceilings are the reference joint-impedance stack's, less the
-    /// crate's own velocity barrier gain, which is added on top of the law's damping and is
-    /// what the stability bound applies to; the budget ceilings sit at the measured edge of the
-    /// robot's own joint-velocity guard.
+    /// [`joint_damping_floor`](Self::joint_damping_floor) with it. The joint damping ceilings
+    /// are the reference joint-impedance stack's, less the crate's own velocity barrier gain,
+    /// which is added on top of the law's damping and is what the stability bound applies to,
+    /// and lower still on the wrist; the budget ceilings sit just past where the robot's own
+    /// joint-velocity guard can fire.
     pub const BOUNDS: &'static [FieldBound] = &{
         let blank = FieldBound::new("", None, "", 0.0, 0.0, "", TuningPolicy::Step);
         let mut rows = [blank; Self::WORDS];
@@ -223,12 +223,22 @@ impl LiveTuning {
             .advise();
             // The ceiling is 60 rather than the reference joint-impedance stack's 80 because
             // near the joint's velocity limit `VELOCITY_BARRIER_GAIN` is added to this, and it
-            // is the sum the barrier's stability note bounds. Away from that limit the barrier
-            // contributes nothing, so this `min` of zero is not the floor in force:
-            // `joint_damping_floor` is.
-            rows[7 + i] =
-                FieldBound::new("joint_damping", Some(i), GAINS, 0.0, 60.0, "Nm s/rad", SLEW)
-                    .advise();
+            // is the sum the barrier's stability rule bounds: `K × 1 ms / I < 1` (the book's
+            // *The impedance backend*, "The joint velocity envelope"). The wrist (joints 5 to 7)
+            // gets 40: on its 0.074 kg m², 60 + 20 gives 1.08 and 40 + 20 gives 0.81.
+            // Away from that limit the barrier contributes nothing, so this `min` of zero is
+            // not the floor in force: `joint_damping_floor` is.
+            let ceiling = if i < 4 { 60.0 } else { 40.0 };
+            rows[7 + i] = FieldBound::new(
+                "joint_damping",
+                Some(i),
+                GAINS,
+                0.0,
+                ceiling,
+                "Nm s/rad",
+                SLEW,
+            )
+            .advise();
             i += 1;
         }
         // Four times the preset; past it the joint-side IK acceleration binds, not the spring.
@@ -268,7 +278,7 @@ impl LiveTuning {
             "",
             SLEW,
         )
-        .advise()
+        .confirm_above(0.0)
         .off_at(0.0);
         // The library's own floor and ceiling, taken from it rather than restated: the ceiling
         // is the filter's off switch, and below the floor the filter is a near-integrator.
@@ -290,12 +300,12 @@ impl LiveTuning {
                 rate_word: word + 1,
             }
         }
-        // The robot's own joint-velocity guard was measured firing at a translational budget of
-        // [1.0, 15, 600], so these ceilings sit just past a known edge with the guard behind
-        // them. The confirmations sit lower, at the set the owner ran an arm at all afternoon
-        // (`[0.85, 10, 400]`): past it is faster than anything the stack has been driven at, and
-        // that is a decision rather than a drag of a slider. The rotational set is the same
-        // fractions of its own ceilings.
+        // The robot's own joint-velocity guard can fire near a translational budget of
+        // [1.0, 15, 600], depending on pose and path, so these ceilings sit just past that edge
+        // with the guard behind them. The confirmations sit lower, at `[0.85, 10, 400]`, the
+        // fastest set the stack has been validated at: going past it is a decision rather than a
+        // drag of a slider. The rotational set is the
+        // same fractions of its own ceilings.
         rows[19] = FieldBound::new("budget", Some(0), ENVELOPE, 0.05, 1.2, "m/s", gate(19))
             .confirm_above(0.85)
             .norm();

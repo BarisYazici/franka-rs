@@ -13,8 +13,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   long local streamer stall, preventing a false disconnect on the next tick. Repeated
   stalls cannot extend that deadline; normal node-silence detection and explicit
   session-end handling remain unchanged.
+- The `franka-rs` wheel carries `LICENSE` and `NOTICE`, libfranka's notice included, under
+  its `dist-info/licenses/`; only the sdist had them.
 
 ### Changed
+
+- **Live tuning caps the wrist's `joint_damping` at 40 Nm s/rad** (joints 5 to 7; 60 on 1 to
+  4): with the velocity barrier's 20 added, `K × 1 ms / I` on the wrist's 0.074 kg m² is 0.81
+  there and would be 1.08 at 60, past the stability rule in the impedance reference.
+
+- **Raising `velocity_feedforward_gain` above 0 needs the operator's confirmation**
+  (`confirm_above` 0), as crossing a budget's threshold does; the tuning panel puts the
+  feedforward group behind its lock.
+
+- Lowering a budget's acceleration or jerk while the arm moves never steps the command but
+  lengthens the stop (toward `v² / 2a`, plus the jerk's ramp): at the default 0.3 m/s (0.17 m/s
+  per axis), an acceleration dragged from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots
+  it by about 20 cm, and faster motion or a lower acceleration overshoots further.
+  `CartesianTargetControl::tune`, the live-tuning guide and the tuning panel's envelope
+  advisory now say to lower the velocity first.
 
 - **Velocity feedforward now defaults to off**: `ImpedanceOptions::velocity_feedforward` is
   `false` on both interfaces, and with it the node's `velocity_feedforward` key and the live
@@ -192,11 +209,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   braking envelope there. On the FR3 the box, the backstop, the restart, the fade and the
   barrier use the robot specifications' position-dependent joint velocity envelope instead of
   the flat limits, the step's limits taken where it ends and the loop's at the arm and a cycle
-  on (the recorded FR3 faults follow the specifications' parameters, not those of the deprecated
+  on (the robot checks the specifications' parameters, not those of the deprecated
   `rate_limiting::compute_{lower,upper}_limits_joint_velocity`, which are unchanged); Franka
-  publishes no such envelope for the FER and recorded FER sessions ran a joint at 2.26 times an
-  assumed one without a reflex, so there the robot's limit stays the published flat one and only
-  the guard's braking narrows toward a position limit. That braking profile is
+  publishes no such envelope for the FER, so there the robot's limit stays the published flat
+  one and only the guard's braking narrows toward a position limit. That braking profile is
   `sqrt(k x + c²) − c` with `k = 2a`, under `sqrt(2 a x)`: `a` is the FR3's published `ddq_dec`
   on that arm and half the FER's published joint acceleration limit on the FER, which unlike the
   FR3 constants stays inside the FER's own rating on every joint. The velocity barrier's gain is
@@ -205,11 +221,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   envelope's share of `tau`), `CartesianSent` also `stall_pressure`, `stalled` and `ik_passes`;
   `franka_rerun::TorqueLog` records them as `joints/pinned`, `joints/tau_position`, `ik/stall`
   and `ik/passes`, and franka-node takes `joint_position_margin` per arm, its joint gate
-  refusing targets inside it. Self-collision is not modelled, and the spring is sized for a 0.02
-  rad overshoot of the margin. Hardware evidence: in teleoperation on an FER with the torque
-  backend a goal clamped 0.02 rad inside joint 4's or joint 2's limit let the arm run up to 20
-  mrad past it, onto the limit, and turns of the hand near wrist limits stalled while the elbow
-  swung; the guard itself is tested on the model and a simulated plant, not yet on a robot.
+  refusing targets inside it. Self-collision is not modelled. The spring is sized for a 0.02
+  rad overshoot of the margin; the guard is tested on the model and a simulated plant, not yet
+  on a robot.
 - **`franka-node`** (`crates/franka-node`): a Zenoh node in front of
   Cartesian target control. One process owns one or more robots and, per arm, runs the
   impedance backend on the library's realtime thread; clients publish 80-byte pose or joint

@@ -1,7 +1,7 @@
-//! The `limit-*` recordings, joint 4's lower limit approached slowly on the arm (`#[ignore]`, `REPLAY_DIR`): a joint
-//! session held goals 0.30 to 0.05 rad above it and was refused 0.03, a Cartesian one folded the
-//! hand until the workspace box stopped it at 0.204 rad. Each reproduces the recorded goals as the
-//! loop ran; the joint goals then run guarded on the plant, the fold commanded.
+//! The `limit-*` recordings, joint 4's lower limit approached slowly (`#[ignore]`, `REPLAY_DIR`):
+//! in `limit-joint` the goals hold 0.30 to 0.05 rad above it and 0.03 is refused; in `limit-cart`
+//! the hand folds until the workspace box stops it at 0.204 rad. Each reproduces the recorded
+//! goals as the loop ran; the joint goals then run guarded on the plant, the fold commanded.
 
 use super::super::super::*;
 use super::super::plant::as_run::Restart;
@@ -99,7 +99,8 @@ fn joint_4_goals_toward_its_limit_in_limit_joint() {
             ));
         }
     }
-    // The goals the arm was sent inside the margin, down to 0.03 where it reflexed: all refused.
+    // The goals the arm was sent inside the margin, down to 0.03, the deepest, which ended in a
+    // reflex: all refused.
     let inside = picked.len() - accepted.len();
     let deepest = picked
         .iter()

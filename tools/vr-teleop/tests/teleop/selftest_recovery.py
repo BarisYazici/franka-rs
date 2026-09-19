@@ -192,7 +192,7 @@ def _recovers(node, after_s=4.0):
 def _():
     sink, node = _zenoh_sink()
     _recovers(node)
-    node.answer["recover"], node.blocks["recover"] = "Timeout", 3.0   # seen on hardware
+    node.answer["recover"], node.blocks["recover"] = "Timeout", 3.0   # a node can answer a recover this way
     _, text = quiet(sink.bring_up)
     assert node.verbs() == ["recover", "acquire", "enable"], node.verbs()
     assert "recover: query error 'Timeout'; confirming from the state" in text, text

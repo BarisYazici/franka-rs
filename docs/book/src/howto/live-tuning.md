@@ -78,14 +78,24 @@ same `LiveTuning::BOUNDS` table that checks updates. There is no separate panel 
 
 Change a small group of related settings, apply, and compare the same motion before and
 after. Read the accepted values: the node can clamp a request or raise damping when a spring
-is increased. Invalid requests change nothing. Crossing a budget's confirmation threshold
-requires an explicit confirmation; already being above it does not ask again.
+is increased. Invalid requests change nothing. Crossing a budget's confirmation threshold,
+or raising `velocity_feedforward_gain` above zero, requires an explicit confirmation; already
+being above it does not ask again. The wrist joints' damping (joints 5 to 7) is capped lower
+than the others', at 40 instead of 60 Nm·s/rad, to keep the velocity barrier stable on their
+lighter inertia.
 
 Gains approach their targets with a 0.3 s time constant. Budget velocity and acceleration
 limits rise immediately but ramp downward, to avoid abruptly truncating the generator's
 velocity or acceleration. Budget jerk and the feedforward filter cutoff step immediately.
 This handling removes the need to design those parameter transitions in the client; it does
 not make every combination or every robot pose feasible.
+
+A lowered budget never steps the command, but lowering its acceleration or jerk while the arm
+moves lengthens the stop (toward v²/2a, plus the jerk's ramp), so a near goal is overshot and
+returned to. For example, at the default 0.3 m/s (0.17 m/s per axis), an acceleration dragged
+from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots it by about 20 cm; faster motion or a
+lower acceleration overshoots further. Lower the velocity first, apply it, then lower the
+acceleration or jerk.
 
 The displayed `params` are **accepted targets**, not a measurement of the gains applied on
 each realtime cycle. `slewing` estimates the fraction of the latest change **still to go**:
@@ -96,10 +106,11 @@ from the controller; overlapping changes and missed cycles limit its accuracy.
 
 Velocity feedforward is off by default (`velocity_feedforward = false`); with it on, real arms
 vibrated. The boolean takes precedence at session start, so the live weight is **0** whatever
-`velocity_feedforward_gain` says. Setting `velocity_feedforward_gain` above zero live enables
-its contribution for that session; lowering `velocity_feedforward_cutoff` filters the goal
-velocity it feeds forward, and is the knob to try against vibration (no value has been
-validated on hardware). To enable it in future sessions, set `velocity_feedforward = true` and
+`velocity_feedforward_gain` says. Setting `velocity_feedforward_gain` above zero live, which
+needs a confirmation, enables its contribution for that session; lowering
+`velocity_feedforward_cutoff` filters the goal velocity it feeds forward, and is the knob to
+try against vibration (no value has been validated on hardware). To enable it in future
+sessions, set `velocity_feedforward = true` and
 the desired gain in TOML, then restart the node to load the configuration.
 
 ## What is saved

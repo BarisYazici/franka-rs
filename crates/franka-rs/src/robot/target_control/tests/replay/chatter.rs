@@ -1,7 +1,7 @@
-//! Joint-goal chatter near the limits: on the Panda the goal velocity of joints 1, 3 and 7
-//! chattered at 0.08 to 0.23 rad/s while a joint was near a limit, which drove the torque rate to
-//! the robot's 1000 Nm/s cap. Measured as the high-pass (less the centred 21-cycle mean) RMS of
-//! `dq_goal` per joint over the slow cycles (the target under 0.02 m/s, so that intended motion
+//! Joint-goal chatter near the limits: the goal velocity of joints 1, 3 and 7 can chatter while a
+//! joint is near a limit (0.08 to 0.23 rad/s in the `wrist-*` recordings), which drives the torque
+//! rate to the robot's 1000 Nm/s cap. Measured as the high-pass (less the centred 21-cycle mean)
+//! RMS of `dq_goal` per joint over the slow cycles (the target under 0.02 m/s, so that intended motion
 //! does not count) any joint is within 0.1 rad of a limit, and the p99 of the torque rate, over a
 //! whole session. The rate is of the law's clamped output, before the robot's low-pass and rate
 //! limit act on it.
@@ -31,11 +31,11 @@ pub(super) const HALF: usize = 10;
 /// The most, rad/s, any joint's near-limit RMS may be. An absolute floor, not a tight one: the
 /// metric moves 4× between variants that behave the same on the arm (on `wrist-b-2`: 0.006 to
 /// 0.054 over five combinations of the same three rules), so it is informative, not the test. This
-/// is under the 0.08 rad/s the Panda chattered at and well over the worst guarded run, 0.026; the
+/// is under the recordings' 0.08 rad/s and well over the worst guarded run, 0.026; the
 /// recordings replayed as they ran give 0.13 to 0.26.
 pub(super) const NEAR_RMS: f64 = 0.05;
 /// The most, Nm/s, the commanded torque rate's p99 may be: the acceptance test, because it is the
-/// hardware symptom -- on the Panda the rate saturated at the robot's 1000 Nm/s limit. Guarded
+/// hardware symptom -- in the recordings the rate saturates at the robot's 1000 Nm/s limit. Guarded
 /// runs measure 96 to 252 Nm/s, so this is a gate with room, far under the limiter.
 pub(super) const RATE_P99: f64 = 400.0;
 /// A cycle whose target moves slower than this, m/s, is slow.

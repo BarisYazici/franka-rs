@@ -1,5 +1,5 @@
 //! Joint velocities against an arm's limit: the share of the limit per joint, and what the
-//! recorded Panda arms did against the FER's flat limit, which is the limit the robot itself
+//! recordings did against the FER's flat limit, which is the limit the robot itself
 //! checks. A recording that goes over it without a reflex would put the flat limit in doubt, so
 //! the shares are asserted, with the one recorded `joint_velocity_violation` allowed for.
 
@@ -60,8 +60,8 @@ fn recorded(
 }
 
 /// The share of the flat limit a recorded arm may reach. None of these sessions comes near it
-/// (the worst is 0.75), and the one recorded FER `joint_velocity_violation` — a teleoperation
-/// session whose joint 5 reached 1.36 of this limit — is the robot checking it. A recording that
+/// (the worst is 0.75), and the one recording ending in a `joint_velocity_violation` (joint 5 at
+/// 1.36 of this limit) is the robot checking it. A recording that
 /// ran over it without a reflex would mean the arm checks something else.
 const RECORDED_ALLOWANCE: f64 = 1.0;
 

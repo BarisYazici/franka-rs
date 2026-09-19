@@ -149,12 +149,15 @@ fn the_bounds_are_the_numbers_the_design_settled() {
     for joint in 0..7 {
         assert_eq!(at(joint), (0.0, 1200.0));
         // 60, not the reference joint-impedance stack's 80, because the barrier adds its 20
-        // on top near the velocity limit.
-        assert_eq!(at(7 + joint), (0.0, 60.0));
-        assert_eq!(
-            LiveTuning::BOUNDS[7 + joint].max + VELOCITY_BARRIER_GAIN,
-            80.0
-        );
+        // on top near the velocity limit; 40 on the wrist, whose 0.074 kg m² makes 60 + 20
+        // unstable at 1 ms (80 × 0.001 / 0.074 = 1.08).
+        let ceiling = if joint < 4 { 60.0 } else { 40.0 };
+        assert_eq!(at(7 + joint), (0.0, ceiling));
+        let k = LiveTuning::BOUNDS[7 + joint].max + VELOCITY_BARRIER_GAIN;
+        assert!(k <= 80.0, "joint {joint}: {k}");
+        if joint >= 4 {
+            assert!(k * 1e-3 / 0.074 < 1.0, "joint {joint}: {k}");
+        }
     }
     assert_eq!(at(14), (50.0, 3000.0));
     assert_eq!(at(15), (1e-3, 1.0));
@@ -217,8 +220,8 @@ fn the_joint_damping_floor_clears_every_shipped_preset_and_never_meets_the_ceili
         "the floor under the stiffest spring is {at_ceiling}"
     );
     assert!(
-        at_ceiling < LiveTuning::BOUNDS[7].max,
-        "the floor fights the ceiling"
+        (7..14).all(|w| at_ceiling < LiveTuning::BOUNDS[w].max),
+        "the floor fights a ceiling"
     );
     assert_eq!(LiveTuning::joint_damping_floor(0.0), 0.0);
 

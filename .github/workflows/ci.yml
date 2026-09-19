@@ -63,6 +63,13 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
+      # The franka-rs wheel ships copies, not links (maturin's sdist would break a link): the
+      # root LICENSE and the franka crate's NOTICE, whose libfranka notice covers the `.so`.
+      - name: wheel licence files match their sources
+        run: |
+          cmp LICENSE crates/franka-py/LICENSE
+          cmp crates/franka-rs/NOTICE crates/franka-py/NOTICE
+
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

@@ -1,12 +1,12 @@
 // Advisories: never block, always visible. The numbers they compare against come from the node
 // schema's `derived` block and the pending slider values; the few constants here are physics or
-// operator policy (DESIGN-ui 2.2), not bounds.
+// operator policy, not bounds.
 const HAND_PEAK_MPS = 0.7;      // a fast hand, for the spatial_scale vs budget share note
 const J4_BAND_HZ = 15;          // 3x the j4 dominant band, below which a cutoff eats the signal
 const NEAR_BOUND = 0.10;        // teleop clamp within 10 % of the node bound
 const ZETA_BAND = [0.3, 2];     // damping ratios outside this get a note (underdamped / sluggish)
 
-// DESIGN-rt 7.3. The leash is fixed at startup; with the feedforward below 1 (the default is 0, so
+// The leash is fixed at startup; with the feedforward below 1 (the default is 0, so
 // this is a note, not a warning, unless it binds) the steady speed on axis i is capped at
 // leash / tau_i / (1 - gain), tau_i = Dx_i / Kx_i. The Cartesian preset's
 // damping scales with sqrt(K/K_ref) while stiffness scales with K/K_ref (the node's rule), so
@@ -36,9 +36,16 @@ function dampingRatios(K, D, inertia) {
   return K.map((k, i) => (k > 0 && inertia[i] > 0 ? D[i] / (2 * Math.sqrt(k * inertia[i])) : null));
 }
 
-// Returns [{text, severity}] for the pending node values.
-function nodeAdvisories(values, derived) {
+// Returns [{text, severity}] for the pending node values; `current` is what the node holds now.
+function nodeAdvisories(values, derived, current) {
   const out = [];
+  // A budget's acceleration or jerk lowered while moving stretches the braking to v²/2a: the
+  // command never steps, but a near goal is overshot. Apply a lower velocity first, on its own.
+  for (const name of ['budget', 'rotation_budget']) {
+    const v = values[name], c = current && current[name];
+    if (v && c && (v[1] < c[1] || v[2] < c[2]))
+      out.push({ text: `${name}: lowering acceleration or jerk while the arm moves lengthens its braking to v²/2a and can overshoot the goal; unless the velocity is already low, lower it first and apply it on its own`, severity: 'warn', group: 'envelope' });
+  }
   const z = values.joint_stiffness && values.joint_damping && dampingRatios(values.joint_stiffness, values.joint_damping, derived.joint_inertia);
   if (z) {
     const bad = z.map((v, i) => (v != null && (v < ZETA_BAND[0] || v > ZETA_BAND[1]) ? `j${i + 1} ζ ${fmt(v)}` : null)).filter(Boolean);

@@ -14,11 +14,12 @@ every field with `record_wire.decode` so the file is one an analyser can read to
 here binds a port, so it cannot collide with a running bridge.
 
 Two injections synth_wire does not model, both needed by the tests:
-  --hand-jump-at/-m  one tick's position displaced and then back, which is the 77.7 mm step
-                     measured at +41.66 s on a controller lying still (fresh -> fresh, so no
-                     freshness edge marks it)
+  --hand-jump-at/-m  one tick's position displaced and then back: a 77.7 mm one-tick step, the
+                     size a still controller can report (fresh -> fresh, so no freshness edge
+                     marks it)
   --flip-engaged     the antipodal quaternion on alternate ENGAGED ticks; synth_wire flips
-                     only while the grip is released, where the real bridge's 26 % was measured
+                     only while the grip is released, where the real bridge flips about a
+                     quarter of the ticks
 """
 import argparse
 import json

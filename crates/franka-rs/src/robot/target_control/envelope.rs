@@ -8,12 +8,11 @@
 //! toward lower: min(dq_max, max(0, −dq_offset + sqrt(max(0, 2·ddq_dec·(q − q_min))))) − tolerance
 //! ```
 //!
-//! as speeds, never negative. The FER's specifications carry no such rows, and its recordings
-//! rule the obvious assumption out (joint 5 ran at 2.26 times an envelope built on half its
-//! acceleration limit, and the arm raised no reflex), so on the FER the robot's own check is the
-//! published flat limit and that is what the guard uses. The guard's own braking toward a
-//! position limit, [`Braking`], applies to both arms. Everything is read through
-//! [`VelocityLimit`].
+//! as speeds, never negative. The FER's specifications carry no such rows, and an envelope
+//! built on half its acceleration limit is not what the robot checks, so on the FER the robot's
+//! own check is the published flat limit and that is what the guard uses. The guard's own
+//! braking toward a position limit, [`Braking`], applies to both arms. Everything is read
+//! through [`VelocityLimit`].
 
 use crate::math_utils::{cmax, cmin};
 use crate::rate_limiting::{fer, JOINT_VELOCITY_LIMITS_TOLERANCE};
@@ -36,7 +35,7 @@ pub(super) struct Envelope {
 
 /// The FR3, from the robot specifications page. libfranka's deprecated
 /// `compute_*_limits_joint_velocity` (and its test URDF) use other offsets and position limits;
-/// the recorded FR3 faults follow these.
+/// the robot's own check follows these.
 pub(super) const FR3: Envelope = Envelope {
     q_min: [-2.9007, -1.8361, -2.9007, -3.0770, -2.8763, 0.4398, -3.0508],
     q_max: [2.9007, 1.8361, 2.9007, -0.1169, 2.8763, 4.6216, 3.0508],

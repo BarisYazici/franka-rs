@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _ARRAY = re.compile(r"^(f64|u32)\[(\d+)\]$")
 SCHEMA_VERSION = 1
-# Owner reasons: DESIGN-ui 1.5 plus `invalid`, a finite value outside the field's domain that
-# DESIGN-rt 5.4 says to reject rather than clamp (ik_damping <= 0, cartesian_stiffness <= 0).
+# Owner reasons, including `invalid`: a finite value outside the field's domain, rejected rather
+# than clamped (ik_damping <= 0, cartesian_stiffness <= 0).
 REASONS = ("type", "non_finite", "length", "unknown_field", "relation", "needs_confirm",
            "stale", "not_ready", "busy", "invalid")
 # Bridge reasons, same envelope, never produced by an owner.

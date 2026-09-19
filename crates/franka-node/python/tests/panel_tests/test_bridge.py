@@ -21,17 +21,17 @@ def test_discovery(stack):
     assert http.get("/api/arms")["arms"] == {"L": {"node": True, "teleop": True}}
 
 
-def test_schema_is_the_owners_and_carries_design_rt_bounds(stack):
+def test_schema_is_the_owners_and_carries_the_node_bounds(stack):
     http, _ = stack
     s = http.get("/api/L/node/schema")
     p = s["params"]
-    assert p["joint_damping"]["max"] == [60] * 7        # not the reference stack's 80
+    assert p["joint_damping"]["max"] == [60] * 4 + [40] * 3   # not the reference stack's 80
     assert p["ik_damping"]["min"] == 1e-3 and p["ik_damping"]["policy"] == "slew"
     assert p["budget"]["max"][0] == 1.2 and p["budget"]["policy"] == "step_up_gate_down"
     # The one limit no per-field row can express, published as the rule the node enforces.
     assert [r["rule"] for r in s["relations"]] == [
         "joint_damping[i] >= 0.25 * sqrt(joint_stiffness[i])"]
-    assert "leash" in s["derived"] and "leash" not in p          # read-only, DESIGN-rt 7.3
+    assert "leash" in s["derived"] and "leash" not in p          # read-only, fixed at startup
     assert set(p) == {"joint_stiffness", "joint_damping", "cartesian_stiffness", "velocity_feedforward_gain",
                       "velocity_feedforward_cutoff", "ik_damping", "ik_nullspace_gain", "budget", "rotation_budget"}
 

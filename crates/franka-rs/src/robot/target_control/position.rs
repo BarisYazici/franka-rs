@@ -48,7 +48,7 @@ impl CycleBox {
 
 /// rad: the ramp over which a goal comes to rest on its margin. The braking box's step there is
 /// 0.9 % (joint 4) to 3.4 % (wrists) of the distance per cycle, so the rest rises by at most 0.034
-/// a cycle whatever the width; on a recorded stall 1e-5 chattered least of 1e-5 to 3e-4, and
+/// a cycle whatever the width; in a replayed stall 1e-5 chattered least of 1e-5 to 3e-4, and
 /// 1e-3 parks the goal short of its margin.
 const REST_BAND: f64 = 1e-5;
 

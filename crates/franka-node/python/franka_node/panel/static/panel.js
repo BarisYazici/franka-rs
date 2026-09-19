@@ -124,7 +124,7 @@ function updateAdvisories() {
   if (node && nd) {
     const cap = feedforwardCap(node.velocity_feedforward_gain, node.cartesian_stiffness, node.budget, nd);
     if (cap) list.push({ ...cap, group: 'feedforward' });
-    list.push(...nodeAdvisories(node, nd));
+    list.push(...nodeAdvisories(node, nd, S.loaded.node.params));
   }
   const tel = pending('teleop');
   if (tel && S.schemas.teleop) list.push(...teleopAdvisories(tel, S.schemas.teleop, nd, node));

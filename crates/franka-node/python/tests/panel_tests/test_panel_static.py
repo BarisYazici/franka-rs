@@ -245,3 +245,31 @@ def test_feedforward_note_values():
     assert r["at0hi"]["severity"] == "bad" and "z BINDS" in r["at0hi"]["text"]  # share 0.49 > cap 0.208
     assert r["at1"]["severity"] == "ok"
     assert "z 0.417 m/s (τ 0.060 s)" in r["stiff"]["text"]  # tau scales with 1/sqrt(K/K_ref)
+
+
+def test_lowering_acceleration_or_jerk_advises_lowering_velocity_first():
+    r = run_js("""
+      const cur = {budget: [0.3, 0.5, 20], rotation_budget: [1, 2, 20]};
+      const notes = v => nodeAdvisories(v, {}, cur).filter(a => a.group === 'envelope').map(a => a.text.split(':')[0]);
+      console.log(JSON.stringify({
+        accel: notes({...cur, budget: [0.3, 0.2, 20]}),
+        jerk: notes({...cur, rotation_budget: [1, 2, 5]}),
+        withVelocity: notes({...cur, budget: [0.1, 0.2, 20]}),
+        raised: notes({...cur, budget: [0.3, 1, 40]}),
+      }));
+    """)
+    # Lowering the velocity in the same apply does not help: it descends at the lowered rate.
+    assert r == {"accel": ["budget"], "jerk": ["rotation_budget"], "withVelocity": ["budget"], "raised": []}
+
+
+def test_switching_the_feedforward_on_is_a_confirmed_crossing_under_the_node_schema():
+    s = node_schema("L", "b")
+    r = run_js(f"""
+      const s = {json.dumps(s)};
+      console.log(JSON.stringify({{
+        on: crossings(s, {{velocity_feedforward_gain: 0.2}}, {{velocity_feedforward_gain: 0}}),
+        within: crossings(s, {{velocity_feedforward_gain: 0.5}}, {{velocity_feedforward_gain: 0.2}}),
+        locked: groupLocked(s, ['velocity_feedforward_gain', 'velocity_feedforward_cutoff']),
+      }}));
+    """)
+    assert r == {"on": ["velocity_feedforward_gain"], "within": [], "locked": True}

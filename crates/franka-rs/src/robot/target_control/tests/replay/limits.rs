@@ -1,5 +1,5 @@
 //! The fault replays (`#[ignore]`, `REPLAY_DIR`): the `fold-*` recordings, joint 4 folded past
-//! its lower limit in two VR sessions, and the `wrist-*` ones, joint 2 past its upper limit with
+//! its lower limit in two recordings, and the `wrist-*` ones, joint 2 past its upper limit with
 //! the wrist pinned. Each first
 //! reproduces the recorded goals as the loop ran (the oracle), then runs the guard commanded on
 //! the recorded arm and, from 3 s before the fault, both loops on the plant: the one as it ran

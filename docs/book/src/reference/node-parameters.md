@@ -90,7 +90,8 @@ client should refresh after either a boot change or a reseed; `base_version` alo
 detect session reseeding or a restart that happens to reach the same version again.
 
 The live feedforward gain is seeded as zero when TOML has `velocity_feedforward = false`, the
-default, regardless of `velocity_feedforward_gain`. There is no separate live boolean field.
+default, regardless of `velocity_feedforward_gain`. There is no separate live boolean field;
+its `confirm_above` is 0, so switching it on live needs a confirmation.
 
 ## Set request and validation
 
