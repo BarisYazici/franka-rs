@@ -181,10 +181,19 @@ def test_a_fast_node_is_decimated_on_the_bus(tmp_path):
             time.sleep(0.2)
         assert m["decimation"] > 1 and 50 <= m["effective_hz"] <= 200
         assert m["source_hz"] == pytest.approx(m["effective_hz"] * m["decimation"])
-        rows = bridge.known("L").metrics.rows
-        assert len(rows) <= RING_MAX_ROWS
-        spacing = (rows[-1].t - rows[0].t) / (len(rows) - 1)
-        assert spacing == pytest.approx(1.0 / m["effective_hz"], rel=0.2)  # the kept samples, not the node's
+        # What "1 in N" means over the real bus is a count, not a timing: of the messages the
+        # subscriber was handed in some window, a tenth became rows. Nothing here is measured
+        # against a clock, so a loaded machine changes how long the window takes and nothing else.
+        mon, every = bridge.known("L"), m["decimation"]
+        rows0, seen0, resets0 = len(mon.metrics.rows), mon.seen, mon.metrics.resets
+        for _ in range(60):
+            if mon.seen - seen0 >= 50 * every:
+                break
+            time.sleep(0.05)
+        kept, delivered = len(mon.metrics.rows) - rows0, mon.seen - seen0
+        assert delivered >= 50 * every and mon.metrics.resets == resets0
+        assert kept == pytest.approx(delivered / every, abs=2)  # the ring is 60 s: nothing evicted
+        assert len(mon.metrics.rows) <= RING_MAX_ROWS
     finally:
         stop()
         proc.terminate()

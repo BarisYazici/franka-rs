@@ -55,7 +55,10 @@ What the client does for you (the lease, the keepalive, pacing under the node's 
 The client installs `franka-tuning-panel`, a browser page for the live parameters of a running
 Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It opens a
 Zenoh client session (`--mode peer` if you need a peer, which `--listen` requires) and binds to
-loopback; see [Tune a running controller](https://barisyazici.github.io/franka-rs/howto/live-tuning.html)
-for the tunnel, presets and limits.
+loopback, reachable from another machine through an ssh tunnel. `--expose-to-network` (with
+`--host 0.0.0.0`) serves it on the network instead, which has no authentication of any kind:
+anyone who can reach the port can change any live parameter of a moving robot. See
+[Tune a running controller](https://barisyazici.github.io/franka-rs/howto/live-tuning.html)
+for the tunnel, exposure, presets and limits.
 
 The package version is the `franka-rs` workspace version. Apache-2.0.

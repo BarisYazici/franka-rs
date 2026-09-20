@@ -42,11 +42,11 @@ For a Pi-hosted bridge, tunnel it from the laptop:
 ssh -N -L 8765:127.0.0.1:8765 <pi-user>@<pi-address>
 ```
 
-Then open the same local URL on the laptop. The bridge binds to loopback by default and has
-no authentication; keep that default. `--host` refuses a non-loopback address unless
-`--expose-to-network` is given, which hands every live parameter of every arm to anyone who
-can reach the port. Access to the node's Zenoh bus also permits parameter changes: tuning
-requests identify their sender but do not require the motion lease holder.
+Then open the same local URL on the laptop; the panel stays on loopback and only the tunnel
+reaches it. That is the default, and the one to keep while a robot runs unattended; to serve
+the panel to the network instead, see [below](#reach-it-from-another-machine). Access to the
+node's Zenoh bus also permits parameter changes: tuning requests identify their sender but do
+not require the motion lease holder.
 
 `--presets` names the panel's preset file, by default
 `~/.local/state/franka-tuning/presets.json`. Presets never change the node's TOML. Each saved
@@ -69,6 +69,55 @@ franka-tuning-panel --connect tcp/127.0.0.1:17447 --no-multicast \
 
 The mock's teleoperation controls demonstrate an additional parameter owner; they do not
 mean that a teleoperation service is included in `franka-node`.
+
+## Reach it from another machine
+
+A tunnel is not the only way. `--expose-to-network` serves the panel to the network it binds,
+so a laptop or a tablet opens it like any other service on the bench:
+
+```sh
+franka-tuning-panel --host 0.0.0.0 --expose-to-network --connect tcp/127.0.0.1:7447
+```
+
+**There is no authentication.** An exposed panel lets anyone who can reach that port — every
+machine, and every person, on that network — change any live parameter of a moving robot: its
+springs, its damping, its motion budgets. Serve it on a network you control, while you are at
+the bench, and stop it afterwards. The startup line names the URLs it has opened and who can
+reach them:
+
+```text
+WARNING tuning-bridge: the panel is at http://192.0.2.5:8765/, reachable by anyone on that
+network: it has no authentication, so any of them can set every live parameter of every arm on
+the bus, while it moves
+```
+
+Exposed, the panel serves a request whose `Host` header is an **IP address**, alongside the
+loopback names, so `http://192.0.2.5:8765/` works from another machine whatever the address
+is. A `Host` that is a DNS name is still refused — including one that merely contains an
+address, such as `192.0.2.5.evil.example` — and that refusal is what keeps the panel's one
+browser-side defence: any page on the internet can point its own name at this port (DNS
+rebinding), and the browser would then count it same-origin with the panel and let it drive the
+arm; a rebound name is never an IP literal. Bound to loopback, the loopback names stay the only
+ones served, whatever page asks.
+
+To reach the panel by name, name it — exactly, and repeat the flag for more than one:
+
+```sh
+franka-tuning-panel --host 0.0.0.0 --expose-to-network --allowed-host bench-host.local
+```
+
+`--allowed-host` matches the whole name, never a suffix, so allowing `bench-host.local` does not
+allow `bench-host.local.evil.example`. It requires `--expose-to-network`, and it is only as
+trustworthy as whoever can answer for that name: `.local` names are answered by mDNS, which
+anyone on the network can claim, and a page served from a name the panel accepts is same-origin
+with the panel. Prefer the address.
+
+What the `Origin` check does, and does not, protect: a **browser** that posts a change must send
+an `Origin` equal to the address in its own URL bar, so a page served from anywhere else cannot
+write even when it aims straight at the panel's address. A script sends no `Origin` at all, and
+nothing here stops it — one `curl` from any machine on that network retunes a moving arm. The
+panel is also plain HTTP, so an exposed session is readable and injectable by anyone on the
+path. Exposure is a decision about who is on that network, not a permission the panel checks.
 
 ## What the controls change
 
@@ -142,9 +191,11 @@ Panel jitter, lag and tracking measurements are computed from published robot st
 100 Hz, not from the 1 kHz loop, and they are not a complete trace of it. A node publishing
 faster is sampled 1 in N by the panel, which says so at startup and in the live header
 (`metrics from 1 in 10 of a 1000 Hz stream`); the metrics snapshot and every saved preset carry
-`effective_hz`. The numbers therefore mean the same thing at any `state_hz`, with one caveat: a
-rate that is not a multiple of 100 leaves the effective rate off 100 (250 Hz gives 125 Hz), and
-the lag figure scales with it, so compare lag only between snapshots of the same `effective_hz`.
+`effective_hz`. The numbers therefore mean the same thing at any `state_hz`: lag and the windows
+behind it are measured against the rate the panel really sees, so a `state_hz` that 1 in N cannot
+bring to exactly 100 (250 Hz gives 125 Hz) still times correctly. What does ride with that rate is
+the jitter filter's 3 Hz corner (3.75 Hz at 125 Hz) and how a vibration above half the effective
+rate folds into the band, so compare jitter figures between snapshots at the same `effective_hz`.
 `state_hz = 100` is the setting to run: above it the panel drops the extra messages before
 decoding them, but they still cross the Zenoh callback, which on a Pi is real CPU. The node does
 not yet publish leash-alteration counts or cap-active fractions. Joint inertia hints are

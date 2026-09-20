@@ -99,7 +99,7 @@ class ArmMonitor:
         self.rate = SourceRate()
         self.seen = 0  # messages since the last one kept
         self._every, self._announced = 1, False  # the decimation the ring was built at
-        self._event: tuple = (-1e9, None)  # the ticker's last metrics event and when it was taken
+        self._event: tuple = (-1e9, None, 0)  # the ticker's last snapshot: when, what, at which reset
         self.clients: List[SseClient] = []
 
     def on_current(self, owner: str, body: Dict[str, Any]) -> None:
@@ -134,10 +134,14 @@ class ArmMonitor:
         self.broadcast("status", self.status_event())
 
     def on_state(self, payload: bytes) -> None:
+        # Decimate on the raw payload: no decode, no lock. Zenoh delivers one subscriber's samples
+        # on one thread (checked for 1.10.1), and a lock here would be 2000 acquisitions a second,
+        # the cost this path exists to avoid. `seen` only ever grows and the test is modular, so
+        # even a lost increment under some future concurrent dispatch costs one irregular sample:
+        # the keep phase shifts by one, it cannot drift or stall.
         self.seen += 1
-        if self.seen < self.rate.every:  # decimate on the raw payload: no decode, no lock
+        if self.seen % self.rate.every:
             return
-        self.seen = 0
         try:
             s = decode_state(payload)
         except ProtocolError as e:
@@ -159,8 +163,11 @@ class ArmMonitor:
             self.broadcast("status", self.status_event())
 
     def _on_rate(self) -> None:
-        """A fresh rate measurement: say it once at startup and whenever the decimation moves."""
+        """A fresh rate measurement: hand the engine the rate its samples really arrive at (which
+        the decimation cannot always make exactly 100 Hz), say it once at startup and whenever the
+        decimation moves, and start the metrics over when it does."""
         every = self.rate.every
+        self.metrics.set_rate(self.rate.source_hz / every)
         if every != self._every or not self._announced:
             log.info("arm %s publishes state at %.0f Hz: metrics from 1 in %d of it (%.0f Hz)", self.arm,
                      self.rate.source_hz, every, self.rate.source_hz / every)
@@ -213,12 +220,21 @@ class ArmMonitor:
     def metrics_event(self, fresh: bool = False) -> Dict[str, Any]:
         """The ticker's last snapshot with its age, recomputed only when that is older than one
         tick: a poll of `/api/<arm>/metrics` then costs a dict, not a pass over the ring. Liveness
-        (reach, channels, rate) is always read now, it is where the page looks for trouble."""
-        at, snap = self._event
+        (reach, channels, rate) is always read now, it is where the page looks for trouble.
+
+        Nothing is reported until the rate has been measured once: on a fast node the first second
+        arrives un-decimated, and a number computed from it is a number about the wrong stream."""
+        at, snap, resets = self._event
         age = time.monotonic() - at
-        if fresh or snap is None or age >= 1.0 / METRICS_HZ:
+        # A reset (a rate change, or the node's clock restarting) makes the cached numbers describe
+        # a stream that no longer exists; they must not be served under the new rate's labels. The
+        # count is read before the snapshot, so a reset landing during it invalidates this one too.
+        if self.rate.source_hz is None:
+            snap, age = {"ok": False, "reason": "measuring_rate"}, 0.0
+        elif fresh or snap is None or age >= 1.0 / METRICS_HZ or resets != self.metrics.resets:
+            taken_at = self.metrics.resets
             snap, age = self.metrics.snapshot(), 0.0
-            self._event = (time.monotonic(), snap)
+            self._event = (time.monotonic(), snap, taken_at)
         return {**snap, **self.rate.as_dict(), "reach": self.reach(),
                 "channels": self.channels(), "snapshot_age_s": age}
 

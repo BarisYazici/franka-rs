@@ -72,14 +72,15 @@ def mock():
     proc.wait(5)
 
 
-def build_stack(mock_port: int, presets_path: str):
-    """In-process Bridge + web server connected to a mock; returns (Http, Bridge, stop)."""
+def build_stack(mock_port: int, presets_path: str, hosts=None):
+    """In-process Bridge + web server connected to a mock; returns (Http, Bridge, stop). `hosts`
+    is the server's HostPolicy; the default one serves loopback names only."""
     ap = argparse.ArgumentParser()
     zbus.add_zenoh_args(ap)
     args = ap.parse_args(["--connect", f"tcp/127.0.0.1:{mock_port}", "--no-multicast"])
     session = zenoh.open(zbus.config_from_args(args))
     bridge = Bridge(session, presets_path, timeout=2.0)
-    srv = serve(bridge, "127.0.0.1", free_port())
+    srv = serve(bridge, "127.0.0.1", free_port(), hosts)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     http = Http("http://127.0.0.1:%d" % srv.server_address[1])
     for _ in range(50):  # until the owner is discovered and state flows

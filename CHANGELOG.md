@@ -340,7 +340,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- **The tuning panel's metrics are computed at a fixed ~100 Hz, and its Zenoh session is a
+- **The tuning panel's metrics are computed at about 100 Hz, and its Zenoh session is a
   client.** The panel keeps 1 in N of a faster state stream, chosen from the measured rate and
   held through a deadband so it never flaps; before this, every metric was computed as if the
   stream were 100 Hz whatever `state_hz` said, so at 1 kHz the "3 Hz" jitter high-pass was really
@@ -348,7 +348,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   instead (measured 3-6x too high), and collapsed `lag_ms` to zero. The 60 s ring is bounded,
   survives a node reboot with the page open, and a reflex no longer walks it. The page, the
   snapshot (`source_hz`, `decimation`, `effective_hz`) and every saved preset say which rate the
-  numbers came from; snapshots at different `effective_hz` are not comparable. At `state_hz = 1000`
+  numbers came from, and everything counted in samples — `lag_ms`, the lag window — is measured
+  against the rate really achieved, so a `state_hz` the decimation cannot bring to exactly 100
+  (250 Hz gives 125) still times correctly; the jitter filter's 3 Hz corner does ride with that
+  rate (3.75 Hz at 125), so compare jitter between snapshots at the same `effective_hz`.
+  At `state_hz = 1000`
   on two arms the panel no longer pegs a Pi core but still costs roughly half of one, so
   `state_hz = 100` remains the configuration to run. `franka-tuning-panel` now takes
   `--mode {peer,client}` in the node's own vocabulary, defaulting to **client**: it dials out and
@@ -438,6 +442,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a Zenoh key expression, so `*` or `**` can no longer fan one request out to every arm; a
   `Content-Length` that is missing, not a byte count or over 64 KiB is refused (422, or 413 for
   the size) and the connection closed, and a stalled request times out after 30 s.
+- Tuning panel: `--expose-to-network` now serves the panel to the network it binds. The `Host`
+  guard used to allow the loopback names whatever the flag said, so every request from another
+  machine was a 403; exposed, it also serves a `Host` that is an IP literal (a rebound DNS name
+  never is one, so the rebinding defence stands), `--allowed-host NAME` adds an exact DNS name
+  where the panel is exposed, and the startup line names the URLs that are open and who can
+  reach them. A loopback bind still serves the loopback names and nothing else. An exposed panel
+  has no authentication: anyone on that network can change any live parameter of a moving arm.
+- Tuning panel: a refused request closes the connection. A 403 was sent before the body was
+  read, so on a kept-alive connection the unread body was parsed as the next request — a
+  cross-origin page could put a whole request in the body of a `text/plain` POST, which needs no
+  preflight, and have it served with a `Host` the bind accepts and no `Origin`. A request with
+  no `Host` or several, an absolute-form target, or a body on a `GET` or `DELETE` (declared by
+  length or by chunking), is now a 400 and closes too, and every response carries
+  `X-Frame-Options: DENY`, `frame-ancestors 'none'` and `nosniff`, so the page that drives an arm
+  cannot be framed.
 - VR teleop: a fresh arm state with a non-finite pose or joint velocity is treated as no state:
   the clutch releases, nothing is driven, and the client says so once. Before, a NaN passed both
   leash checks and a latch on it made every target NaN.

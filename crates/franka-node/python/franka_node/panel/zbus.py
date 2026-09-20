@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import zenoh
 
@@ -27,13 +27,23 @@ def add_zenoh_args(p: argparse.ArgumentParser, mode: str = "client") -> None:
     p.add_argument("--no-multicast", action="store_true", help="disable multicast scouting")
 
 
-def describe(a: argparse.Namespace) -> str:
-    """The resolved session, for the startup line: flags are easy to mean differently."""
-    if a.zenoh_config:
-        return f"zenoh: {a.zenoh_config} (the file wins over the flags)"
-    dial = ", ".join(a.connect) or ("multicast scouting" if not a.no_multicast else "nothing")
-    listen = f", listening on {', '.join(a.listen)}" if a.listen else ""
-    return f"zenoh: {a.mode}, dialling {dial}{listen}"
+def _endpoints(c: zenoh.Config, key: str, mode: str) -> List[str]:
+    """`connect/endpoints` and `listen/endpoints` are a list, or zenoh's per-mode defaults."""
+    v = json.loads(c.get_json(key))
+    return (v.get(mode, []) if isinstance(v, dict) else v) or []
+
+
+def describe(c: zenoh.Config) -> str:
+    """The startup line, read back off the resolved config: flags are easy to mean differently,
+    and a `--zenoh-config` file that picks another mode or other endpoints must show as what it is,
+    not as a filename."""
+    mode = json.loads(c.get_json("mode")) or "peer"  # unset: zenoh's own default
+    dial = ", ".join(_endpoints(c, "connect/endpoints", mode))
+    if not dial:
+        dial = "nothing" if json.loads(c.get_json("scouting/multicast/enabled")) is False \
+            else "multicast scouting"
+    listen = _endpoints(c, "listen/endpoints", mode) if mode != "client" else []
+    return f"zenoh: {mode}, dialling {dial}" + (f", listening on {', '.join(listen)}" if listen else "")
 
 
 def config_from_args(a: argparse.Namespace) -> zenoh.Config:

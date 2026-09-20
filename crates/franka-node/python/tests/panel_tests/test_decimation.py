@@ -95,8 +95,65 @@ def test_every_rate_the_node_takes_settles_with_a_full_ring(hz):
     assert len(rows) <= RING_MAX_ROWS
 
 
+def test_a_rate_the_decimation_cannot_halve_still_times_correctly():
+    """250 Hz is a legal `state_hz` and 1 in 2 of it is 125 Hz, not 100. Everything counted in
+    samples converts through the measured rate, so `lag_ms` is the real lag; before, dividing by a
+    nominal 100 Hz stretched every 8 ms sample into 10 and over-stated the lag by a quarter."""
+    mon = fed(2.5 * STATE_HZ, 8.0)
+    effective = mon.rate.source_hz / mon.rate.every
+    assert mon.rate.every == 2 and effective == pytest.approx(125, rel=0.01)
+    assert mon.metrics.rate_hz == pytest.approx(effective)
+    lag = mon.metrics.snapshot()["lag_ms"]
+    assert lag == pytest.approx(LAG_S * 1e3, abs=1e3 / effective)  # within one kept sample
+    assert lag * STATE_HZ / effective != pytest.approx(LAG_S * 1e3, abs=1e3 / effective)  # the old scaling
+
+
+def test_a_reset_invalidates_the_cached_snapshot():
+    """`/api/<arm>/metrics` serves the ticker's last snapshot for up to a tick. After a reset that
+    snapshot describes a stream that no longer exists, and it would be served under the new rate's
+    labels: numbers from 1 kHz-assumed rows, stamped `decimation: 10`."""
+    mon = fed(STATE_HZ, 3.0)
+    cached = mon.metrics_event()
+    assert cached["ok"] and cached["decimation"] == 1
+    feed(mon, 10 * STATE_HZ, 1.02, t0=3.0)  # a node restarted at state_hz = 1000: measure, reset
+    assert mon.metrics.resets == 1
+    ev = mon.metrics_event()
+    assert ev["decimation"] == 10 and ev["snapshot_age_s"] == 0.0
+    assert ev["t"] > cached["t"] and ev["t"] >= 4.0  # post-reset rows, not the cached ones
+
+
+def test_a_reset_during_the_snapshot_is_not_cached_as_fresh():
+    """The same trap one tick narrower: read the reset count after the maths and a reset that
+    landed while it ran looks like the count the snapshot was taken at."""
+    mon = fed(STATE_HZ, 3.0)
+    real = mon.metrics.snapshot
+
+    def snapshot_then_reset():
+        snap = real()  # computed on the pre-reset ring...
+        mon.metrics.reset()  # ...and the node's clock restarts while it runs
+        return snap
+    mon.metrics.snapshot = snapshot_then_reset
+    stale = mon.metrics_event()
+    mon.metrics.snapshot = real
+    feed(mon, STATE_HZ, 0.5, t0=3.0)
+    ev = mon.metrics_event()  # within the tick: only the reset count can tell it to recompute
+    assert ev["ok"] and ev["t"] > stale["t"] and ev["snapshot_age_s"] == 0.0
+
+
+def test_nothing_is_reported_until_the_rate_is_known():
+    """On a fast node the first second arrives un-decimated; a metric computed from it describes
+    a stream the panel is not going to keep. The page says it is measuring instead."""
+    mon = ArmMonitor("X", lambda owner, verb: {})
+    feed(mon, 10 * STATE_HZ, 0.5)
+    ev = mon.metrics_event()
+    assert (ev["ok"], ev["reason"], ev["source_hz"]) == (False, "measuring_rate", None)
+    assert "j4_rms" not in ev and ev["reach"] is not None  # liveness still reported
+    feed(mon, 10 * STATE_HZ, 2.0, t0=0.5)
+    assert mon.metrics_event()["ok"] is True
+
+
 def test_the_hundred_hertz_path_decodes_every_message():
     """The default node rate must behave exactly as before: nothing skipped, no reset, no log."""
     mon = fed(STATE_HZ, 3.0)
     assert len(mon.metrics.rows) == 300 and mon.metrics.resets == 0
-    assert mon.rate.every == 1 and mon.seen == 0
+    assert mon.rate.every == 1 and mon.seen == 300  # every message counted, none skipped

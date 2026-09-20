@@ -22,7 +22,7 @@ import math
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Sequence
 
 STATE_HZ = 100.0
@@ -133,6 +133,7 @@ class WindowStats:
     track_p50: float = 0.0
     track_p99: float = 0.0
     n: int = 0
+    scanned: int = 0  # rows the window had to look at: work done, not a metric
 
     def as_dict(self) -> Dict:
         return {"j4_rms": self.j4_rms, "all_rms": self.all_rms, "lag_ms": self.lag_ms,
@@ -164,7 +165,8 @@ class MetricsEngine:
     `dq_release_fraction`); until both are known the headroom is reported as unavailable."""
 
     def __init__(self, fs: float = STATE_HZ):
-        self.fs = fs
+        self.fs = fs  # the rate the filters are designed at
+        self.rate_hz = fs  # the rate the samples measurably arrive at: samples <-> time
         self.dq_limit: Optional[List[float]] = None
         self.release_fraction: Optional[float] = None
         sos = butter_highpass_sos(4, 3.0, fs)
@@ -180,6 +182,18 @@ class MetricsEngine:
         self.lock = threading.Lock()
 
     # ---- input -----------------------------------------------------------------------------
+    def set_rate(self, hz: float) -> None:
+        """The measured rate of the samples reaching `push`. Everything expressed in samples --
+        `lag_ms` and the lag window -- converts through it, so they are right even where the
+        decimation cannot land on exactly `fs` (a 250 Hz node gives 125 Hz). The filter
+        coefficients stay designed at `fs`; a 125 Hz stream moves their corner 3 Hz -> 3.75 Hz.
+
+        A measurement within 1 % of `fs` is taken as `fs`: that is a hundredth of the lag's own
+        one-sample resolution, and it keeps a node at the nominal rate reading identically run to
+        run instead of following the jitter in its own publish clock."""
+        with self.lock:
+            self.rate_hz = self.fs if abs(hz - self.fs) <= 0.01 * self.fs or hz <= 0 else hz
+
     def set_limits(self, dq_limit: Optional[Sequence[float]] = None,
                    release_fraction: Optional[float] = None) -> None:
         with self.lock:
@@ -238,24 +252,26 @@ class MetricsEngine:
 
     # ---- output ----------------------------------------------------------------------------
     def _window(self, rows: List[_Row], t0: float, t1: float, valid_from: float) -> WindowStats:
-        """Stats over `[t0, t1)` of a copy of the ring taken under the lock; runs without it.
-        Reads only `rows`, and writes only the `scanned` work counter."""
-        self.scanned += len(rows)
+        """Stats over `[t0, t1)` of a copy of the ring taken under the lock; runs without it, so it
+        writes no engine state: the rows it scanned go back with the stats, for the caller to add
+        up under the lock."""
+        scanned = len(rows)
         rows = [r for r in rows if t0 <= r.t < t1 and r.valid and r.t > valid_from]
-        w = WindowStats(n=len(rows))
+        w = WindowStats(n=len(rows), scanned=scanned)
         if not rows:
             return w
         w.j4_rms = _rms([r.hp[3] for r in rows])
         w.all_rms = max(_rms([r.hp[j] for r in rows]) for j in range(7))
         errs = [r.err for r in rows]
         w.track_p50, w.track_p99 = _percentile(errs, 0.5), _percentile(errs, 0.99)
-        lag = self._lag(rows)
-        w.lag_ms = None if lag is None else lag * 1e3 / self.fs
+        rate = self.rate_hz
+        lag = self._lag(rows, rate)
+        w.lag_ms = None if lag is None else lag * 1e3 / rate
         return w
 
-    def _lag(self, rows: List[_Row]) -> Optional[int]:
-        max_lag = int(LAG_MAX_S * self.fs)
-        rows = rows[-int(LAG_WINDOW_S * self.fs):]  # a rolling after-window can be 60 s; lag is O(n·lags)
+    def _lag(self, rows: List[_Row], rate: float) -> Optional[int]:
+        max_lag = int(LAG_MAX_S * rate)
+        rows = rows[-int(LAG_WINDOW_S * rate):]  # a rolling after-window can be 60 s; lag is O(n·lags)
         lags = []
         for ax in range(3):
             lag = lag_samples([r.target[ax] for r in rows], [r.ee[ax] for r in rows], max_lag)
@@ -275,7 +291,14 @@ class MetricsEngine:
         now, last = rows[-1].t, rows[-1]
         cur = self._window(rows, now - JITTER_WINDOW_S, now + 1e-9, valid_from)
         lagw = self._window(rows, now - LAG_WINDOW_S, now + 1e-9, valid_from)
+        windows = [cur, lagw]
+        if markers:
+            m = markers[-1]
+            before = self._window(rows, m.t - BEFORE_S, m.t, valid_from)
+            after = self._window(rows, m.t + AFTER_SKIP_S, now + 1e-9, valid_from)  # rolls to the next marker
+            windows += [before, after]
         with self.lock:
+            self.scanned += sum(w.scanned for w in windows)
             if self.marker_epoch == epoch:  # a mark landed while this ran: its zero stands
                 self.peak_since_marker = max(self.peak_since_marker, cur.j4_rms)
             peak = self.peak_since_marker
@@ -289,9 +312,6 @@ class MetricsEngine:
             "markers": [{"t": m.t, "label": m.label, "version": m.version} for m in markers],
         }
         if markers:
-            m = markers[-1]
-            before = self._window(rows, m.t - BEFORE_S, m.t, valid_from)
-            after = self._window(rows, m.t + AFTER_SKIP_S, now + 1e-9, valid_from)  # rolls to the next marker
             out["before"] = before.as_dict()
             out["after"] = after.as_dict()
             out["compare"] = compare(before, after)

@@ -38,7 +38,8 @@ class Live {
   push(m) {
     this.rate(m);
     if (!m.ok) {
-      this.misc.textContent = m.reason === 'stale_state' ? `NO STATE for ${fmt(m.age_s)} s — the numbers above are old` : 'no state from the node';
+      this.misc.textContent = m.reason === 'stale_state' ? `NO STATE for ${fmt(m.age_s)} s — the numbers above are old`
+        : m.reason === 'measuring_rate' ? 'measuring the state rate…' : 'no state from the node';
       this.root.classList.add('stale');
       return;
     }

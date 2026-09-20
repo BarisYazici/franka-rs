@@ -112,11 +112,17 @@ def test_a_client_with_nothing_to_dial_says_what_to_do():
 
 
 def test_the_resolved_session_is_printable(tmp_path):
-    """The startup line says what the flags resolved to: mode, and what is dialled."""
-    assert zbus.describe(parsed("--connect", "tcp/host:7447")) == "zenoh: client, dialling tcp/host:7447"
-    assert "multicast scouting" in zbus.describe(parsed())
+    """The startup line is read back off the config itself, so a `--zenoh-config` that picks
+    another mode or other endpoints shows as the session it is, not as a filename."""
+    def line(*argv):
+        return zbus.describe(zbus.config_from_args(parsed(*argv)))
+    assert line("--connect", "tcp/host:7447") == "zenoh: client, dialling tcp/host:7447"
+    assert "multicast scouting" in line()
+    assert line("--mode", "peer", "--listen", "tcp/0.0.0.0:7447", "--no-multicast") == \
+        "zenoh: peer, dialling nothing, listening on tcp/0.0.0.0:7447"
     f = tmp_path / "z.json5"
-    f.write_text("{}")
-    a = parsed("--zenoh-config", str(f), "--listen", "tcp/0.0.0.0:7447")
-    assert "the file wins" in zbus.describe(a)
-    assert zbus.config_from_args(a) is not None  # the file wins, so --listen is not refused here
+    f.write_text('{ mode: "peer", connect: { endpoints: ["tcp/1.2.3.4:7447"] },'
+                 '  listen: { endpoints: ["tcp/0.0.0.0:7447"] } }')
+    # the file wins over every flag, including the one that would otherwise be refused
+    assert line("--zenoh-config", str(f), "--connect", "tcp/ignored:1", "--listen", "tcp/0.0.0.0:1") == \
+        "zenoh: peer, dialling tcp/1.2.3.4:7447, listening on tcp/0.0.0.0:7447"

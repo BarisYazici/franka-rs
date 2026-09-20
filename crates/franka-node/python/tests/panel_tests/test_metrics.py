@@ -130,7 +130,7 @@ def test_snapshot_does_not_hold_the_lock_across_the_maths():
     drive(e, 0.0, 4.0, jitter=0.03)
     inside, release, pushed = threading.Event(), threading.Event(), threading.Event()
 
-    def blocking_lag(rows):
+    def blocking_lag(rows, rate):
         inside.set()
         release.wait(10)
         return None
