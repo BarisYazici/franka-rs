@@ -148,4 +148,10 @@ Ping verifies basic reachability, not 1 kHz timing. The later
 [communication test](./realtime-machine.md#check-the-link-first) **moves the robot** and
 must follow the robot's motion prerequisites. Do not run it alongside an active node.
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./pi-hardware.html">Parts and assembly</a><a rel="next" href="./pi-software.html">Next: node and client</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Parts and assembly](./pi-hardware.md)
+
+[Next: node and client →](./pi-software.md)
+
+</nav>

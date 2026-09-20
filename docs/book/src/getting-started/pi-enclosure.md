@@ -13,7 +13,7 @@ bracket's folded edge. Use the base and lid from the same print bundle.
 
 ## Look inside
 
-[Open the interactive 3D viewer](../site/pi-viewer.html?model=enclosure) to rotate the case,
+[Open the interactive 3D viewer](https://barisyazici.github.io/franka-rs/site/pi-viewer.html?model=enclosure) to rotate the case,
 switch to the electronics, or inspect the exploded assembly. No plugin is required.
 
 The Pi geometry comes from official CAD. The cooler, P02 and NIC are modeled from
@@ -75,4 +75,10 @@ The design has undergone CAD clearance and insertion checks, but bracket positio
 heights still include estimates. Thermal performance and the revised printed fit have not
 been established by these model checks. Keep the Active Cooler and ventilation unobstructed.
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./pi-software.html">Node and laptop client</a><a rel="next" href="./peripherals.html">Next: cameras and recording</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Node and laptop client](./pi-software.md)
+
+[Next: cameras and recording →](./peripherals.md)
+
+</nav>

@@ -1,6 +1,6 @@
 # franka-rs
 
-[Project home](./index.html) · Documentation
+[Project home](https://barisyazici.github.io/franka-rs/) · Documentation
 
 Send targets from your program. Let Rust handle the realtime control.
 

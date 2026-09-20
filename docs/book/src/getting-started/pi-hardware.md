@@ -29,7 +29,7 @@ different layout and power arrangement; the P02 case is not a universal Pi case.
 
 <figure class="hardware-figure">
 <img src="../assets/pi5/assembly-exploded.png" alt="Exploded CAD view separating the Pi, active cooler, PCIe adapter, ribbon cable, Intel NIC and optional camera connections." loading="lazy">
-<figcaption>Exploded reference model. <a href="../site/pi-viewer.html?model=exploded">Rotate and inspect the assembly</a>.</figcaption>
+<figcaption>Exploded reference model. <a href="https://barisyazici.github.io/franka-rs/site/pi-viewer.html?model=exploded">Rotate and inspect the assembly</a>.</figcaption>
 </figure>
 
 1. **Disconnect power.** Fit the Active Cooler's thermal pads and push pins as its
@@ -70,4 +70,10 @@ any joystick or VR integration. See [peripherals and recording](./peripherals.md
 
 </details>
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./raspberry-pi.html">Pi setup overview</a><a rel="next" href="./pi-system.html">Next: system and network</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Pi setup overview](./raspberry-pi.md)
+
+[Next: system and network →](./pi-system.md)
+
+</nav>

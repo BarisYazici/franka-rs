@@ -2,7 +2,7 @@
 
 The generated rustdoc for the `franka` crate is published alongside this book:
 
-**[→ API reference (`api/franka/index.html`)](./api/franka/index.html)**
+**[→ API reference (`api/franka/index.html`)](https://barisyazici.github.io/franka-rs/api/franka/index.html)**
 
 It is built by `.github/workflows/docs.yml` with
 

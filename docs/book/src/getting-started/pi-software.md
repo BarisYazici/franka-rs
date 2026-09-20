@@ -170,4 +170,10 @@ journalctl -u franka-node -f
 
 </details>
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./pi-system.html">Previous: system and network</a><a rel="next" href="./pi-enclosure.html">Optional: enclosure and models</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Previous: system and network](./pi-system.md)
+
+[Optional: enclosure and models →](./pi-enclosure.md)
+
+</nav>
