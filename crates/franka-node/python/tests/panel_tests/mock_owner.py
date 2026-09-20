@@ -2,7 +2,7 @@
 
 Serves `franka/<arm>/params/{schema,get,set}` and `franka/<arm>/teleop/params/{schema,get,set}`,
 publishes `.../params/current` on change and every second, the packed `StateMsg` on
-`franka/<arm>/state` at 100 Hz and the node-scoped `franka/node/mock-<arm>/status` at 1 Hz, both
+`franka/<arm>/state` at `--state-hz` (100 by default) and the node-scoped `franka/node/mock-<arm>/status` at 1 Hz, both
 in the node's own wire shapes. The `set` path runs the owner-side order:
 types -> merge -> relations -> clamp -> confirm_above -> store.
 
@@ -157,7 +157,7 @@ def teleop_relations(p: Dict[str, Any]) -> None:
 
 
 class StateStream(threading.Thread):
-    """Synthetic 100 Hz state whose lag and j4 jitter respond to the node's parameters, so the
+    """Synthetic state at `hz` whose lag and j4 jitter respond to the node's parameters, so the
     before/after windows show a change when a slider moves. Not a physics model."""
 
     def __init__(self, session: zenoh.Session, arm: str, node: Owner, hz: float = 100.0):
@@ -224,10 +224,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--arm", default="L")
     ap.add_argument("--no-state", action="store_true", help="serve params only, no state stream")
+    ap.add_argument("--state-hz", type=float, default=100.0, help="state publish rate")
     ap.add_argument("--schema-override", default="{}", metavar="JSON",
                     help='patch node schema entries (or "derived"), e.g. '
                          '\'{"joint_damping": {"max": [45,45,45,45,45,45,45]}}\'')
-    zbus.add_zenoh_args(ap)
+    zbus.add_zenoh_args(ap, mode="peer")  # an owner is dialled, it does not dial
     a = ap.parse_args()
     session = zenoh.open(zbus.config_from_args(a))
     boot = uuid.uuid4().hex[:8]
@@ -237,7 +238,7 @@ def main() -> None:
     node = Owner(session, zbus.params_prefix(a.arm, zbus.NODE), ns, node_domain_checks)
     teleop = Owner(session, zbus.params_prefix(a.arm, zbus.TELEOP),
                    teleop_schema(a.arm, uuid.uuid4().hex[:8], ns["derived"]), teleop_relations)
-    stream = None if a.no_state else StateStream(session, a.arm, node)
+    stream = None if a.no_state else StateStream(session, a.arm, node, a.state_hz)
     if stream:
         stream.start()
     print(f"mock owner: arm {a.arm}, node boot {boot}, params at {node.prefix} and {teleop.prefix}", flush=True)

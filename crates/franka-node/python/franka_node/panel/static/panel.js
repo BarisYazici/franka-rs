@@ -15,7 +15,9 @@ async function loadArms() {
   $('arms').innerHTML = arms.map(a => `<option>${a}</option>`).join('');
   const want = new URLSearchParams(location.search).get('arm');
   S.arm = arms.includes(want) ? want : arms[0];
-  if (!S.arm) { $('title').textContent = 'franka · no owner on the bus'; return; }
+  // Nothing to show has two causes worth telling apart: no zenoh session at all, or a session
+  // whose owners did not answer the discovery query.
+  if (!S.arm) { $('title').textContent = r.linked ? 'franka · on the bus, but no owner answered' : 'franka · no zenoh node on the bus'; return; }
   $('arms').value = S.arm;
   S.edits = {}; S.loaded = {}; S.schemas = {}; S.lastApplied = {}; disarm();  // nothing of the previous arm survives
   await loadAll();

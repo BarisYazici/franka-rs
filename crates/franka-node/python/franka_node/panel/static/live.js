@@ -26,7 +26,17 @@ class Live {
     root.append(misc);
   }
 
+  // What the numbers were computed from: the bridge keeps 1 in N of the node's stream so the
+  // metrics rate is the one the filters and thresholds assume, whatever the node publishes at.
+  rate(m) {
+    const src = m.source_hz;
+    $('staterate').textContent = src == null ? ''
+      : m.decimation > 1 ? `metrics from 1 in ${m.decimation} of a ${fmt(src)} Hz stream · `
+        : `metrics from a ${fmt(src)} Hz stream · `;
+  }
+
   push(m) {
+    this.rate(m);
     if (!m.ok) {
       this.misc.textContent = m.reason === 'stale_state' ? `NO STATE for ${fmt(m.age_s)} s — the numbers above are old` : 'no state from the node';
       this.root.classList.add('stale');

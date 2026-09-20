@@ -53,7 +53,8 @@ What the client does for you (the lease, the keepalive, pacing under the node's 
 ## Tuning panel
 
 The client installs `franka-tuning-panel`, a browser page for the live parameters of a running
-Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It binds to
+Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It opens a
+Zenoh client session (`--mode peer` if you need a peer, which `--listen` requires) and binds to
 loopback; see [Tune a running controller](https://barisyazici.github.io/franka-rs/howto/live-tuning.html)
 for the tunnel, presets and limits.
 

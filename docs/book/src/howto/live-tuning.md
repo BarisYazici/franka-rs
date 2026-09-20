@@ -28,7 +28,15 @@ franka-tuning-panel --connect tcp/127.0.0.1:7447 --no-multicast \
 ```
 
 This example runs the bridge on the same machine as a node listening on port 7447. Open
-`http://127.0.0.1:8765/` and select the arm. For a Pi-hosted bridge, tunnel it from the laptop:
+`http://127.0.0.1:8765/` and select the arm.
+
+The panel is a pure consumer, so it opens a Zenoh **client** session (`--mode client`, the
+default): it dials out and is never dialled, which is what works through a tunnel, and it still
+scouts by multicast, so a node on the same LAN needs no `--connect`. A client will not start
+with nothing to reach — start the node first, or pass `--mode peer` to hold a session open
+while you wait. `--listen` needs `--mode peer`; `--zenoh-config` wins over all of these flags.
+
+For a Pi-hosted bridge, tunnel it from the laptop:
 
 ```sh
 ssh -N -L 8765:127.0.0.1:8765 <pi-user>@<pi-address>
@@ -41,10 +49,14 @@ can reach the port. Access to the node's Zenoh bus also permits parameter change
 requests identify their sender but do not require the motion lease holder.
 
 `--presets` names the panel's preset file, by default
-`~/.local/state/franka-tuning/presets.json`. Presets never change the node's TOML.
+`~/.local/state/franka-tuning/presets.json`. Presets never change the node's TOML. Each saved
+preset holds the owners' values, a note, and the metrics snapshot at the moment of saving,
+stamped with the `effective_hz` it was measured at — snapshots taken at different effective
+rates are not comparable.
 
 To explore the interface without a robot, run these in two terminals from the repository
-root instead; the mock is a test tool that stays in the repository:
+root instead; the mock is a test tool that stays in the repository. The mock is an owner, so it
+listens as a peer; the panel dials it as a client:
 
 ```sh
 python crates/franka-node/python/tests/panel_tests/mock_owner.py --listen tcp/127.0.0.1:17447 --no-multicast
@@ -126,11 +138,18 @@ is no `params/save` endpoint. Put a chosen setup into TOML explicitly after revi
 
 ## Read the diagnostics with their limits
 
-Panel jitter, lag and tracking measurements are computed from published robot state, at the
-configured `state_hz`; they are not a complete trace of the 1 kHz loop. The node does not yet
-publish leash-alteration counts or cap-active fractions. Joint inertia hints are unavailable,
-and the headroom display also needs a compatible teleoperation owner's limits. A missing
-metric is not evidence that a limit was never reached.
+Panel jitter, lag and tracking measurements are computed from published robot state at about
+100 Hz, not from the 1 kHz loop, and they are not a complete trace of it. A node publishing
+faster is sampled 1 in N by the panel, which says so at startup and in the live header
+(`metrics from 1 in 10 of a 1000 Hz stream`); the metrics snapshot and every saved preset carry
+`effective_hz`. The numbers therefore mean the same thing at any `state_hz`, with one caveat: a
+rate that is not a multiple of 100 leaves the effective rate off 100 (250 Hz gives 125 Hz), and
+the lag figure scales with it, so compare lag only between snapshots of the same `effective_hz`.
+`state_hz = 100` is the setting to run: above it the panel drops the extra messages before
+decoding them, but they still cross the Zenoh callback, which on a Pi is real CPU. The node does
+not yet publish leash-alteration counts or cap-active fractions. Joint inertia hints are
+unavailable, and the headroom display also needs a compatible teleoperation owner's limits.
+A missing metric is not evidence that a limit was never reached.
 
 Larger Cartesian budgets can still reach joint-side limits depending on pose, payload and
 trajectory; there is no universal translation speed that guarantees success. Robot reflexes,

@@ -3,6 +3,7 @@ batched Apply, markers and metrics, presets, SSE."""
 
 import json
 import os
+import threading
 import time
 import urllib.request
 
@@ -10,6 +11,7 @@ import pytest
 
 from franka_node.panel import zbus
 from franka_node.panel.bridge import ArmMonitor
+from franka_node.panel.metrics import RING_MAX_ROWS
 from franka_node.panel.web import STATIC, resolve_bind
 
 from .conftest import build_stack, free_port, start_mock
@@ -165,6 +167,39 @@ def test_metrics_from_state_and_reflex(stack):
     assert http.get("/api/L/metrics")["valid"] is True
 
 
+def test_a_fast_node_is_decimated_on_the_bus(tmp_path):
+    """The Pi case end to end: a node publishing far above the metrics rate must cost the panel
+    the same as one at 100 Hz, and the page must be told what it is looking at."""
+    port = free_port()
+    proc = start_mock(port, ["--state-hz", "1000"])
+    http, bridge, stop = build_stack(port, str(tmp_path / "p.json"))
+    try:
+        for _ in range(50):  # until the first rate measurement lands
+            m = http.get("/api/L/metrics")
+            if m.get("decimation", 1) > 1:
+                break
+            time.sleep(0.2)
+        assert m["decimation"] > 1 and 50 <= m["effective_hz"] <= 200
+        assert m["source_hz"] == pytest.approx(m["effective_hz"] * m["decimation"])
+        rows = bridge.known("L").metrics.rows
+        assert len(rows) <= RING_MAX_ROWS
+        spacing = (rows[-1].t - rows[0].t) / (len(rows) - 1)
+        assert spacing == pytest.approx(1.0 / m["effective_hz"], rel=0.2)  # the kept samples, not the node's
+    finally:
+        stop()
+        proc.terminate()
+
+
+def test_hello_is_a_copy_taken_under_the_lock(stack):
+    """The SSE opening frame is serialised outside the lock, so it must be a copy: the subscriber
+    threads go on writing `current` while the socket is being written to."""
+    mon = ArmMonitor("X", lambda owner, verb: {})
+    mon.on_current("node", {"params": {"a": 1}})
+    hello = mon.hello()
+    mon.on_current("teleop", {"params": {}})
+    assert set(hello["current"]) == {"node"} and set(mon.current) == {"node", "teleop"}
+
+
 def test_undecodable_state_is_counted_logged_and_said(stack, caplog):
     """Bytes the bridge cannot parse (the old JSON shape, junk, a wrong length) must not raise
     on the subscriber thread and must reach the page as a number, not vanish."""
@@ -257,18 +292,20 @@ def test_ticker_never_waits_on_an_owner(stack):
     calls = []
 
     def slow(owner, verb):
-        calls.append((owner, verb))
+        calls.append((threading.current_thread().name, owner, verb))
         time.sleep(0.5)
         return {}
     mon.query, saved = slow, mon.query
     mon.metrics.dq_limit, saved_limits = None, (mon.metrics.dq_limit, mon.metrics.release_fraction)
     try:
+        here = threading.current_thread().name
         t0 = time.monotonic()
         for _ in range(10):
             mon.tick()
-        assert time.monotonic() - t0 < 0.5 and calls == []
+        # the seeder thread may be paying for a query of its own right now; the ticker may not
+        assert time.monotonic() - t0 < 0.5 and [c for c in calls if c[0] == here] == []
         mon.ensure_limits()  # the seeder's call is the one that pays
-        assert calls and time.monotonic() - t0 >= 0.5
+        assert [c for c in calls if c[0] == here] and time.monotonic() - t0 >= 0.5
     finally:
         mon.query = saved
         mon.metrics.set_limits(*saved_limits)
@@ -343,6 +380,7 @@ def test_presets(stack):
     _, r = http.post("/api/L/presets", {"name": "felt-right", "note": "lambda 0.2", "client_id": 1})
     assert r["ok"] and r["preset"]["node"]["ik_damping"] == 0.2 and r["preset"]["teleop"]["clamp"] == 0.04
     assert "j4_rms" in r["preset"]["snapshot"]
+    assert r["preset"]["snapshot"]["effective_hz"] > 0  # two snapshots compare only at one rate
     assert "felt-right" in {p["name"] for p in http.get("/api/L/presets")["presets"]}
     assert "felt-right" not in {p["name"] for p in http.get("/api/R/presets")["presets"]}  # keyed by arm
     assert http.delete("/api/R/presets/felt-right")["ok"] is False

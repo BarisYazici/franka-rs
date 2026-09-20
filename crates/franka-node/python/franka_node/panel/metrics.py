@@ -1,4 +1,4 @@
-"""Operator-facing metrics from the node's 100 Hz state stream. Pure Python, no numpy.
+"""Operator-facing metrics from a 100 Hz view of the node's state stream. Pure Python, no numpy.
 
 The engine consumes normalised samples (see `Sample`), keeps a 60 s ring, and answers with
 the numbers the panel shows: j4 jitter (RMS of high-passed dq[3]), all-joint jitter, lag
@@ -6,8 +6,14 @@ the numbers the panel shows: j4 jitter (RMS of high-passed dq[3]), all-joint jit
 before/after windows either side of the last Apply marker.
 
 One engine is shared by the Zenoh subscriber (push), the 10 Hz ticker and the HTTP threads
-(snapshot, mark); every public method takes the engine's lock. All times are the state stream's
-own clock (`Sample.t`), never the bridge host's, so before/after windows stay aligned across hosts.
+(snapshot, mark); every public method takes the engine's lock, and `snapshot` holds it only long
+enough to copy the ring: rows are immutable once pushed, so the maths runs outside it. All times
+are the state stream's own clock (`Sample.t`), never the bridge host's, so before/after windows
+stay aligned across hosts.
+
+`fs` is the rate the samples actually arrive at: a faster node stream is decimated to it by the
+bridge (`bridge.SourceRate`) before it reaches `push`, which is what keeps the filter band, the
+lag scaling and the thresholds meaning the same thing on every node.
 """
 
 from __future__ import annotations
@@ -21,6 +27,8 @@ from typing import Deque, Dict, List, Optional, Sequence
 
 STATE_HZ = 100.0
 RING_S = 60.0
+RING_MAX_ROWS = int(RING_S * STATE_HZ * 2)  # hard memory ceiling, whatever rate the rows arrive at
+JUMP_BACK_S = 1.0  # a step back this far is a new node clock (a reboot), not jitter
 JITTER_WINDOW_S = 0.5
 LAG_WINDOW_S = 3.0
 LAG_MAX_S = 0.5
@@ -64,6 +72,9 @@ class SosFilter:
     def __init__(self, sos: List[List[float]]):
         self.sos = sos
         self.z = [[0.0, 0.0] for _ in sos]
+
+    def reset(self) -> None:
+        self.z = [[0.0, 0.0] for _ in self.sos]
 
     def step(self, x: float) -> float:
         for (b0, b1, b2, a1, a2), z in zip(self.sos, self.z):
@@ -128,8 +139,10 @@ class WindowStats:
                 "track_p50_mm": self.track_p50 * 1e3, "track_p99_mm": self.track_p99 * 1e3, "n": self.n}
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Row:
+    """Frozen: `snapshot` computes on a list of these with the lock released, and a reflex is a
+    timestamp (`MetricsEngine.valid_from`), not a walk that rewrites every row."""
     t: float
     hp: List[float]  # high-passed dq, 7
     dq: List[float]
@@ -156,10 +169,14 @@ class MetricsEngine:
         self.release_fraction: Optional[float] = None
         sos = butter_highpass_sos(4, 3.0, fs)
         self.filters = [SosFilter([list(s) for s in sos]) for _ in range(7)]
-        self.rows: Deque[_Row] = deque()
+        self.rows: Deque[_Row] = deque(maxlen=RING_MAX_ROWS)
         self.markers: List[Marker] = []
+        self.marker_epoch = 0
+        self.valid_from = -math.inf  # rows at or before this are the wrong side of a reflex
         self.peak_since_marker = 0.0
         self.last_arrival: Optional[float] = None  # bridge monotonic clock, for staleness only
+        self.scanned = 0  # rows examined by `_window`: work done, not a metric
+        self.resets = 0
         self.lock = threading.Lock()
 
     # ---- input -----------------------------------------------------------------------------
@@ -173,6 +190,8 @@ class MetricsEngine:
 
     def push(self, s: Sample) -> None:
         with self.lock:
+            if self.rows and not (-JUMP_BACK_S < s.t - self.rows[-1].t <= RING_S):
+                self._reset()  # the node's clock jumped: nothing before it describes this stream
             hp = [f.step(v) for f, v in zip(self.filters, s.dq)]
             err = math.dist(s.target[:3], s.ee[:3]) if len(s.target) >= 3 and len(s.ee) >= 3 else 0.0
             self.rows.append(_Row(s.t, hp, list(s.dq), list(s.target[:3]), list(s.ee[:3]), err, s.valid))
@@ -180,9 +199,24 @@ class MetricsEngine:
                 self.rows.popleft()
             self.last_arrival = time.monotonic()
             if not s.valid:
-                # a reflex pollutes before/after: invalidate every row so both windows restart
-                for r in self.rows:
-                    r.valid = False
+                # a reflex pollutes before/after: one timestamp restarts both windows
+                self.valid_from = s.t
+
+    def reset(self) -> None:
+        with self.lock:
+            self._reset()
+
+    def _reset(self) -> None:
+        """Caller holds `self.lock`. Everything held is tied to a clock and a sample rate that no
+        longer apply: the ring, the filter state and the markers all go."""
+        self.rows.clear()
+        self.markers.clear()
+        for f in self.filters:
+            f.reset()
+        self.valid_from = -math.inf
+        self.peak_since_marker = 0.0
+        self.marker_epoch += 1
+        self.resets += 1
 
     def mark(self, label: str, version: Optional[int] = None) -> Optional[Marker]:
         """Stamp a marker at the newest state sample's time; None when no state has arrived."""
@@ -193,17 +227,21 @@ class MetricsEngine:
             self.markers.append(m)
             self.markers = self.markers[-20:]
             self.peak_since_marker = 0.0
+            self.marker_epoch += 1
             return m
 
     def clear_markers(self) -> None:
         with self.lock:
             self.markers.clear()
             self.peak_since_marker = 0.0
+            self.marker_epoch += 1
 
     # ---- output ----------------------------------------------------------------------------
-    def _window(self, t0: float, t1: float) -> WindowStats:
-        """Caller holds `self.lock`; this is the one reader of `rows` that does not take it."""
-        rows = [r for r in self.rows if t0 <= r.t < t1 and r.valid]
+    def _window(self, rows: List[_Row], t0: float, t1: float, valid_from: float) -> WindowStats:
+        """Stats over `[t0, t1)` of a copy of the ring taken under the lock; runs without it.
+        Reads only `rows`, and writes only the `scanned` work counter."""
+        self.scanned += len(rows)
+        rows = [r for r in rows if t0 <= r.t < t1 and r.valid and r.t > valid_from]
         w = WindowStats(n=len(rows))
         if not rows:
             return w
@@ -232,28 +270,32 @@ class MetricsEngine:
             age = time.monotonic() - self.last_arrival
             if age > STALE_S:
                 return {"ok": False, "reason": "stale_state", "age_s": age}
-            now = self.rows[-1].t
-            cur = self._window(now - JITTER_WINDOW_S, now + 1e-9)
-            lagw = self._window(now - LAG_WINDOW_S, now + 1e-9)
-            self.peak_since_marker = max(self.peak_since_marker, cur.j4_rms)
-            last = self.rows[-1]
-            out = {
-                "ok": True, "t": now,
-                "j4_rms": cur.j4_rms, "all_rms": cur.all_rms, "j4_peak_since_marker": self.peak_since_marker,
-                "lag_ms": lagw.lag_ms, "track_p50_mm": lagw.track_p50 * 1e3, "track_p99_mm": lagw.track_p99 * 1e3,
-                "dq_headroom": self._headroom(last.dq),
-                "lines": JITTER_LINES, "valid": last.valid,
-                "windows": {"before_s": BEFORE_S, "after_skip_s": AFTER_SKIP_S},
-                "markers": [{"t": m.t, "label": m.label, "version": m.version} for m in self.markers],
-            }
-            if self.markers:
-                m = self.markers[-1]
-                before = self._window(m.t - BEFORE_S, m.t)
-                after = self._window(m.t + AFTER_SKIP_S, now + 1e-9)  # rolls until the next marker
-                out["before"] = before.as_dict()
-                out["after"] = after.as_dict()
-                out["compare"] = compare(before, after)
-            return out
+            rows, markers = list(self.rows), list(self.markers)
+            epoch, valid_from = self.marker_epoch, self.valid_from
+        now, last = rows[-1].t, rows[-1]
+        cur = self._window(rows, now - JITTER_WINDOW_S, now + 1e-9, valid_from)
+        lagw = self._window(rows, now - LAG_WINDOW_S, now + 1e-9, valid_from)
+        with self.lock:
+            if self.marker_epoch == epoch:  # a mark landed while this ran: its zero stands
+                self.peak_since_marker = max(self.peak_since_marker, cur.j4_rms)
+            peak = self.peak_since_marker
+        out = {
+            "ok": True, "t": now,
+            "j4_rms": cur.j4_rms, "all_rms": cur.all_rms, "j4_peak_since_marker": peak,
+            "lag_ms": lagw.lag_ms, "track_p50_mm": lagw.track_p50 * 1e3, "track_p99_mm": lagw.track_p99 * 1e3,
+            "dq_headroom": self._headroom(last.dq),
+            "lines": JITTER_LINES, "valid": last.valid and last.t > valid_from,
+            "windows": {"before_s": BEFORE_S, "after_skip_s": AFTER_SKIP_S},
+            "markers": [{"t": m.t, "label": m.label, "version": m.version} for m in markers],
+        }
+        if markers:
+            m = markers[-1]
+            before = self._window(rows, m.t - BEFORE_S, m.t, valid_from)
+            after = self._window(rows, m.t + AFTER_SKIP_S, now + 1e-9, valid_from)  # rolls to the next marker
+            out["before"] = before.as_dict()
+            out["after"] = after.as_dict()
+            out["compare"] = compare(before, after)
+        return out
 
     def _headroom(self, dq: Sequence[float]) -> Optional[Dict]:
         if self.dq_limit is None or self.release_fraction is None:

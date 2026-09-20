@@ -1,6 +1,7 @@
 """HTTP front of the tuning bridge: static files, the JSON routes, SSE. Owner refusals are
 HTTP 200 with ok:false (the panel branches on `ok`); 422 only for a malformed request body, 413
-for one over 64 KiB, 404 for an <arm> that is not [A-Za-z0-9_-]+.
+for one over 64 KiB, 404 for an <arm> that is not a bounded [A-Za-z0-9_-] name, and 404
+`unknown_arm` for a well-formed name no owner on the bus has published.
 
   GET  /  and  /static/<file>              the panel
   GET  /api/arms                           {arms: {L: {node: bool, teleop: bool}}}
@@ -51,10 +52,12 @@ def resolve_bind(host: str, expose: bool) -> str:
     logging.getLogger("tuning-bridge").warning(EXPOSE_WARNING, host)
     return host
 CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css"}
-# An <arm> segment becomes part of a Zenoh key expression, where `*` and `**` reach every arm.
-ARM_NAME = re.compile(r"[A-Za-z0-9_-]+")
+# An <arm> segment becomes part of a Zenoh key expression, where `*` and `**` reach every arm;
+# its length is bounded because it is also a dictionary key the bridge would keep.
+ARM_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 MAX_BODY = 64 * 1024
 NOT_FOUND = {"ok": False, "error": "not found"}
+UNKNOWN_ARM = {"ok": False, "reason": "unknown_arm", "error": "no owner on the bus has this arm"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -119,18 +122,28 @@ class Handler(BaseHTTPRequestHandler):
         if p[0] != "api":
             return self._json(404, NOT_FOUND)
         if p[1:] == ["arms"]:
-            return self._json(200, {"ok": True, "arms": b.discover()})
+            return self._json(200, {"ok": True, "arms": b.discover(), "linked": b.linked()})
         if len(p) == 4 and p[2] in zbus.OWNERS and p[3] == "schema":
             return self._json(200, b.schema(p[1], p[2]))
         if len(p) == 4 and p[2] in zbus.OWNERS and p[3] == "params":
             return self._json(200, b.owner_get(p[1], p[2], "get"))
         if len(p) == 3 and p[2] == "metrics":
-            return self._json(200, b.arm(p[1]).metrics_event())
+            mon = self._mon(p[1])
+            return self._json(200, mon.metrics_event()) if mon else None
         if len(p) == 3 and p[2] == "presets":
             return self._json(200, b.presets_for(p[1]))
         if len(p) == 3 and p[2] == "events":
-            return self._sse(b.arm(p[1]))
+            mon = self._mon(p[1])
+            return self._sse(mon) if mon else None
         self._json(404, NOT_FOUND)
+
+    def _mon(self, arm: str) -> Optional[ArmMonitor]:
+        """The monitor of an arm the bus has presented, or a 404. A URL must not be able to make
+        one: the bridge would then keep a ring and query its owners for an arm that never existed."""
+        mon = self.bridge.known(arm)
+        if mon is None:
+            self._json(404, UNKNOWN_ARM)
+        return mon
 
     def _foreign_host(self) -> bool:
         """DNS rebinding makes an attacker's page same-origin with whatever name it rebinds to
@@ -173,7 +186,10 @@ class Handler(BaseHTTPRequestHandler):
         if len(p) == 3 and p[0] == "api" and p[2] == "apply":
             return self._json(200, b.apply(p[1], body))
         if len(p) == 3 and p[0] == "api" and p[2] == "markers":
-            m = b.arm(p[1]).mark(str(body.get("label", "manual")))
+            mon = self._mon(p[1])
+            if mon is None:
+                return
+            m = mon.mark(str(body.get("label", "manual")))
             if m is None:
                 return self._json(200, {"ok": False, "reason": "no_state", "field": None, "error": "no state yet"})
             return self._json(200, {"ok": True, "marker": m})
@@ -188,7 +204,10 @@ class Handler(BaseHTTPRequestHandler):
         if p is None:
             return self._json(404, NOT_FOUND)
         if len(p) == 3 and p[0] == "api" and p[2] == "markers":
-            self.bridge.arm(p[1]).metrics.clear_markers()
+            mon = self._mon(p[1])
+            if mon is None:
+                return
+            mon.metrics.clear_markers()
             return self._json(200, {"ok": True})
         if len(p) == 4 and p[0] == "api" and p[2] == "presets":
             return self._json(200, {"ok": self.bridge.presets.remove(p[3], p[1])})
@@ -216,8 +235,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
-        hello = {"arm": mon.arm, "reach": mon.reach(), "current": mon.current, "status": mon.status_event(),
-                 "channels": mon.channels()}
+        hello = mon.hello()  # taken under the monitor's lock; serialised here, outside it
         try:
             self.wfile.write(f"event: hello\ndata: {json.dumps(hello)}\n\n".encode())
             self.wfile.flush()
@@ -234,6 +252,19 @@ class Handler(BaseHTTPRequestHandler):
             with mon.lock:
                 if client in mon.clients:
                     mon.clients.remove(client)
+
+
+def open_session(a: argparse.Namespace) -> zenoh.Session:
+    """A zenoh client refuses to open when nothing answers, and 'the node is not up yet' is the
+    ordinary case someone opens the panel to look into. Say what to do, not a Rust file path."""
+    config = zbus.config_from_args(a)
+    logging.getLogger("tuning-bridge").info("%s", zbus.describe(a))
+    try:
+        return zenoh.open(config)
+    except zenoh.ZError as e:
+        reason = str(e).split(" at /")[0].strip()  # zenoh appends its own source path
+        raise SystemExit(f"no zenoh session ({zbus.describe(a)}): {reason}\nStart the node first, point "
+                         "--connect at it, or pass --mode peer to hold a session open until it appears.")
 
 
 def serve(bridge: Bridge, host: str, port: int) -> ThreadingHTTPServer:
@@ -257,7 +288,7 @@ def main() -> None:
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     host = resolve_bind(a.host, a.expose_to_network)
-    session = zenoh.open(zbus.config_from_args(a))
+    session = open_session(a)
     bridge = Bridge(session, a.presets, a.timeout)
     srv = serve(bridge, host, a.port)
     print(f"tuning bridge on http://{host}:{a.port}/  presets {a.presets}", flush=True)

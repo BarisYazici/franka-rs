@@ -42,12 +42,26 @@ def test_an_arm_that_is_not_a_name_is_404_and_reaches_nothing(stack, monkeypatch
 
 
 def test_arm_names_with_dash_and_underscore_still_route(stack, monkeypatch):
+    """The name itself routes; whether the bridge has that arm is the next question, and the
+    answer for one nobody published is a 404 that costs no query (see the phantom test)."""
     http, bridge = stack
     seen = _spy(bridge, monkeypatch)
-    for arm in ("L", "left_arm-2"):
-        status, _ = http._call("GET", f"/api/{arm}/metrics")
-        assert status == 200
-    assert "left_arm-2" in seen
+    assert http._call("GET", "/api/L/metrics")[0] == 200
+    status, body = http._call("GET", "/api/left_arm-2/metrics")
+    assert (status, body["reason"]) == (404, "unknown_arm")
+    assert seen == []  # the name never reached the Zenoh side
+
+
+def test_a_url_cannot_make_an_arm(stack, monkeypatch):
+    """A monitor from a URL path is a phantom the seeder would query for the rest of the session."""
+    http, bridge = stack
+    seen = _spy(bridge, monkeypatch)
+    arms = dict(bridge.arms)
+    for path, call in (("metrics", "GET"), ("events", "GET"), ("markers", "DELETE")):
+        assert http._call(call, f"/api/zzz/{path}")[0] == 404
+    assert http.post("/api/zzz/markers", {"label": "x"})[0] == 404
+    assert bridge.arms == arms and "zzz" not in bridge.arms and seen == []
+    assert "x" * 65 not in bridge.arms and http._call("GET", f"/api/{'x' * 65}/metrics")[0] == 404
 
 
 def _post_head(base, length_header):

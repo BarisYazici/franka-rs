@@ -1,6 +1,10 @@
 """Zenoh side of the tuning bridge: mirrors the owners' `current`, computes metrics from
 `state`, proxies schema/get/set, and runs the batched Apply (node first, teleop second). It holds
 no authority: it checks types and forwards; the owner clamps, rejects and confirms.
+
+A state stream faster than the engine's rate is decimated on the raw payload, before the decode
+and before any lock (`SourceRate`), so a 1 kHz node costs the panel what a 100 Hz one does and the
+metrics keep the band they were tuned at.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import zenoh
 from .._errors import ProtocolError
 from .._wire import ROBOT_MODES, decode_state
 from . import zbus
-from .metrics import MetricsEngine, Sample
+from .metrics import STATE_HZ, MetricsEngine, Sample
 from .presets import Presets
 from .validation import Rejection, check_schema, check_set_request
 
@@ -25,8 +29,44 @@ log = logging.getLogger("tuning-bridge")
 UNREACHABLE_S = 3.0
 METRICS_HZ = 10.0
 SEED_PERIOD_S = 2.0  # how often the seeder retries an owner that has not answered yet
+RATE_WINDOW_S = 1.0  # how often the source rate is re-measured
+KEEP_BAND = (70.0, 160.0)  # effective rates worth keeping: a deadband, so the ratio cannot flap
 MODE_CODES = {name: code for code, name in enumerate(ROBOT_MODES)}
 REFLEX_MODES = ("reflex", "user_stopped", "automatic_error_recovery")
+
+
+class SourceRate:
+    """How fast one arm publishes state, and the decimation that brings it to the engine's
+    `STATE_HZ`. Measured on the node's own clock of the samples that are kept, so it says the same
+    thing whatever the bridge host is doing; `every` is what `on_state` reads per message.
+
+    The ratio is only re-picked when the current one leaves `KEEP_BAND`. Rounding alone flaps at
+    any rate near an odd half-multiple of 100 (350 Hz: 7 changes in 20 s), and a change costs the
+    whole ring, so the deadband is what keeps 60 s of history at every `state_hz` the node takes."""
+
+    def __init__(self):
+        self.every = 1  # keep 1 in `every` of the source stream
+        self.source_hz: Optional[float] = None
+        self._t0: Optional[float] = None
+        self._kept = 0
+
+    def update(self, t: float) -> bool:
+        """Feed a kept sample's node time; True once a window, when a fresh rate was measured."""
+        if self._t0 is None or t < self._t0:
+            self._t0, self._kept = t, 0
+            return False
+        self._kept += 1
+        if t - self._t0 < RATE_WINDOW_S:
+            return False
+        self.source_hz = self.every * self._kept / (t - self._t0)
+        self._t0, self._kept = t, 0
+        if not KEEP_BAND[0] <= self.source_hz / self.every < KEEP_BAND[1]:
+            self.every = max(1, round(self.source_hz / STATE_HZ))
+        return True
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"source_hz": self.source_hz, "decimation": self.every,
+                "effective_hz": None if self.source_hz is None else self.source_hz / self.every}
 
 
 class SseClient:
@@ -56,6 +96,10 @@ class ArmMonitor:
         self.state_at: Optional[float] = None
         self.decode_failures = 0
         self.metrics = MetricsEngine()
+        self.rate = SourceRate()
+        self.seen = 0  # messages since the last one kept
+        self._every, self._announced = 1, False  # the decimation the ring was built at
+        self._event: tuple = (-1e9, None)  # the ticker's last metrics event and when it was taken
         self.clients: List[SseClient] = []
 
     def on_current(self, owner: str, body: Dict[str, Any]) -> None:
@@ -90,6 +134,10 @@ class ArmMonitor:
         self.broadcast("status", self.status_event())
 
     def on_state(self, payload: bytes) -> None:
+        self.seen += 1
+        if self.seen < self.rate.every:  # decimate on the raw payload: no decode, no lock
+            return
+        self.seen = 0
         try:
             s = decode_state(payload)
         except ProtocolError as e:
@@ -97,6 +145,8 @@ class ArmMonitor:
             if self.decode_failures == 1:
                 log.error("state on arm %s cannot be decoded (%s); the page will say so", self.arm, e)
             return
+        if self.rate.update(s.t_node_ns / 1e9):
+            self._on_rate()
         reflex = s.has_errors or s.robot_mode in REFLEX_MODES
         self.state_at = time.monotonic()
         self.metrics.push(Sample(t=s.t_node_ns / 1e9, dq=s.dq.tolist(), target=s.target[:3].tolist(),
@@ -107,6 +157,17 @@ class ArmMonitor:
         if condition != self.condition:  # phase, mode or errors changed: tell the page now, not at 1 Hz
             self.condition = condition
             self.broadcast("status", self.status_event())
+
+    def _on_rate(self) -> None:
+        """A fresh rate measurement: say it once at startup and whenever the decimation moves."""
+        every = self.rate.every
+        if every != self._every or not self._announced:
+            log.info("arm %s publishes state at %.0f Hz: metrics from 1 in %d of it (%.0f Hz)", self.arm,
+                     self.rate.source_hz, every, self.rate.source_hz / every)
+            self._announced = True
+        if every != self._every:
+            self.metrics.reset()  # the ring and the filter state were built at the old rate
+            self._every = every
 
     def status_event(self) -> Dict[str, Any]:
         """What the page shows in its header: the node's status entry merged with the condition
@@ -140,14 +201,26 @@ class ArmMonitor:
                     c.closed.set()
                     self.clients.remove(c)
 
-    def tick(self) -> None:
-        self.broadcast("metrics", self.metrics_event())
+    def hello(self) -> Dict[str, Any]:
+        """The SSE opening frame, taken under the lock; the caller serialises it outside."""
+        with self.lock:
+            return {"arm": self.arm, "reach": self.reach(), "current": dict(self.current),
+                    "status": self.status_event(), "channels": self.channels()}
 
-    def metrics_event(self) -> Dict[str, Any]:
-        snap = self.metrics.snapshot()
-        snap["reach"] = self.reach()
-        snap["channels"] = self.channels()
-        return snap
+    def tick(self) -> None:
+        self.broadcast("metrics", self.metrics_event(fresh=True))
+
+    def metrics_event(self, fresh: bool = False) -> Dict[str, Any]:
+        """The ticker's last snapshot with its age, recomputed only when that is older than one
+        tick: a poll of `/api/<arm>/metrics` then costs a dict, not a pass over the ring. Liveness
+        (reach, channels, rate) is always read now, it is where the page looks for trouble."""
+        at, snap = self._event
+        age = time.monotonic() - at
+        if fresh or snap is None or age >= 1.0 / METRICS_HZ:
+            snap, age = self.metrics.snapshot(), 0.0
+            self._event = (time.monotonic(), snap)
+        return {**snap, **self.rate.as_dict(), "reach": self.reach(),
+                "channels": self.channels(), "snapshot_age_s": age}
 
     def mark(self, label: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
         m = self.metrics.mark(label, version)
@@ -171,17 +244,24 @@ class Bridge:
         threading.Thread(target=self._seeder, daemon=True, name="limit-seeder").start()
 
     def arm(self, name: str) -> ArmMonitor:
+        """The monitor for an arm the bus has presented, created on first sight. Never call this
+        with a name that came from a URL: a phantom arm is one the seeder then queries forever."""
         with self.lock:
             if name not in self.arms:
                 self.arms[name] = ArmMonitor(name, lambda owner, verb: self.owner_get(name, owner, verb))
             return self.arms[name]
+
+    def known(self, name: str) -> Optional[ArmMonitor]:
+        return self.arms.get(name)
 
     def _on_current(self, s: zenoh.Sample) -> None:
         key = str(s.key_expr)
         self.arm(zbus.arm_of(key)).on_current(zbus.owner_of(key) or zbus.NODE, zbus.loads(s.payload))
 
     def _on_state(self, s: zenoh.Sample) -> None:
-        self.arm(zbus.arm_of(str(s.key_expr))).on_state(s.payload.to_bytes())
+        name = zbus.arm_of(str(s.key_expr))
+        mon = self.arms.get(name) or self.arm(name)  # a dict lookup per message, not the bridge lock
+        mon.on_state(s.payload.to_bytes())
 
     def _on_node_status(self, s: zenoh.Sample) -> None:
         """`franka/node/<name>/status` is node-scoped: one message, one entry per arm."""
@@ -217,8 +297,16 @@ class Bridge:
             for key, body in zbus.query_json(self.session, zbus.params_prefix("*", owner) + "/schema",
                                              timeout=self.timeout):
                 if body.get("owner"):
-                    arms.setdefault(zbus.arm_of(key), {o: False for o in zbus.OWNERS})[owner] = True
+                    name = zbus.arm_of(key)
+                    arms.setdefault(name, {o: False for o in zbus.OWNERS})[owner] = True
+                    self.arm(name)  # an owner answered for it: the arm exists
         return arms
+
+    def linked(self) -> bool:
+        """Whether this session has any zenoh peer or router at all, so the page can tell
+        'nothing on the bus' from 'on the bus, but no owner answered'."""
+        info = self.session.info
+        return bool(info.peers_zid() or info.routers_zid())
 
     def owner_get(self, arm: str, owner: str, verb: str, body: Optional[Dict] = None) -> Dict[str, Any]:
         r = zbus.query_one(self.session, f"{zbus.params_prefix(arm, owner)}/{verb}", body, self.timeout)
@@ -243,7 +331,7 @@ class Bridge:
         except Rejection as r:
             return r.as_reply()
         reply = self.owner_get(arm, owner, "set", req)
-        if reply.get("ok"):
+        if reply.get("ok"):  # an owner answered for this arm, so the monitor is not a phantom
             reply["marker"] = self.arm(arm).mark(f"{owner} v{reply.get('version')}", reply.get("version"))
         return reply
 
@@ -265,9 +353,9 @@ class Bridge:
 
     def presets_for(self, arm: str) -> Dict[str, Any]:
         doc = self.presets.load()
-        mon = self.arm(arm)
+        mon = self.known(arm)
         builtins = []
-        if mon.toml_set:
+        if mon and mon.toml_set:
             builtins.append({"name": "toml", "builtin": True, "note": "as loaded at boot",
                              **{o: v["params"] for o, v in mon.toml_set.items()}})
         defaults = {}
@@ -283,15 +371,16 @@ class Bridge:
         name = str(body.get("name", "")).strip()
         if not name or name in ("toml", "library-defaults"):
             return {"ok": False, "error": "preset needs a name that is not a built-in"}
-        mon = self.arm(arm)
+        mon = self.known(arm)
         preset = {"name": name, "arm": arm, "note": str(body.get("note", "")),
                   "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "by": body.get("client_id", 0)}
         for owner in zbus.OWNERS:
-            cur = mon.current.get(owner) or self.owner_get(arm, owner, "get")
+            cur = (mon.current.get(owner) if mon else None) or self.owner_get(arm, owner, "get")
             if cur.get("params"):
                 preset[owner] = cur["params"]
-        snap = mon.metrics.snapshot()
-        preset["snapshot"] = {k: snap.get(k) for k in ("j4_rms", "j4_peak_since_marker", "lag_ms",
-                                                         "track_p99_mm", "after")} if snap.get("ok") else {}
+        # `effective_hz` rides along: two snapshots are only comparable at the same metrics rate.
+        snap = mon.metrics_event() if mon else {}
+        keys = ("j4_rms", "j4_peak_since_marker", "lag_ms", "track_p99_mm", "after", "effective_hz")
+        preset["snapshot"] = {k: snap.get(k) for k in keys} if snap.get("ok") else {}
         self.presets.add(preset)
         return {"ok": True, "preset": preset}

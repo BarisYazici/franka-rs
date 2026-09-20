@@ -5,8 +5,9 @@ import pytest
 import threading
 import time
 
-from franka_node.panel.metrics import (STALE_S, MetricsEngine, Sample, SosFilter, WindowStats,
-                                       butter_highpass_sos, compare, lag_samples)
+from franka_node.panel.metrics import (RING_MAX_ROWS, RING_S, STALE_S, STATE_HZ, MetricsEngine,
+                                       Sample, SosFilter, WindowStats, butter_highpass_sos,
+                                       compare, lag_samples)
 
 FS = 100.0
 
@@ -79,6 +80,70 @@ def test_reflex_discards_windows():
     drive(e, t, 2.0, jitter=0.02)
     s = e.snapshot()
     assert s["before"]["n"] == 0 and s["after"]["n"] == pytest.approx(2.0 * FS, abs=2)
+
+
+def test_a_reflex_is_a_timestamp_not_a_walk_over_the_ring():
+    """The cost of a reflex must not grow with the ring: one scalar excludes the earlier rows,
+    and no row is ever rewritten after it was pushed (which is what lets `snapshot` drop the lock)."""
+    e = MetricsEngine()
+    t = drive(e, 0.0, 6.0, jitter=0.04)
+    rows = list(e.rows)
+    t = drive(e, t, 0.01, jitter=0.04, valid=False)  # one invalid sample
+    assert e.valid_from == pytest.approx(t - 1 / FS)
+    assert [r.valid for r in e.rows][:len(rows)] == [True] * len(rows)  # untouched
+    assert e._window(list(e.rows), 0.0, t, e.valid_from).n == 0
+    with pytest.raises(Exception):  # frozen: the invariant, not a convention
+        rows[0].valid = False
+    end = drive(e, t, 1.0, jitter=0.04)
+    assert e._window(list(e.rows), 0.0, end, e.valid_from).n == pytest.approx(1 * FS, abs=2)
+
+
+def test_a_node_reboot_resets_the_ring_and_the_filter_state():
+    """The node's clock restarts while the page is open: rows from the old clock are neither
+    droppable by age nor comparable, and the filter state belongs to the old stream."""
+    e = MetricsEngine()
+    drive(e, 1e6, 5.0, jitter=0.05)
+    assert len(e.rows) == pytest.approx(5 * FS, abs=2)
+    t = drive(e, 0.0, 2.0, jitter=0.05)  # reboot: the clock goes back
+    assert e.resets == 1 and len(e.rows) == pytest.approx(2 * FS, abs=2)
+    assert all(r.t < 1e5 for r in e.rows) and e.markers == []
+    s = e.snapshot()
+    assert s["j4_rms"] == pytest.approx(0.05, rel=0.1)  # filters restarted: no step through them
+    drive(e, t + 10 * RING_S, 2.0, jitter=0.05)  # and a jump forward past the ring
+    assert e.resets == 2 and len(e.rows) == pytest.approx(2 * FS, abs=2)
+
+
+def test_the_ring_is_bounded_whatever_the_stream_does():
+    """A stream faster than the engine's rate is the bridge's business to decimate; the ring is
+    still a hard memory ceiling, so a misconfigured node cannot grow it without limit."""
+    for hz in (FS, 10 * FS):
+        e = MetricsEngine()
+        for i in range(int(70 * hz)):  # more than the ring's span
+            e.push(Sample(i / hz, [0.0] * 7, [0, 0, 0], [0, 0, 0]))
+        assert len(e.rows) <= RING_MAX_ROWS == RING_S * STATE_HZ * 2
+
+
+def test_snapshot_does_not_hold_the_lock_across_the_maths():
+    """The 1 kHz-capable push path must never wait on a snapshot: the lock covers the copy of the
+    ring, not the correlation. `_lag` stands in for the slow part."""
+    e = MetricsEngine()
+    drive(e, 0.0, 4.0, jitter=0.03)
+    inside, release, pushed = threading.Event(), threading.Event(), threading.Event()
+
+    def blocking_lag(rows):
+        inside.set()
+        release.wait(10)
+        return None
+    e._lag = blocking_lag
+    snap = threading.Thread(target=e.snapshot)
+    snap.start()
+    assert inside.wait(10)
+    threading.Thread(target=lambda: (e.push(Sample(4.0, [0.0] * 7, [0, 0, 0], [0, 0, 0])),
+                                     pushed.set())).start()
+    assert pushed.wait(10), "push waited on the engine lock while snapshot was computing"
+    release.set()
+    snap.join(10)
+    assert not snap.is_alive()
 
 
 def test_marker_uses_the_state_clock_not_the_bridge_clock():

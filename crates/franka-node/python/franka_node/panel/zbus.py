@@ -13,19 +13,36 @@ TELEOP = "teleop"
 OWNERS = (NODE, TELEOP)
 
 
-def add_zenoh_args(p: argparse.ArgumentParser) -> None:
+def add_zenoh_args(p: argparse.ArgumentParser, mode: str = "client") -> None:
+    """The node's own vocabulary (`[zenoh] mode`). A pure consumer defaults to `client`: it dials
+    out and is never dialled, which is what works behind a tunnel, and it still scouts by
+    multicast, so a plain LAN needs no flags either."""
+    p.add_argument("--mode", choices=("peer", "client"), default=mode,
+                   help=f"zenoh session mode (default {mode}); a client dials out and does not listen")
     p.add_argument("--connect", action="append", default=[], metavar="ENDPOINT",
                    help="zenoh endpoint to connect to, e.g. tcp/127.0.0.1:7447 (repeatable)")
     p.add_argument("--listen", action="append", default=[], metavar="ENDPOINT",
-                   help="zenoh endpoint to listen on (repeatable)")
+                   help="zenoh endpoint to listen on, peer mode only (repeatable)")
     p.add_argument("--zenoh-config", metavar="FILE", help="zenoh json5 config file (overrides the flags)")
     p.add_argument("--no-multicast", action="store_true", help="disable multicast scouting")
+
+
+def describe(a: argparse.Namespace) -> str:
+    """The resolved session, for the startup line: flags are easy to mean differently."""
+    if a.zenoh_config:
+        return f"zenoh: {a.zenoh_config} (the file wins over the flags)"
+    dial = ", ".join(a.connect) or ("multicast scouting" if not a.no_multicast else "nothing")
+    listen = f", listening on {', '.join(a.listen)}" if a.listen else ""
+    return f"zenoh: {a.mode}, dialling {dial}{listen}"
 
 
 def config_from_args(a: argparse.Namespace) -> zenoh.Config:
     if a.zenoh_config:
         return zenoh.Config.from_file(a.zenoh_config)
+    if a.mode == "client" and a.listen:
+        raise SystemExit("--listen needs --mode peer: a zenoh client dials out and does not listen")
     c = zenoh.Config()
+    c.insert_json5("mode", json.dumps(a.mode))
     if a.connect:
         c.insert_json5("connect/endpoints", json.dumps(a.connect))
     if a.listen:

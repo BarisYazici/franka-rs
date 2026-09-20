@@ -340,6 +340,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **The tuning panel's metrics are computed at a fixed ~100 Hz, and its Zenoh session is a
+  client.** The panel keeps 1 in N of a faster state stream, chosen from the measured rate and
+  held through a deadband so it never flaps; before this, every metric was computed as if the
+  stream were 100 Hz whatever `state_hz` said, so at 1 kHz the "3 Hz" jitter high-pass was really
+  a 30 Hz one — it filtered out the jitter the panel exists to show, reported a contaminant
+  instead (measured 3-6x too high), and collapsed `lag_ms` to zero. The 60 s ring is bounded,
+  survives a node reboot with the page open, and a reflex no longer walks it. The page, the
+  snapshot (`source_hz`, `decimation`, `effective_hz`) and every saved preset say which rate the
+  numbers came from; snapshots at different `effective_hz` are not comparable. At `state_hz = 1000`
+  on two arms the panel no longer pegs a Pi core but still costs roughly half of one, so
+  `state_hz = 100` remains the configuration to run. `franka-tuning-panel` now takes
+  `--mode {peer,client}` in the node's own vocabulary, defaulting to **client**: it dials out and
+  is never dialled, which is what works behind a tunnel, and it still scouts by multicast.
+  `--listen` needs `--mode peer`, `--zenoh-config` still wins over the flags, and the resolved
+  session is printed at startup. A URL path can no longer create an arm the bridge then polls.
+
 - **Live tuning caps the wrist's `joint_damping` at 40 Nm s/rad** (joints 5 to 7; 60 on 1 to
   4): with the velocity barrier's 20 added, `K × 1 ms / I` on the wrist's 0.074 kg m² is 0.81
   there and would be 1.08 at 60, past the stability rule in the impedance reference.
