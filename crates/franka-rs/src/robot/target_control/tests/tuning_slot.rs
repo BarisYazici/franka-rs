@@ -44,6 +44,13 @@ fn a_whole_tuning_crosses_the_slot_or_none_of_it_does() {
             for k in 1..200_000u32 {
                 let k = f64::from(k);
                 slot.publish(std::array::from_fn(|word| k * (1 + word) as f64));
+                // A writer that only publishes is inside the critical section for all but the
+                // loop overhead, so the slot is almost never consistent to catch. On one core
+                // the reader then wins no race at all and `loads` stays zero -- a fact about
+                // the scheduler, not about the seqlock. Yielding leaves a window the reader is
+                // scheduled into, which is also what the real writer does: it publishes a
+                // tuning and goes back to a 1 kHz loop.
+                std::thread::yield_now();
             }
         })
     };
