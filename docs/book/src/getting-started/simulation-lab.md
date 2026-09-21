@@ -6,20 +6,19 @@ the arm and compare its measured motion.
 
 **[Launch the notebook on Binder](https://mybinder.org/v2/gh/BarisYazici/franka-rs/codex%2Fbinder-simulation-lab?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)**
 
-This preview launches the `codex/binder-simulation-lab` branch. Cloud launch validation is
-still pending. You can also
+This preview launches the `codex/binder-simulation-lab` branch. You can also
 [read the notebook source](https://github.com/BarisYazici/franka-rs/blob/codex/binder-simulation-lab/crates/franka-py/examples/cartesian_sim_lab.ipynb).
 
 ## Run an experiment
 
 1. Open the launch link and wait for Jupyter. Binder builds the environment for the
    repository revision and caches it; the first launch can take longer.
-2. Run the setup cells in order. They start your session's simulator and connect the
-   Python client to it.
-3. Run the default motion, then change one limit at a time and run it again. Compare the
-   arm's movement and plots before changing another setting.
-4. Edit the target-control cells themselves to try a different target or motion. The
-   notebook explains the settings alongside the runnable code.
+2. Run the import and stationary-preview cells. You should see the robot before sending
+   any movement command.
+3. Make a 2 cm move, play the recording, then repeat with a lower velocity limit.
+4. Change acceleration or jerk, one at a time, and compare the measured response.
+5. Continue to the direct control API and optional sliders when ready to write a longer
+   movement sequence.
 
 The control calls are the same ones used in [From Python](./python.md):
 
@@ -43,7 +42,13 @@ target, so a higher limit does not guarantee proportionally faster motion.
 
 Python sends targets to the native Rust control pipeline. A native `franka-sim` process
 runs in the same session and exchanges robot commands and state with that controller.
-The notebook visualizes that simulation's state. See
+Each experiment starts and stops its own simulator. The inline viewer replays recorded
+joint states as a robot skeleton, with Play/Pause, a time slider and view rotation. It
+requires no WebGL or external graphics assets. Optional Rerun mesh rendering in the
+quickstart needs WebGL2; a browser without it can use the default playback.
+
+The accompanying `quickstart.ipynb` also starts its own simulator and demonstrates
+`move_to`, rotation targets and `follow`. See
 [Command from a low-rate program](../howto/target-control.md) for the full API and backends.
 
 ## Keep your changes

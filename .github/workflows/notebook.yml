@@ -53,4 +53,6 @@ jobs:
       - name: Check simulator process lifecycle
         run: python -m unittest discover -s crates/franka-py/examples -p test_sim_runtime.py -v
       - name: Execute notebook Run All against the simulator
-        run: python .binder/verify_notebook.py
+        run: |
+          python .binder/verify_notebook.py
+          python .binder/verify_notebook.py quickstart.ipynb

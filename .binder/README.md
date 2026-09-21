@@ -1,8 +1,9 @@
 # Binder simulation lab: maintainer notes
 
 [Launch this branch](https://mybinder.org/v2/gh/BarisYazici/franka-rs/codex%2Fbinder-simulation-lab?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)
-opens `crates/franka-py/examples/cartesian_sim_lab.ipynb`. Public Binder validation is
-pending. After publication, point the book and this link at a tested release or commit.
+opens `crates/franka-py/examples/cartesian_sim_lab.ipynb`. The public image build and
+Jupyter launch have been exercised. Before promoting a release, test its exact revision
+and point stable documentation links at that tested release or commit.
 
 ## Build and runtime
 
@@ -50,3 +51,17 @@ under bounded CPU/memory, and verify inline rendering in a browser. Also check i
 kernel restart and simulator cleanup. Finally test the public launch link: a successful
 local build alone does not establish Binder compatibility. Public sessions are temporary
 and shared-cloud timing is not a realtime qualification.
+
+## Notebook checks
+
+```sh
+python .binder/verify_notebook.py
+python .binder/verify_notebook.py quickstart.ipynb
+```
+
+Both notebooks own simulator startup and cleanup; users do not need to launch a server
+separately. The guided lab begins with a stationary preview and single 2 cm move.
+Its default playback embeds recorded joint states in a self-contained SVG viewer, so
+browsers without WebGL2 can still see the robot. Rerun remains optional in the quickstart.
+Notebook execution alone does not validate browser playback: check the visible robot,
+Play/Pause, time scrubbing and view rotation in the actual hosted notebook as well.
