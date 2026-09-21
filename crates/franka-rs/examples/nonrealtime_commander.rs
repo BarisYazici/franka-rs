@@ -28,11 +28,12 @@
 //!
 //! `--backend impedance` (the default, the crate's) follows the generator's pose with the
 //! crate's own impedance torques; `--stiffness KX` and `--damping KXD` set its three
-//! translational Cartesian gains (N/m, N s/m), `--no-feedforward` damps the absolute velocity
-//! instead of the velocity error (DROID parity), `--project-joint-gains` confines the joint
-//! gains to the Jacobian's nullspace, `--leash M` sets the translational leash (m); the CSV
-//! gains the joint goal, the torques, the IK residual and what the leash took off. `--backend
-//! robot` streams the pose to the robot's own controller. `--thresholds N` sets all eight
+//! translational Cartesian gains (N/m, N s/m), `--feedforward` damps the velocity error
+//! instead of the absolute velocity (off by default, DROID parity; on, real arms vibrated),
+//! `--project-joint-gains` confines the joint gains to the Jacobian's nullspace, `--leash M`
+//! sets the translational leash (m); the CSV gains the joint goal, the torques, the IK
+//! residual and what the leash took off. `--backend robot` streams the pose to the robot's own
+//! controller. `--thresholds N` sets all eight
 //! collision thresholds (contact and collision, joints in Nm and Cartesian in N / Nm) to `N`;
 //! the default is libfranka's example values.
 //!
@@ -91,7 +92,7 @@ fn usage(program: &str) -> ! {
     eprintln!(
         "Usage: {program} <hostname> [--bridged | --raw] [--stdin] [--log PATH] [--yes] \
          [--budget V,A,J] [--rotate] [--backend robot|impedance] [--stiffness KX] [--damping KXD] \
-         [--no-feedforward] [--project-joint-gains] [--leash M] [--thresholds N]"
+         [--feedforward] [--project-joint-gains] [--leash M] [--thresholds N]"
     );
     std::process::exit(1);
 }
@@ -102,7 +103,7 @@ fn parse_args() -> Args {
         (None, Mode::Bridged, false, None, false, false);
     let mut limits = TargetControlOptions::default().limits;
     let (mut robot_backend, mut stiffness, mut damping, mut leash) = (false, None, None, None);
-    let (mut feedforward, mut project, mut thresholds) = (true, false, None);
+    let (mut feedforward, mut project, mut thresholds) = (false, false, None);
     let mut arg = 1;
     let value = |arg: &mut usize| {
         *arg += 1;
@@ -139,7 +140,7 @@ fn parse_args() -> Args {
             "--damping" => damping = value(&mut arg).parse().ok().or_else(|| usage(&args[0])),
             "--leash" => leash = value(&mut arg).parse().ok().or_else(|| usage(&args[0])),
             "--thresholds" => thresholds = value(&mut arg).parse().ok().or_else(|| usage(&args[0])),
-            "--no-feedforward" => feedforward = false,
+            "--feedforward" => feedforward = true,
             "--project-joint-gains" => project = true,
             other if hostname.is_none() && !other.starts_with("--") => {
                 hostname = Some(other.to_string())
@@ -150,7 +151,7 @@ fn parse_args() -> Args {
     }
     let hostname = hostname.unwrap_or_else(|| usage(&args[0]));
     let impedance_flags =
-        stiffness.is_some() || damping.is_some() || leash.is_some() || !feedforward || project;
+        stiffness.is_some() || damping.is_some() || leash.is_some() || feedforward || project;
     if mode == Mode::Raw && (rotate || robot_backend || impedance_flags) {
         eprintln!("--rotate, --backend and the impedance flags are for --bridged mode only");
         usage(&args[0]);
@@ -173,11 +174,13 @@ fn parse_args() -> Args {
             translation: leash.unwrap_or(Leash::default().translation),
             ..Leash::default()
         };
-        let impedance = ImpedanceOptions::cartesian()
+        let mut impedance = ImpedanceOptions::cartesian()
             .with_gains(gains)
             .with_leash(leash)
-            .with_velocity_feedforward(feedforward)
             .with_project_joint_gains(project);
+        if feedforward {
+            impedance = impedance.with_velocity_feedforward(true);
+        }
         Backend::Impedance(impedance)
     };
     Args {

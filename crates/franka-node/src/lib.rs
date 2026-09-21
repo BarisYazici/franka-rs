@@ -1,7 +1,8 @@
 //! A Zenoh node in front of [`franka`]'s target control, Cartesian or joint: wire messages,
 //! the target gate, the TOML configuration, the per-arm thread, the Zenoh transport, the
-//! status topic and the arm's gripper. [`run`] is the node; the binary is a `main` around it
-//! with a [`GripperFactory`] that knows the Franka Hand.
+//! status topic, the `params/*` surface a running session is tuned through and the arm's
+//! gripper. [`run`] is the node; the binary is a `main` around it with a [`GripperFactory`]
+//! that knows the Franka Hand.
 
 pub mod arm;
 pub mod config;

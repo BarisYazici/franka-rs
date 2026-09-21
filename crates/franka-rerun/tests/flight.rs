@@ -558,7 +558,7 @@ fn store_kinds(path: &Path) -> Vec<String> {
 fn a_file_written_with_an_id_carries_it_and_the_application_id() {
     let path = temp_path("with-id.rrd");
     let _ = std::fs::remove_file(&path);
-    let id = "arm-20260101T101500Z";
+    let id = "arm-20260101T120000Z";
     let recorder = Recorder::to_file_with_id(
         &path,
         id,

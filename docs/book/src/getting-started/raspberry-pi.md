@@ -10,12 +10,18 @@ This guide builds a Pi 5 controller with an Intel dual-port Ethernet card, for o
 
 ## Follow these steps
 
-<ol class="setup-path">
-<li><a href="./pi-hardware.html"><strong>Parts and assembly</strong><span>Shopping links, the cooler and PCIe board, and which cable goes where.</span></a></li>
-<li><a href="./pi-system.html"><strong>System and network</strong><span>Install the realtime kernel, enable the Intel NIC, and connect the arms.</span></a></li>
-<li><a href="./pi-software.html"><strong>Node and laptop client</strong><span>Install franka-node, read the first state, then try a small motion.</span></a></li>
-<li><a href="./pi-enclosure.html"><strong>Optional enclosure</strong><span>Explore the 3D assembly and download the printable case or editable CAD.</span></a></li>
-</ol>
+<div class="setup-path">
+
+1. [**Parts and assembly**](./pi-hardware.md)\
+   Shopping links, the cooler and PCIe board, and which cable goes where.
+2. [**System and network**](./pi-system.md)\
+   Install the realtime kernel, enable the Intel NIC, and connect the arms.
+3. [**Node and laptop client**](./pi-software.md)\
+   Install franka-node, read the first state, then try a small motion.
+4. [**Optional enclosure**](./pi-enclosure.md)\
+   Explore the 3D assembly and download the printable case or editable CAD.
+
+</div>
 
 ## What runs where?
 
@@ -33,4 +39,10 @@ the Intel card and P02 are the illustrated dual-arm build, not a library require
 Already have a working realtime host? Go straight to [step 3](./pi-software.md).
 For direct Rust or Python without a node, [choose your setup](./choose-your-setup.md).
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./choose-your-setup.html">Choose another setup</a><a rel="next" href="./pi-hardware.html">Start: parts and assembly</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Choose another setup](./choose-your-setup.md)
+
+[Start: parts and assembly →](./pi-hardware.md)
+
+</nav>

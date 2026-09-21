@@ -276,7 +276,7 @@ mod record {
     const ENDPOINT: &str = "tcp/127.0.0.1:17449";
     const ARM: &str = "L";
     /// The stem of the arm's own `.rrd`, which is its `RecordingId`.
-    const RECORDING_ID: &str = "L-20260101T101500Z";
+    const RECORDING_ID: &str = "L-20260101T120000Z";
     /// The robot's clock at the first state sample, ms.
     const ROBOT_BASE_MS: u64 = 123_456;
 

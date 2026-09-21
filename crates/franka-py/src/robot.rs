@@ -190,12 +190,12 @@ impl Robot {
     /// clamp the command, `posture` (7, rad, within the joint limits) is the configuration
     /// the inverse kinematics prefers (default: the start) and `torque_cutoff` (Hz) the
     /// low-pass filter on the torques; `None` keeps the Rust default. `velocity_feedforward`
-    /// damps the velocity error rather than the velocity (`False`: DROID parity, with
-    /// `cartesian_damping=[37, 37, 37, 2, 2, 2]`), `leash=(metres, radians)` bounds how far
-    /// the desired pose may run ahead of the measured one (default 0.025 m, 0.15 rad: at the
-    /// defaults the force on a held arm plateaus at roughly 40 to 50 N on a FER, a hard push
-    /// briefly over 60 N; target control sets no collision thresholds, choose
-    /// 40 N unattended and 60 N or more where people push),
+    /// `True` damps the velocity error rather than the velocity (off by default, DROID parity
+    /// with `cartesian_damping=[37, 37, 37, 2, 2, 2]`; on, real arms vibrated),
+    /// `leash=(metres, radians)` bounds how far the desired pose may run ahead of the measured
+    /// one (default 0.025 m, 0.15 rad: at the defaults the force on a held arm plateaus at
+    /// roughly 40 to 50 N on a FER, a hard push briefly over 60 N; target control sets no
+    /// collision thresholds, choose 40 N unattended and 60 N or more where people push),
     /// `project_joint_gains` confines the joint gains to the Jacobian's nullspace so the end
     /// effector feels the Cartesian gains alone. `backend='robot'` has the robot's own
     /// controller (`controller_mode`) track the pose stream instead, and takes none of those
@@ -205,7 +205,7 @@ impl Robot {
         max_angular_velocity = None, max_angular_acceleration = None, max_angular_jerk = None,
         max_angular_deviation = None, backend = "impedance", cartesian_stiffness = None,
         cartesian_damping = None, joint_stiffness = None, joint_damping = None,
-        torque_limits = None, posture = None, torque_cutoff = None, velocity_feedforward = true,
+        torque_limits = None, posture = None, torque_cutoff = None, velocity_feedforward = None,
         leash = None, project_joint_gains = false, controller_mode = "cartesian_impedance",
         limit_rate = true, realtime_priority = None
     ))]
@@ -229,7 +229,7 @@ impl Robot {
         torque_limits: Option<Bound<'py, PyAny>>,
         posture: Option<Bound<'py, PyAny>>,
         torque_cutoff: Option<f64>,
-        velocity_feedforward: bool,
+        velocity_feedforward: Option<bool>,
         leash: Option<Bound<'py, PyAny>>,
         project_joint_gains: bool,
         controller_mode: &str,
@@ -282,15 +282,15 @@ impl Robot {
     ///
     /// `backend='impedance'` (the default) sends torques from the crate's joint impedance
     /// law: `joint_stiffness` (7, Nm/rad), `joint_damping` (7, Nms/rad), `torque_limits`
-    /// (7, Nm), `torque_cutoff` (Hz), `velocity_feedforward` (damp the velocity error, not
-    /// the velocity), `leash` (one float, rad: how far the goal may run ahead of any joint,
-    /// default 0.1; the torque clamp, not the leash, bounds the torque) and
-    /// `project_joint_gains`; `None` for the Rust default. `backend='robot'`
-    /// has the robot's own controller (`controller_mode`) track the joint stream instead.
+    /// (7, Nm), `torque_cutoff` (Hz), `velocity_feedforward` (`True` damps the velocity
+    /// error, not the velocity; off by default), `leash` (one float, rad: how far the goal
+    /// may run ahead of any joint, default 0.1; the torque clamp, not the leash, bounds the
+    /// torque) and `project_joint_gains`; `None` for the Rust default. `backend='robot'` has
+    /// the robot's own controller (`controller_mode`) track the joint stream instead.
     #[pyo3(signature = (
         *, fraction = 0.2, max_deviation = 1.0, backend = "impedance", joint_stiffness = None,
         joint_damping = None, torque_limits = None, torque_cutoff = None,
-        velocity_feedforward = true, leash = None, project_joint_gains = false,
+        velocity_feedforward = None, leash = None, project_joint_gains = false,
         controller_mode = "joint_impedance", limit_rate = true, realtime_priority = None
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -304,7 +304,7 @@ impl Robot {
         joint_damping: Option<Bound<'py, PyAny>>,
         torque_limits: Option<Bound<'py, PyAny>>,
         torque_cutoff: Option<f64>,
-        velocity_feedforward: bool,
+        velocity_feedforward: Option<bool>,
         leash: Option<Bound<'py, PyAny>>,
         project_joint_gains: bool,
         controller_mode: &str,

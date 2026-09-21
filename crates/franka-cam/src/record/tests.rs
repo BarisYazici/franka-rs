@@ -231,9 +231,9 @@ fn the_state_head_is_the_arm_nodes_state() {
 #[test]
 fn the_arm_nodes_episode_json_is_read() {
     // Byte for byte what `franka_node::msg::episode`'s own test asserts it publishes.
-    let start = r#"{"arm":"L","recording_id":"L-20260101T142627Z","file":"L-20260101T142627Z.rrd","t_node_ns":12,"phase":"start"}"#;
+    let start = r#"{"arm":"L","recording_id":"L-20260101T120000Z","file":"L-20260101T120000Z.rrd","t_node_ns":12,"phase":"start"}"#;
     let msg: EpisodeMsg = serde_json::from_str(start).expect("an episode");
-    assert_eq!(msg.recording_id, "L-20260101T142627Z");
+    assert_eq!(msg.recording_id, "L-20260101T120000Z");
     assert_eq!(msg.t_node_ns, 12);
     assert_eq!(msg.phase, Phase::Start);
     let end = r#"{"arm":"L","recording_id":"i","file":null,"t_node_ns":13,"phase":"end"}"#;

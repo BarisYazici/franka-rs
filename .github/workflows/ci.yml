@@ -63,6 +63,13 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
+      # The franka-rs wheel ships copies, not links (maturin's sdist would break a link): the
+      # root LICENSE and the franka crate's NOTICE, whose libfranka notice covers the `.so`.
+      - name: wheel licence files match their sources
+        run: |
+          cmp LICENSE crates/franka-py/LICENSE
+          cmp crates/franka-rs/NOTICE crates/franka-py/NOTICE
+
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -239,7 +246,8 @@ jobs:
             -- --test-threads=1
 
       # The Python client (crates/franka-node/python) against the node binary and the same
-      # server: its offline tests, then tests/test_sim_node.py (target/release/franka-node).
+      # server: its offline tests (tests/panel_tests: the tuning panel against its mock owner), then
+      # tests/test_sim_node.py (target/release/franka-node).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -251,6 +259,23 @@ jobs:
           cargo build --release -p franka-node --features record --bin franka-node
           pip install ./crates/franka-node/python pytest
           pytest crates/franka-node/python/tests -v
+
+  # The VR teleop package (tools/vr-teleop) on its offline suite: no simulator, no node, no
+  # headset and no adb. The client comes from the checkout, since the package pins its version.
+  vr-teleop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: VR teleop (franka-vr-teleop)
+        working-directory: tools/vr-teleop
+        run: |
+          pip install ../../crates/franka-node/python . pytest
+          python -m pytest -v
+          tests/teleop/run_tests.sh
 
   # The Python bindings (crates/franka-py) against the same --enforce-motion-limits server:
   # maturin builds the wheel, pip installs it, and pytest drives the target loops from Python

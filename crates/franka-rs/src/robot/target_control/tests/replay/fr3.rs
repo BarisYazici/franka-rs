@@ -2,8 +2,8 @@
 //! velocity limit at the end of `fr3-vr` (the `joint_velocity_violation`), and joint 6
 //! near its upper limit through `fr3-vr-long`, without a fault. Both loops run on the FR3
 //! plant with the Robotiq gripper from the recorded configuration. The limit is the FR3's
-//! envelope of the specifications page: the recorded arms follow it, not libfranka's deprecated
-//! constants (`fr3-5` goes 1.89 over those without a fault).
+//! envelope of the specifications page: the recordings follow it, not libfranka's deprecated
+//! constants (`fr3-5` is 1.89 over those, and ends without a fault).
 
 use std::ops::Range;
 

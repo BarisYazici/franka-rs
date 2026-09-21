@@ -54,8 +54,9 @@ term), `torque_limits` (7, Nm), `posture` (7 rad, the configuration the inverse 
 prefers; default the start) and `torque_cutoff` (Hz, default 100) are the rest of the Rust
 `ImpedanceOptions`; `None` keeps each default, a wrong length is a `ValueError`. Three more:
 
-- `velocity_feedforward=True`: the damping acts on the velocity error, not the velocity;
-  `False` is DROID's form, and with `cartesian_damping=[37, 37, 37, 2, 2, 2]` its law.
+- `velocity_feedforward=False`: the damping acts on the velocity, DROID's form, and with
+  `cartesian_damping=[37, 37, 37, 2, 2, 2]` its law; `True` damps the velocity error instead
+  (it made real arms vibrate, see [the backends](../howto/target-control.md#backends)).
 - `leash=(metres, radians)`, default `(0.025, 0.15)`: how far the target may run ahead of an
   arm that is held back, so the spring's pull plateaus (roughly 40 to 50 N at the defaults,
   a hard push briefly over 60 N; target control sets no collision

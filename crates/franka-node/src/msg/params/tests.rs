@@ -112,35 +112,51 @@ fn the_schema_is_of_the_table_it_is_given_and_not_of_a_copy() {
     assert_eq!(at(&schema().params["joint_stiffness"].max, 0), 1200.0);
 }
 
-/// The numbers themselves, by value, with the value each of them is *not*: the design record's
-/// disagreements with `DESIGN-ui.md` are the ones a silent revert would land on.
+/// The numbers themselves, by value, with the value each of them is *not*: an earlier draft's
+/// numbers are the ones a silent revert would land on.
 #[test]
 fn the_bounds_served_are_the_ones_the_design_settled_on() {
     let schema = schema();
     let field = |name: &str| schema.params[name].clone();
     assert_eq!(at(&field("joint_stiffness").max, 0), 1200.0);
-    // 60, not reference-stack's 80: the velocity barrier's gain is added on top of this one.
+    // 60, not the reference joint-impedance stack's 80: the velocity barrier's gain is added
+    // on top of this one. 40 on the wrist, whose lighter inertia makes 60 + 20 unstable.
     assert_eq!(at(&field("joint_damping").max, 0), 60.0);
     assert_ne!(at(&field("joint_damping").max, 0), 80.0);
+    assert_eq!(at(&field("joint_damping").max, 3), 60.0);
+    assert_eq!(at(&field("joint_damping").max, 4), 40.0);
+    assert_eq!(at(&field("joint_damping").max, 6), 40.0);
     assert_eq!(at(&field("joint_damping").min, 0), 0.0);
     assert_eq!(at(&field("cartesian_stiffness").min, 0), 50.0);
     assert_eq!(at(&field("cartesian_stiffness").max, 0), 3000.0);
-    // 1e-3, not DESIGN-ui's 1e-4.
+    // 1e-3, not an earlier draft's 1e-4.
     assert_eq!(at(&field("ik_damping").min, 0), 1e-3);
     assert_ne!(at(&field("ik_damping").min, 0), 1e-4);
     assert_eq!(at(&field("ik_nullspace_gain").max, 0), 20.0);
     assert_eq!(at(&field("velocity_feedforward_gain").max, 0), 1.0);
     assert_eq!(at(&field("velocity_feedforward_cutoff").min, 0), 1.0);
     assert_eq!(at(&field("velocity_feedforward_cutoff").max, 0), 1000.0);
-    // 1.2 m/s, not DESIGN-ui's 1.5: the client's dq guard was measured firing at 1.0.
+    // 1.2 m/s, not an earlier draft's 1.5: the robot's joint-velocity guard can fire near 1.0.
     assert_eq!(at(&field("budget").max, 0), 1.2);
     assert_ne!(at(&field("budget").max, 0), 1.5);
     assert_eq!(at(&field("budget").max, 1), 20.0);
     assert_eq!(at(&field("budget").max, 2), 800.0);
     assert_eq!(at(&field("rotation_budget").max, 0), 2.5);
-    // The confirmation sits below the ceiling, at the set an arm was driven at all afternoon.
+    // The confirmation sits below the ceiling, at the fastest set the stack is validated at.
     assert_eq!(at(&field("budget").confirm_above.unwrap(), 0), 0.85);
     assert_eq!(field("budget").danger, Some("confirm_above"));
+    // The feedforward vibrated on real arms: switching it on at all is a decision.
+    assert_eq!(
+        at(
+            &field("velocity_feedforward_gain").confirm_above.unwrap(),
+            0
+        ),
+        0.0
+    );
+    assert_eq!(
+        field("velocity_feedforward_gain").danger,
+        Some("confirm_above")
+    );
     assert_eq!(field("joint_stiffness").danger, Some("advise"));
     assert_eq!(field("ik_damping").danger, None);
     // The three ranges spanning decades, and no others.

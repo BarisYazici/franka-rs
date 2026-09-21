@@ -249,6 +249,29 @@ fn crossing_a_confirmation_threshold_needs_the_confirmation_once() {
     assert_eq!(reply["ok"], true, "{reply}");
 }
 
+/// Off by default because it vibrated on real arms, so any step above 0 is a confirmation.
+#[test]
+fn switching_the_feedforward_on_needs_a_confirmation() {
+    let mut rig = rig();
+    rig.activate();
+    assert_eq!(rig.tuning().velocity_feedforward_gain, 0.0);
+    let reply = rig.set(json!({"velocity_feedforward_gain": 0.1}), &[]);
+    assert_eq!(reply["reason"], "needs_confirm");
+    assert_eq!(reply["field"], "velocity_feedforward_gain");
+    assert_eq!(rig.tuning().velocity_feedforward_gain, 0.0);
+    let reply = rig.set(
+        json!({"velocity_feedforward_gain": 0.1}),
+        &["velocity_feedforward_gain"],
+    );
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(rig.tuning().velocity_feedforward_gain, 0.1);
+    // Once on, moving it within the band or back to 0 asks nothing.
+    for gain in [0.5, 0.0] {
+        let reply = rig.set(json!({"velocity_feedforward_gain": gain}), &[]);
+        assert_eq!(reply["ok"], true, "{reply}");
+    }
+}
+
 #[test]
 fn a_confirm_naming_a_field_the_node_does_not_know_is_ignored() {
     let mut rig = rig();
@@ -299,8 +322,8 @@ fn the_origin_echoes_the_client_that_set_it() {
     assert!(get["origin"]["at_ns"].as_u64().unwrap() > 0);
 }
 
-/// A new session starts from the config, deliberately (DESIGN-rt 4.5), so the values a client
-/// set during the last one are gone and nobody is named as their author.
+/// A new session starts from the config, deliberately, so the values a client set during the
+/// last one are gone and nobody is named as their author.
 #[test]
 fn a_session_ending_reverts_the_values_and_forgets_who_set_them() {
     let mut rig = rig();

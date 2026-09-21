@@ -5,14 +5,11 @@ the Zenoh node in front of `franka-rs`'s target control. Drive a node-served Fra
 laptop, a workstation or a notebook, on Linux, macOS or Windows, without a byte offset, a
 sequence number, a timestamp or a lease token in your own code.
 
-As of 18 September 2026, this package is not yet published on PyPI. From the repository
-root, in a Python virtual environment, install the same revision as the node:
-
 ```sh
-python -m pip install ./crates/franka-node/python
+python -m pip install franka-node-client     # the same version as the node
 ```
 
-After publication, `pip install franka-node-client` will install it from PyPI.
+From a checkout of the node's revision: `python -m pip install ./crates/franka-node/python`.
 
 ```python
 import franka_node
@@ -37,7 +34,7 @@ rotation vectors in the base frame, `O_T_EE` as a `(4, 4)` matrix, robot mode na
   it is configured and never closed.
 - `Arm`: `state(timeout=1.0) -> ArmState`, `on_state(callback) -> Subscription`,
   `acquire(timeout=3.0)`, `release()`, context manager, `home(speed=0.2, *, episode=None,
-  timeout=90.0)`, `stop()`, `recover()`, `gripper`,
+  timeout=90.0)`, `stop(timeout=10.0)`, `recover(timeout=10.0)`, `gripper`,
   `cartesian_targets(*, episode=None, max_velocity=0.1, max_angular_velocity=0.3, lead=0.03,
   angular_lead=0.15, rate=50.0)` and `joint_targets(*, episode=None, max_velocity=0.5,
   lead=0.15, rate=50.0)`.
@@ -52,5 +49,17 @@ rotation vectors in the base frame, `O_T_EE` as a `(4, 4)` matrix, robot mode na
 What the client does for you (the lease, the keepalive, pacing under the node's `max_step` and
 `max_lead`, the anchor flag, `wait`, `SessionEnded`) is described on the book page
 [Serve arms over Zenoh](https://barisyazici.github.io/franka-rs/howto/franka-node.html).
+
+## Tuning panel
+
+The client installs `franka-tuning-panel`, a browser page for the live parameters of a running
+Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It opens a
+Zenoh client session (`--mode peer` if you need a peer, which `--listen` requires), queries it
+with a `--timeout` of 1.0 s by default, and binds to
+loopback, reachable from another machine through an ssh tunnel. `--expose-to-network` (with
+`--host 0.0.0.0`) serves it on the network instead, which has no authentication of any kind:
+anyone who can reach the port can change any live parameter of a moving robot. See
+[Tune a running controller](https://barisyazici.github.io/franka-rs/howto/live-tuning.html)
+for the tunnel, exposure, presets and limits.
 
 The package version is the `franka-rs` workspace version. Apache-2.0.

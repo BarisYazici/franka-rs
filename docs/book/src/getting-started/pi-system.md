@@ -71,11 +71,11 @@ in its network configuration before applying the Pi-side settings.
 | Link | Pi address | Robot address |
 |---|---|---|
 | Left Intel port | `172.16.0.1/24` | `172.16.0.2` |
-| Right Intel port, optional | `172.16.1.1/24` | `172.16.2.2` |
+| Right Intel port, optional | `172.16.2.1/24` | `172.16.2.2` |
 | Built-in Ethernet or Wi-Fi | Your existing uplink address | Laptop reaches this address |
 
 For two arms, configure the second robot for its separate subnet through the robot's
-network settings. Setting the Pi to `172.16.1.1` does not change the robot's address.
+network settings. Setting the Pi to `172.16.2.1` does not change the robot's address.
 Do not put two default `172.16.0.2` robots on separate interfaces in the same routing table
 and expect automatic selection. Start with one arm if both still have the same address.
 
@@ -98,7 +98,7 @@ network:
       renderer: networkd
       dhcp4: false
       dhcp6: false
-      addresses: [172.16.1.1/24]
+      addresses: [172.16.2.1/24]
       optional: true
 ```
 
@@ -148,4 +148,10 @@ Ping verifies basic reachability, not 1 kHz timing. The later
 [communication test](./realtime-machine.md#check-the-link-first) **moves the robot** and
 must follow the robot's motion prerequisites. Do not run it alongside an active node.
 
-<nav class="guide-nav" aria-label="Setup steps"><a rel="prev" href="./pi-hardware.html">Parts and assembly</a><a rel="next" href="./pi-software.html">Next: node and client</a></nav>
+<nav class="guide-nav" aria-label="Setup steps">
+
+[← Parts and assembly](./pi-hardware.md)
+
+[Next: node and client →](./pi-software.md)
+
+</nav>

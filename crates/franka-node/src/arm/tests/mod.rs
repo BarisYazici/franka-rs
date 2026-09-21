@@ -62,6 +62,8 @@ struct Fake {
     ready_after: AtomicUsize,
     /// Whether the arm still reports motion once at [`READY`].
     moving_at_ready: AtomicBool,
+    /// A configuration the arm reports instead of [`START_Q`] or [`READY`].
+    q: Mutex<Option<[f64; 7]>>,
     /// The observer of the running Cartesian control, as the loop would hold it.
     cartesian_observer: Mutex<Option<franka::robot::target_control::CartesianObserver>>,
     /// The Cartesian session's live tuning, seeded at `start` from the options the node gave
@@ -84,6 +86,7 @@ impl Default for Fake {
             fractions: Mutex::default(),
             ready_after: AtomicUsize::new(usize::MAX),
             moving_at_ready: AtomicBool::new(false),
+            q: Mutex::default(),
             cartesian_observer: Mutex::default(),
             tuning: Mutex::default(),
         }
@@ -118,6 +121,7 @@ impl Fake {
         } else {
             (READY, [0.0; 7])
         };
+        let q = self.q.lock().unwrap().unwrap_or(q);
         let [x, y, z] = *self.measured.lock().unwrap();
         RobotState {
             // The fake arm stands on [`START`], the fake control's start target, so the gate's

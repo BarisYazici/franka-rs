@@ -75,7 +75,8 @@ For an application that just sends goals, the node offers a consistent interface
 
 ## Start it today
 
-These are the current source-install commands, run from matching repository revisions.
+These install from a checkout; `cargo install franka-node --locked` and `pip install franka-node-client`
+of one release do the same.
 A real robot first needs the [realtime host](./realtime-machine.md), wired network and FCI
 mode prepared. The [Pi guide](./raspberry-pi.md) walks through that one-time setup.
 
@@ -144,25 +145,16 @@ means opening your Python application, not rebuilding Rust or starting a router.
 
 ## What is published?
 
-Registry check on **18 September 2026**:
+From 0.4.0 one version covers everything a release publishes:
 
-| Distribution | Public status at this check |
+| Where | What |
 |---|---|
-| [`franka-rs` on crates.io](https://crates.io/crates/franka-rs) | Latest version 0.3.0 |
-| [`franka-rs` on PyPI](https://pypi.org/project/franka-rs/) — direct Python bindings | Latest version 0.3.0 |
-| [`franka-node` registry endpoint](https://crates.io/api/v1/crates/franka-node) | Not published (404) |
-| [`franka-node-client` registry endpoint](https://pypi.org/pypi/franka-node-client/json) | Not published (404) |
-| [`franka-cam` registry endpoint](https://crates.io/api/v1/crates/franka-cam) | Not published (404) |
+| crates.io | [`franka-rs`](https://crates.io/crates/franka-rs), [`franka-description`](https://crates.io/crates/franka-description), [`franka-rerun`](https://crates.io/crates/franka-rerun), [`franka-node`](https://crates.io/crates/franka-node), [`franka-cam`](https://crates.io/crates/franka-cam) |
+| PyPI | [`franka-rs`](https://pypi.org/project/franka-rs/) (direct Python bindings), [`franka-node-client`](https://pypi.org/project/franka-node-client/), [`franka-vr-teleop`](https://pypi.org/project/franka-vr-teleop/) |
+| GitHub release | prebuilt `franka-node` and `franka-cam` tarballs for the Pi (aarch64) and x86_64 Linux |
 
-This checkout is version **0.4.0**. The simulator's **1.1.7** release is a separate project;
-it does not publish the node or these Python packages.
-
-Publishing the node on crates.io is needed for `cargo install franka-node`, but is not a
-runtime requirement: a prebuilt binary works without Cargo. A simple public install needs
-matching Linux PC/Pi binaries on GitHub and `franka-node-client` on PyPI as well.
-The release workflow already builds these distributions. Its existence is not evidence
-that the first release is available. The [release checklist](../contributing.md#releasing)
-requires bootstrapping new crates and the PyPI client's trusted publisher before the tag.
+Use the node and `franka-node-client` of the same version. The simulator is a separate
+project with its own versions.
 
 ## How mature is this?
 
@@ -174,7 +166,7 @@ host preparation still require manual steps.
 - **Still bounded:** the impedance reference retains an FR3 hardware-validation caveat;
   node gripper control and pushing the arm in a joint session are not hardware-validated.
   Camera recording is tested with synthetic input.
-- **Missing polish:** source installs, manual host setup, no setup wizard or `doctor` command,
+- **Missing polish:** manual host setup, no setup wizard or `doctor` command,
   and no automatic exchange of the node's configured motion limits with the Python client.
   Rejected targets are counted; detailed reasons live in the node's debug log.
 

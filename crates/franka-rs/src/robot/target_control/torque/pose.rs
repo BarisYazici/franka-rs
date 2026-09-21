@@ -64,8 +64,8 @@ pub(in super::super) struct PoseTracker {
     dwell_jerks: [f64; 2],
     /// How often `dwell` has been derived again. Only the tests read it: the guard above is a
     /// cost, not a behaviour, so nothing else can tell whether it held, and without this a
-    /// dropped guard is an untestable one. It is here because the design record asks for the
-    /// guard, not because the six cube roots it saves are measurable.
+    /// dropped guard is an untestable one. It is here because the guard is part of the design,
+    /// not because the six cube roots it saves are measurable.
     #[cfg(test)]
     dwells_derived: u32,
     anchored: Option<PoseAnchor>,

@@ -203,6 +203,7 @@ def test_impedance_arguments_are_checked(robot):
         {"backend": "robot", "cartesian_stiffness": 400.0},
         {"backend": "robot", "leash": (0.01, 0.1)},
         {"backend": "robot", "velocity_feedforward": False},
+        {"backend": "robot", "velocity_feedforward": True},
         {"backend": "robot", "project_joint_gains": True},
     ):
         with pytest.raises(ValueError):

@@ -322,3 +322,89 @@ fn shutdown_during_homing_answers_shutting_down() {
         [READY, START_Q]
     );
 }
+
+/// Every end of a joints session re-targets the loop to the measured configuration first, so
+/// it decelerates where the arm is rather than on towards a target that may lead it (a joints
+/// session has no lead bound). A Cartesian session stops on its last target, which `max_lead`
+/// bounds.
+#[test]
+fn a_joints_session_stops_where_the_arm_is() {
+    let mut ahead = START_Q;
+    ahead[6] += 0.1;
+    for end in ["stop", "watchdog", "lease lost", "shutdown"] {
+        let mut rig = rig();
+        rig.acquire();
+        let reply = rig.request(Verb::Enable, joints_request(CLIENT));
+        assert_eq!(reply.recv().unwrap(), CmdReply::ok());
+        rig.machine.handle(Event::Target(joint_target(1, ahead), 0));
+        match end {
+            "stop" => rig.ok(Verb::Stop, CLIENT),
+            "watchdog" => {
+                rig.machine.last_target -= Duration::from_secs(1);
+                rig.machine.tick();
+            }
+            "lease lost" => rig.machine.handle(Event::LeaseLost(CLIENT)),
+            _ => {
+                rig.sender.send(Event::Shutdown);
+                rig.machine.run(rig.rx);
+                let targets = rig.fake.targets.lock().unwrap().clone();
+                assert_eq!(targets, [ahead, START_Q], "{end}");
+                continue;
+            }
+        }
+        assert_eq!(rig.phase(), Phase::Idle, "{end}");
+        assert_eq!(rig.fake.calls().last(), Some(&"stop"), "{end}");
+        assert_eq!(rig.targets(), [ahead, START_Q], "{end}");
+    }
+
+    let mut rig = rig();
+    rig.activate();
+    rig.target(1, moved(0.01));
+    rig.ok(Verb::Stop, CLIENT);
+    assert_eq!(rig.targets(), [moved(0.01)]);
+}
+
+/// An arm measured inside the limits' inset is held at the inset's edge, which `set_joints`
+/// accepts, not at its own configuration, which it would refuse.
+#[test]
+fn a_joints_stop_inside_the_limit_margin_holds_at_its_edge() {
+    let (lower, upper) = franka::robot::target_control::joint_position_limits(FciVersion::V10);
+    let inset = arm_config().guard_options().joint_limit_inset;
+    let mut inside = START_Q;
+    inside[0] = lower[0] + 0.25 * inset;
+    inside[6] = upper[6] - 0.5 * inset;
+    let mut edge = inside;
+    edge[0] = lower[0] + inset;
+    edge[6] = upper[6] - inset;
+
+    let mut rig = rig();
+    rig.acquire();
+    let reply = rig.request(Verb::Enable, joints_request(CLIENT));
+    assert_eq!(reply.recv().unwrap(), CmdReply::ok());
+    *rig.fake.q.lock().unwrap() = Some(inside);
+    rig.ok(Verb::Stop, CLIENT);
+    assert_eq!(rig.targets(), [edge]);
+
+    // The early end of a `home` shares the hold.
+    *rig.fake.q.lock().unwrap() = None;
+    let _reply = rig.homing(None);
+    *rig.fake.q.lock().unwrap() = Some(inside);
+    rig.ok(Verb::Stop, CLIENT);
+    assert_eq!(rig.targets(), [READY, edge]);
+}
+
+#[test]
+fn client_zero_never_holds_the_arm() {
+    let mut rig = rig();
+    // Nobody holds the arm, so holder and client are both 0.
+    assert_eq!(rig.err(Verb::Acquire, 0), "no lease");
+    assert_eq!(rig.err(Verb::Enable, 0), "client 0 is not the holder");
+    assert_eq!(rig.err(Verb::Release, 0), "client 0 is not the holder");
+    assert_eq!(rig.err(Verb::GripperHome, 0), "client 0 is not the holder");
+    // Acquired without a holder is out of the verbs' reach; `home` refuses it all the same.
+    rig.machine.phase = Phase::Acquired;
+    assert_eq!(rig.err(Verb::Home, 0), "client 0 is not the holder");
+    assert_eq!(rig.phase(), Phase::Acquired);
+    assert!(rig.fake.calls().is_empty(), "{:?}", rig.fake.calls());
+    assert!(rig.episodes.lock().unwrap().is_empty());
+}

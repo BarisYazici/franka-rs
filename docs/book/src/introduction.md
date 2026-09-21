@@ -1,6 +1,6 @@
 # franka-rs
 
-[Project home](./index.html) · Documentation
+[Project home](https://barisyazici.github.io/franka-rs/) · Documentation
 
 Send targets from your program. Let Rust handle the realtime control.
 
@@ -19,6 +19,7 @@ becomes motion, and which components you actually need.
 | Keep control on a Raspberry Pi 5 and use my laptop for the application | [Set up the Pi and remote Python client](./getting-started/raspberry-pi.md) |
 | Try it without hardware | [Run the simulator](./getting-started/simulator.md) |
 | Add cameras, a gripper, or recordings | [Peripherals and recording](./getting-started/peripherals.md) |
+| Drive a node-served arm from a Meta Quest controller | [Teleoperate with a Quest](./howto/vr-teleop.md) |
 
 Not sure? [Choose your setup](./getting-started/choose-your-setup.md) explains what goes
 on each machine and which pieces you need.
@@ -43,27 +44,31 @@ for the library.
 
 The plot illustrates the trajectory generator under a 0.25 m/s, 0.5 m/s², 20 m/s³
 budget. A policy, script, or teleoperation application supplies the targets; this
-repository does not supply a trained policy or a complete input-device integration.
+repository does not supply a trained policy.
 
 ## Go deeper when you need to
 
 - [First program](./getting-started/first-program.md) and [Python](./getting-started/python.md).
 - [How the FCI works](./concepts/fci.md) and [realtime requirements](./concepts/realtime-rules.md).
-- [Node configuration](./howto/franka-node.md) and [recording](./howto/flight-recorder.md).
+- [Node configuration](./howto/franka-node.md), [recording](./howto/flight-recorder.md), and
+  [tuning a running controller](./howto/live-tuning.md) from the browser panel.
 - [Benchmarks](./reference/benchmarks.md), [API reference](./api-reference.md), and [contributing](./contributing.md).
 
 ## Status and scope
 
 The [changelog](./changelog.md) separates released features from development work.
-The repository at this revision includes the node and camera tools; use the source-install paths in the
-new guides until matching packages are published. Published library packages may trail
-this checkout.
+Published packages may trail this checkout.
 
 The node docs report Pi 5 runs with one or two arms. Hardware validation is specific to
 each path: the core impedance reference still carries an FR3 validation caveat; the
 node's gripper path is simulator-tested, and camera recording is tested with synthetic
-input. See [peripheral status](./getting-started/peripherals.md) and the
-[impedance reference](./reference/impedance.md). A `ros2_control` hardware interface,
+input. Live tuning is tested against the simulator and against a mock owner, and is not yet
+exercised on an arm; beyond that, no velocity-feedforward setting reachable through live
+tuning has been validated on hardware. The Quest stack is verified on a Quest 3, with motion
+scales and an axis mapping measured for one operator and one workspace; other headsets and
+room layouts are not verified. See [peripheral status](./getting-started/peripherals.md), the
+[impedance reference](./reference/impedance.md), and the status sections of
+[live tuning](./howto/live-tuning.md#status) and [Quest teleoperation](./howto/vr-teleop.md#status). A `ros2_control` hardware interface,
 vacuum gripper, and published Panda simulator image are not available.
 
 This is an unofficial Apache-2.0 project, not affiliated with or endorsed by Franka

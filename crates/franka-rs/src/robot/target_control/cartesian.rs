@@ -64,10 +64,10 @@ pub struct CartesianSent {
     /// The joint target of the impedance law, rad; zeros with [`Backend::RobotController`].
     pub q_goal: [f64; 7],
     /// The joint goal's velocity, rad/s: the finite difference of `q_goal` the law feeds
-    /// forward, under the joint velocity cap and after
-    /// [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set; zeros on the
-    /// first cycle, while holding and with [`Backend::RobotController`]. This is the value the
-    /// law and the recorder both see, not the raw difference.
+    /// forward with [`ImpedanceOptions::velocity_feedforward`] on, under the joint velocity cap
+    /// and after [`ImpedanceOptions::velocity_feedforward_cutoff`]'s low-pass if one is set;
+    /// zeros on the first cycle, while holding and with [`Backend::RobotController`]. This is
+    /// the value the law and the recorder both see, not the raw difference.
     pub dq_goal: [f64; 7],
     /// The fraction of the generator's step the goal carried on a cycle it fell short and the
     /// generator was restarted from the goal: held at a joint position limit, cut to
@@ -255,6 +255,13 @@ impl CartesianTargetControl {
     /// re-planning it ([`TuningPolicy::StepUpGateDown`](super::TuningPolicy::StepUpGateDown)).
     /// So a lowered budget takes `(current - target) / rate` seconds to be wholly in force; the
     /// jerks step, either way.
+    ///
+    /// The command never steps, but lowering the acceleration or jerk while the arm moves
+    /// lengthens the stop (toward `v² / 2a`, plus the jerk's ramp), so a near goal is overshot and
+    /// returned to. For example, at the default 0.3 m/s (0.17 m/s per axis), an acceleration
+    /// dragged from 0.5 to 0.1 m/s² with the goal 3 cm ahead overshoots it by about 20 cm; faster
+    /// motion or a lower acceleration overshoots further. Lower the velocity first, apply it, then
+    /// lower the acceleration or jerk.
     ///
     /// # Errors
     /// [`crate::error::FrankaError::InvalidArgument`] naming the field if a value is not finite

@@ -49,10 +49,11 @@ realtime loop never sees Zenoh, the channel or an allocation from the node.
 `franka/node/*` is the status and `franka/cam/*` belongs to a camera node); `<client_id>` is a
 non-zero `u32` the client picks; `<name>` is the node's `name`.
 
-The status is `{"node": "node1", "version": "0.1.0", "uptime_s": 61, "arms": [{"name": "fr3",
+The status is `{"node": "node1", "version": "<node version>", "uptime_s": 61, "arms": [{"name": "fr3",
 "phase": "active", "holder": 7, "mode": "cartesian", "accepted": 1210, "refused": 0,
 "dropped": 0, "decode_failures": 0, "success_rate": 0.99, "recording": null, "episode":
-null, "gripper": {"width": 0.04, "calibrated": true, "grasped": false, "fault": false}}]}`: `phase`
+null, "gripper": {"width": 0.04, "calibrated": true, "grasped": false, "fault": false}}]}`: `version`
+is the node's own crate version, `phase`
 and `mode` are the lowercase names (`mode` is `null` without a session), `accepted`,
 `refused` and `dropped` count since enable as in `StateMsg` (`refused` includes refused
 gripper commands), `decode_failures` counts targets and gripper commands whose bytes were
@@ -150,7 +151,7 @@ Idle ──acquire──▶ Acquired ──enable──▶ Active ──stop | w
 |---|---|---|
 | `acquire` | Idle, Acquired | needs the client's liveliness token and a free arm (`"no lease"`, `"held by <id>"`) |
 | `enable` | Idle with the lease, Acquired | reads the state, sets the collision thresholds, starts the Cartesian or the joint loop (`mode`); the guard steps from the loop's start target |
-| `stop` | Active, Homing | blocks for the library's settle (about 0.3 s, at most 5 s; state publishing pauses), then Idle (Acquired after a `home`) with the holder kept; a failing stop is Faulted. A stop during `home` decelerates in place: the loop is re-targeted to the measured configuration before it stops |
+| `stop` | Active, Homing | blocks for the library's settle (about 0.3 s, at most 5 s; state publishing pauses), then Idle (Acquired after a `home`) with the holder kept; a failing stop is Faulted. A stop of a joints session or a `home` decelerates in place: the loop is re-targeted to the measured configuration before it stops |
 | `release` | Idle, Acquired, Faulted | clears the holder; Acquired goes to Idle, Faulted stays Faulted |
 | `recover` | all but Active, Homing | `automatic_error_recovery` over TCP, no motion, then Idle; the holder is kept |
 | `home` | Acquired | a joints session at `speed` of the limits (0.05..=0.5, default 0.2; first runs on an arm at 0.2 or below) towards the ready pose `[0, -π/4, 0, -3π/4, 0, π/2, π/4]`; the reply comes when every joint is within 0.02 rad of it, at rest or for 10 consecutive state ticks (then Acquired), or `"home timed out"` after 60 s. Every early end (stop, lost lease, timeout, shutdown) decelerates in place |
@@ -161,7 +162,9 @@ In Active, a target passes the guard and reaches `set_target`, or is counted as 
 with the reason in the debug log. `hold_after_ms` without an accepted target sets the holding
 flag, `stop_after_ms` without any target from the commander stops the loop; the holder keeps
 the lease and may `enable` again. A lost lease stops the loop and clears the holder. A loop that
-ended on its own is Faulted.
+ended on its own is Faulted. Every stop of a joints session (the verb, the watchdog, a lost lease,
+shutdown) first re-targets the loop to the measured configuration, so the arm decelerates where
+it is rather than on towards the last accepted target.
 
 The two watchdogs measure different things, and the difference matters for anything that
 streams a human's hand. `hold_after_ms` measures from the last **accepted** target, so the
@@ -186,6 +189,9 @@ accepted rather than stopping where it is. `max_lead` is the bound on that: an a
 Cartesian target is never further than 0.05 m, as a norm, from `o_t_ee`, nor its orientation
 more than `max_lead_rotation` from the measured one, so whatever the commander does the arm
 coasts at most that plus its own brake distance. Either limit set to 0 turns that check off.
+A joints session has no lead bound: until `stop_after_ms` it tracks its last accepted target
+however far that is, and only the stop cuts it short. The stop lands where the arm was when it
+began (braking past that and returning), not on the last accepted target.
 A commander that follows a human hand should still keep its own leash, tighter than this one,
 so that the node's limit never binds in ordinary use; a lead limit at or below `leash` is a
 config error, because the backend's own leash is the tracking error a healthy commander already
@@ -349,7 +355,8 @@ its own `Gripper` and reuse everything else.
 A running Cartesian impedance session accepts parameter updates over
 `franka/<arm>/params/{schema,get,set}` and publishes `params/current`. The node derives its
 schema from the library's bounds table; changes use the controller's slew and budget gates.
-The optional [browser panel](../../tools/tuning-panel/README.md) provides schema-driven controls.
+The optional [browser panel](python/README.md#tuning-panel), `franka-tuning-panel` from the
+Python client, provides schema-driven controls.
 
 Read [Tune a running controller](../../docs/book/src/howto/live-tuning.md) for the workflow,
 feedforward settings and session lifetime; [Live parameter protocol](../../docs/book/src/reference/node-parameters.md)
@@ -418,8 +425,8 @@ told.
 ## Episodes
 
 Every session's start and end go out on `franka/<arm>/episode` as one JSON line, whether the
-`record` feature is built or not: `{"arm": "fr3", "recording_id": "fr3-20260101T101500Z",
-"file": "fr3-20260101T101500Z.rrd", "t_node_ns": 8123456789, "phase": "start"}`, and the same
+`record` feature is built or not: `{"arm": "fr3", "recording_id": "fr3-20260101T120000Z",
+"file": "fr3-20260101T120000Z.rrd", "t_node_ns": 8123456789, "phase": "start"}`, and the same
 `recording_id` with `"phase": "end"` once the loop has stopped and the file is closed.
 
 With the feature and a `record_dir`, `recording_id` is the Rerun `RecordingId` of the arm's
@@ -439,19 +446,12 @@ few milliseconds before it arrives belongs to the episode but cannot be attribut
 
 ## Install
 
-As of 18 September 2026, the node is not yet published on crates.io. From the repository
-root, install this checkout with:
-
-```sh
-cargo install --path crates/franka-node --locked
-```
-
-The following commands require a matching crates.io and GitHub release:
-
 ```sh
 cargo binstall franka-node             # prebuilt: aarch64 (gnu, static musl) and x86_64, with record
 cargo install franka-node --locked     # or compiled, on a Pi too: Rust 1.89, 1.96 with --features record
 ```
+
+From a checkout, `cargo install --path crates/franka-node --locked` from the repository root.
 
 Without cargo, a release's `franka-node-<version>-<target>.tar.gz` holds the binary,
 `config.example.toml`, the systemd unit, LICENSE and NOTICE; the latest for Raspberry Pi OS 64-bit:
@@ -560,6 +560,8 @@ reflex), lease loss when a client is killed, the episode topic, and recording on
 Pushed past the leash, a held arm settles at a force plateau of 40 to 50 N whatever the
 distance; a hard, fast push trips a `cartesian_reflex`.
 
-Not yet validated on hardware: pushing the arm in a joints session, and the gripper (the
-trait, the Franka Hand driver, the keys and verbs), which is tested against franka-sim's
-gripper server only.
+Not yet validated on hardware: pushing the arm in a joints session; the gripper (the trait,
+the Franka Hand driver, the keys and verbs), tested against franka-sim's gripper server only;
+and live tuning, whose `params/*` path is asserted against franka-sim down to the torque the
+loop produced (`--test sim_tuning`, not run in CI) and whose panel runs against a mock owner
+(`python/tests/panel_tests`).

@@ -28,7 +28,7 @@ collision_torque = 40.0            # Nm
 [[arm]]
 name = "right"
 # Example second subnet, NOT a second default robot address. First configure
-# this robot as 172.16.2.2 and a separate host interface, e.g. 172.16.1.1/24.
+# this robot as 172.16.2.2 and a separate host interface, e.g. 172.16.2.1/24.
 host = "172.16.2.2"
 realtime = "enforce"
 state_hz = 100

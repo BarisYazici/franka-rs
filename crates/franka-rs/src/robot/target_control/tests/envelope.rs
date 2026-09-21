@@ -77,8 +77,9 @@ fn the_fr3_envelope_falls_toward_each_limit_to_zero_at_it_and_nan_is_zero() {
 
 #[test]
 fn the_fer_velocity_limit_is_the_published_flat_one_everywhere() {
-    // Franka publishes no position-based velocity rows for the FER, and the recordings rule the
-    // assumed ones out, so the robot's own check is libfranka 0.9.2's flat limit: 2.175 rad/s on
+    // Franka publishes no position-based velocity rows for the FER, and an envelope built on
+    // half its acceleration limit is not what the robot checks, so the robot's own check is
+    // libfranka 0.9.2's flat limit: 2.175 rad/s on
     // joints 1 to 4 and 2.61 on the wrist, less the tolerance, wherever the joint is.
     let limit = VelocityLimit::of(FciVersion::V5);
     assert!(!limit.position_dependent());

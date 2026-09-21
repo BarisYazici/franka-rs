@@ -4,7 +4,7 @@ At the end of this page a small machine next to the robots runs `franka-node`, a
 on another machine, in any language with a [Zenoh](https://zenoh.io) binding, takes an arm,
 streams pose or joint targets to it and reads its state, without linking `franka-rs` or
 running a realtime kernel itself. The crate is `franka-node`, under `crates/franka-node`
-in the repository (not yet on crates.io as of 18 September 2026); its [README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-node)
+in the repository; its [README](https://github.com/BarisYazici/franka-rs/tree/main/crates/franka-node)
 has the byte-exact wire tables, the verb table and every configuration key. This page is the
 guided tour.
 
@@ -124,8 +124,8 @@ the token is still in flight), `enable`, targets, `stop`.
 
 ## From Python
 
-From this checkout, `python -m pip install ./crates/franka-node/python` installs the client.
-For a matching published release, use `pip install franka-node-client`. It imports as
+`pip install franka-node-client` installs the client of the node's version (from a checkout,
+`python -m pip install ./crates/franka-node/python`). It imports as
 `franka_node`: pure
 Python over `eclipse-zenoh` and numpy, so it runs wherever those do, macOS and Windows included.
 This takes an arm, raises the end effector by 5 cm, waits until it is there and opens the gripper:
@@ -208,21 +208,19 @@ A client in another language speaks the byte layouts of the README's
 
 ## Installing
 
-For this development checkout, install from the repository root:
-
-```sh
-cargo install --path crates/franka-node --locked
-python -m pip install ./crates/franka-node/python
-```
-
-The following release commands require a matching node release on crates.io, PyPI,
-and GitHub. Older core-only releases do not contain these packages.
-See the [Pi setup guide](../getting-started/raspberry-pi.md) for the full source path.
+The node is released from 0.4.0 on; the client on the application machine is
+`pip install franka-node-client` of the same version.
 
 ```sh
 cargo binstall franka-node             # prebuilt, from the GitHub release; no compiler needed
 cargo install franka-node --locked     # or compile it where it runs, a Raspberry Pi included
 ```
+
+From a checkout, install both from the repository root with
+`cargo install --path crates/franka-node --locked` and
+`python -m pip install ./crates/franka-node/python`; the Pi guide's
+[Node and laptop client](../getting-started/pi-software.md#install-franka-node-on-the-pi)
+has the full source path.
 
 [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall) fetches
 `franka-node-<version>-<target>.tar.gz` from the release: `aarch64-unknown-linux-gnu` (glibc
@@ -270,7 +268,11 @@ sudo systemctl enable --now franka-node
 journalctl -u franka-node -f
 ```
 
-`deploy/README.md` next to the unit has the copy steps.
+`deploy/README.md` next to the unit has the copy steps. `cargo binstall` unpacks only the
+binary, so a binstall install has no unit on disk: take it from a checkout, or unpack the
+release tarball above for the copy beside the binary. The Pi guide's
+[service section](../getting-started/pi-software.md#run-the-node-as-a-service) installs the
+binary, the configuration and the unit in one block.
 
 ## Status
 
@@ -285,7 +287,7 @@ last accepted target; this does not replace the physical stop device.
 The node publishes its own health on `franka/node/<name>/status` once a second as JSON:
 
 ```json
-{"node": "node1", "version": "0.1.0", "uptime_s": 61,
+{"node": "node1", "version": "<node version>", "uptime_s": 61,
  "arms": [{"name": "fr3", "phase": "active", "holder": 7, "mode": "cartesian",
            "accepted": 1210, "refused": 0, "dropped": 0, "decode_failures": 0,
            "success_rate": 0.99}]}

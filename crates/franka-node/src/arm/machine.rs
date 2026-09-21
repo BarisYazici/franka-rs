@@ -454,16 +454,20 @@ impl<R: RobotSide> Machine<R> {
         }
     }
 
+    /// Whether the running session is a joints one (`enable` in joints mode, or `home`).
+    pub(super) fn joints_session(&self) -> bool {
+        self.guard
+            .as_ref()
+            .is_some_and(|guard| guard.kind() == Kind::Joints)
+    }
+
     pub(super) fn encode(&self) -> StateMsg {
         let s = &self.snapshot;
         let target = match &self.guard {
             Some(guard) => guard.previous(),
             None => pose_target(&s.O_T_EE),
         };
-        let joints = self
-            .guard
-            .as_ref()
-            .is_some_and(|guard| guard.kind() == Kind::Joints);
+        let joints = self.joints_session();
         let mut flags = 0;
         if self.holding {
             flags |= FLAG_HOLDING;

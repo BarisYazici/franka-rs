@@ -17,6 +17,10 @@ pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target
 bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 
+# docs.rs renders `FakeSource` and the live `Recording` too; `record` needs no system library.
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 # The frames of an arm's episode into a Rerun `.rrd` beside the arm node's own, through
 # `franka-rerun` (Rust 1.96 for `rerun` 0.37).

@@ -69,7 +69,8 @@ pub(super) trait Tracker<const N: usize, const S: usize> {
     fn sent(&self, step: &Step<N, S>, command: &Command) -> Self::Sent;
     /// Writes the tracker's own copies of the tuned options, called before `anchor` on a cycle
     /// something moved. The joint tracker keeps no copy of any of them -- it has no IK, and its
-    /// goal velocity is the generator's own, unfiltered -- so the default is to do nothing.
+    /// goal velocity is the goal's own finite difference, unfiltered -- so the default is to do
+    /// nothing.
     fn retune(&mut self, _tuning: &LiveTuning) {}
     /// The generator's per-axis limits for `tuning`'s budget, in the runner's coordinates.
     /// `None` where the interface plans nothing from a Cartesian budget: the joint one, whose

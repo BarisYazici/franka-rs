@@ -134,12 +134,18 @@ fn on_plant<T: Tracker<6, 7>>(
     }
 }
 
+/// The law of every scenario: feedforward on, as the loop ran, which is what drives the joint to
+/// its limit unguarded and the harder case for the guard.
+fn law() -> ImpedanceOptions {
+    ImpedanceOptions::cartesian().with_velocity_feedforward(true)
+}
+
 /// `scenario` with `tool` on `rig` as it ran (`guarded` false) or guarded, from `start`.
 fn run(scenario: Scenario, rig: &Rig, tool: &Tool, start: [f64; 7], guarded: bool) -> Outcome {
     let cycles = scenario.cycles(tool);
     let (records, observer) = recording::<CartesianSent>();
     let options = teleop().with_observer(observer);
-    let impedance = ImpedanceOptions::cartesian();
+    let impedance = law();
     let target = |k| scenario.target(rig, tool, k);
     let arm = (rig, tool, start);
     if guarded {
@@ -236,7 +242,7 @@ fn check(scenario: Scenario, arm: &Rig, tool: &Tool) -> Vec<String> {
         let held = guarded.q[999];
         let (records, observer) = recording::<CartesianSent>();
         let options = teleop().with_observer(observer);
-        let (mut torque, shared) = cartesian_loop_on(&rig, options, ImpedanceOptions::cartesian());
+        let (mut torque, shared) = cartesian_loop_on(&rig, options, law());
         let back =
             |k: usize| (k == 1).then(|| Scenario::Reversal.target(&rig, tool, 1000).unwrap());
         let rest = on_plant(
@@ -295,7 +301,8 @@ fn the_fr3_joint_home_on_the_plant_characterises_joint_5() {
     let rig = Rig::fr3();
     let offset = [0.3, -0.3, 0.3, -0.5, 0.6, 0.4, -0.9];
     let start: [f64; 7] = std::array::from_fn(|i| READY[i] + offset[i]);
-    let impedance = ImpedanceOptions::joint();
+    // Feedforward on, as the arm ran when it showed that figure.
+    let impedance = ImpedanceOptions::joint().with_velocity_feedforward(true);
     let budget = JointTargetControlOptions::scaled_limits(rig.version, 0.2);
     let options = JointTargetControlOptions::default().with_max_deviation(10.0);
     let (mut torque, shared) = joint_loop_on(&rig, options, budget, impedance);

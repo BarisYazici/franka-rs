@@ -106,7 +106,9 @@ fn a_fast_wrist_turn_into_alignment_stays_under_the_velocity_limits() {
         rotation: 0.25,
         ..Leash::default()
     };
+    // Feedforward on: off, the arm peaks near 0.72 of its limit and the fade and barrier barely act.
     let impedance = ImpedanceOptions::cartesian()
+        .with_velocity_feedforward(true)
         .with_gains(gains)
         .with_leash(leash);
     let limits = max_joint_velocity(robot.fci_version());

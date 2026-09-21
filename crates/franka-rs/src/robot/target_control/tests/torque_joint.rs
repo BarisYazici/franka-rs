@@ -124,7 +124,8 @@ fn the_joint_loop_leashes_the_goal_to_a_held_arm_and_the_stop_times_out() {
     let arm = Arm::at(READY);
     let (records, observer) = recording::<JointSent>();
     let options = JointTargetControlOptions::default().with_observer(observer);
-    let impedance = ImpedanceOptions::joint();
+    // Feedforward on: what it feeds while leashed and while moving is checked at the end.
+    let impedance = ImpedanceOptions::joint().with_velocity_feedforward(true);
     let (mut torque, shared, _first) = joint_loop(options, impedance);
     torque.cycle(&arm.state);
     let mut target = READY;

@@ -45,11 +45,14 @@ Each `params` entry describes one field:
 | `policy` | `slew`, `step` or `step_up_gate_down`; a budget field reports the strongest policy among its elements. |
 | `slew_tau_s` | Present for slewed fields. |
 | `group`, `scale` | UI grouping and `linear` or `log` display. |
-| `danger`, `confirm_above` | Optional advisory or confirmation threshold; thresholds have the field's scalar/array shape. |
+| `danger` | Absent, `"advise"` or `"confirm_above"`. `"advise"` marks a field that reaches the torque directly and asks for no confirmation. |
+| `confirm_above` | Present exactly with `danger: "confirm_above"`: the threshold, in the field's scalar/array shape. |
 | `slider_max`, `off_at`, `norm` | Optional presentation hints; the text entry can still use the full range. `norm: true` marks a velocity/acceleration/jerk budget, whose per-axis share is the norm divided by √3. |
 
-Ranges and policies come directly from `LiveTuning::BOUNDS`; clients must query them rather
-than maintain a copy. The nine fields are `joint_stiffness`, `joint_damping`,
+Ranges and policies come directly from `LiveTuning::BOUNDS`, the library's own gate
+([Tune the law while it runs](../howto/target-control.md#tune-the-law-while-it-runs));
+clients must query them rather than maintain a copy. The nine fields are
+`joint_stiffness`, `joint_damping`,
 `cartesian_stiffness`, `ik_damping`, `ik_nullspace_gain`, `velocity_feedforward_gain`,
 `velocity_feedforward_cutoff`, `budget` and `rotation_budget` (25 scalar values total).
 
@@ -89,8 +92,9 @@ keeping `version`. Node restart creates a new `boot_id` and resets `version` to 
 client should refresh after either a boot change or a reseed; `base_version` alone cannot
 detect session reseeding or a restart that happens to reach the same version again.
 
-The live feedforward gain is seeded as zero when TOML has `velocity_feedforward = false`,
-regardless of `velocity_feedforward_gain`. There is no separate live boolean field.
+The live feedforward gain is seeded as zero when TOML has `velocity_feedforward = false`, the
+default, regardless of `velocity_feedforward_gain`. There is no separate live boolean field;
+its `confirm_above` is 0, so switching it on live needs a confirmation.
 
 ## Set request and validation
 

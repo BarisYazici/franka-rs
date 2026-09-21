@@ -643,10 +643,10 @@ mod tests {
     #[test]
     fn file_name_is_the_arm_and_a_utc_stamp() {
         assert_eq!(episode_file_name("L", 0), "L-19700101T000000Z.rrd");
-        // 2026-09-11 12:17:05 UTC.
+        // 2026-01-01 12:00:00 UTC.
         assert_eq!(
-            episode_file_name("fr3", 1_789_129_025),
-            "fr3-20260101T121705Z.rrd"
+            episode_file_name("fr3", 1_767_268_800),
+            "fr3-20260101T120000Z.rrd"
         );
         // A leap day, the last second of it.
         assert_eq!(

@@ -157,14 +157,14 @@ print(robot.read_once().q)  # read joint positions; no motion</code></pre></div>
 
     <section class="setup" id="setup-pi" aria-labelledby="h-pi">
       <h3 id="h-pi">A laptop and a Raspberry Pi 5</h3>
-      <p><strong>On the laptop</strong>, use a Python virtual environment. From a checkout containing the node client:</p>
-      <div class="cmd"><pre><code>python -m pip install ./crates/franka-node/python</code></pre></div>
+      <p><strong>On the laptop</strong>, use a Python virtual environment:</p>
+      <div class="cmd"><pre><code>python -m pip install franka-node-client</code></pre></div>
       <div class="cmd"><pre><code>import franka_node
 with franka_node.Node("tcp/&lt;pi-host&gt;:7447") as node:
     print(node.status("pi"))  # node name from the Pi guide; no motion</code></pre></div>
-      <p><strong>On the Pi</strong>, a Raspberry Pi&nbsp;5 with a <code>PREEMPT_RT</code> kernel, wired to the robot. From a checkout of the repository with Rust installed:</p>
-      <div class="cmd"><pre><code>cargo install --path crates/franka-node --locked</code></pre></div>
-      <p class="hint">Replace <code>&lt;pi-host&gt;</code> with your Pi’s address after starting the node. The node and its client are development features; these commands install from source. Configuration and the first motion: <a href="getting-started/raspberry-pi.html">Raspberry Pi guide</a> and <a href="howto/franka-node.html">Serve arms over Zenoh</a>.</p>
+      <p><strong>On the Pi</strong>, a Raspberry Pi&nbsp;5 with a <code>PREEMPT_RT</code> kernel, wired to the robot, with Rust installed:</p>
+      <div class="cmd"><pre><code>cargo install franka-node --locked</code></pre></div>
+      <p class="hint">Replace <code>&lt;pi-host&gt;</code> with your Pi’s address after starting the node. Use the node and the client of the same version. Configuration and the first motion: <a href="getting-started/raspberry-pi.html">Raspberry Pi guide</a> and <a href="howto/franka-node.html">Serve arms over Zenoh</a>.</p>
     </section>
 
     <section class="setup" id="setup-sim" aria-labelledby="h-sim">
@@ -198,6 +198,16 @@ with franka_node.Node("tcp/&lt;pi-host&gt;:7447") as node:
       <p>Enable recording to inspect robot motion and targets in Rerun. Give arms and cameras an episode name to view their recordings together.</p>
       <a href="howto/flight-recorder.html">Record and replay a run</a>
     </article>
+    <article>
+      <h3>Quest teleoperation</h3>
+      <p>Drive an arm served by the node from a Meta Quest controller. The bridge reads the headset, the client clutches on the grip and clamps every target against the arm's measured pose.</p>
+      <a href="howto/vr-teleop.html">Teleoperate with a Quest</a>
+    </article>
+    <article>
+      <h3>Live tuning</h3>
+      <p>Change impedance gains, budgets and feedforward on a running Cartesian session from a browser panel, within the node's own bounds. Nothing restarts.</p>
+      <a href="howto/live-tuning.html">Tune a running controller</a>
+    </article>
   </div>
 </section>
 
@@ -210,14 +220,14 @@ with franka_node.Node("tcp/&lt;pi-host&gt;:7447") as node:
     </article>
     <article>
       <h3>Teleoperation</h3>
-      <p>Connect your own joystick, tracker, or other input device. Your application turns its input into targets for the arm.</p>
+      <p>Drive a node-served arm from a Meta Quest controller with the included franka-vr-teleop stack. For another joystick or tracker, your application turns its input into targets for the arm.</p>
     </article>
     <article>
       <h3>Recorded experiments</h3>
       <p>Record arm state, commands, and optional camera frames. Replay what happened and compare targets with the resulting motion.</p>
     </article>
   </div>
-  <p class="note">You supply the policy or input-device integration. Camera recording is currently tested with synthetic input; <a href="getting-started/peripherals.html">check peripheral status</a> before planning an experiment.</p>
+  <p class="note">The Quest stack is included; a policy, or an integration for another input device, is yours. Camera recording is currently tested with synthetic input; <a href="getting-started/peripherals.html">check peripheral status</a> before planning an experiment.</p>
 </section>
 
 <section class="demos" id="demos">

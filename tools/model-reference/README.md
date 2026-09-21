@@ -61,8 +61,10 @@ The third argument is the number of random configurations (default 192). It is
 120 for the committed fixture, which keeps the file at 5.7 MB, under the 6 MB
 budget; 8 fixed poses are always dumped on top of it.
 
-`crates/franka-rs/tests/data/fr3.urdf` is a byte-identical copy of the URDF the
-fixture was generated from (SHA-256
-`86cc04711b376a1a0760f5572cebd27aa92e70b357dbeb4709282650799295f9`), so the
+`crates/franka-rs/tests/data/fr3.urdf` is the URDF the fixture was generated
+from, less the generator comment naming the container path it was built in
+(SHA-256
+`670af7c7deaa3673f45fab5010d4c2888f69f8be717b596745d47df1ecbf88dc`), so the
 Rust test suite does not depend on the git-ignored `reference/libfranka`
-checkout. `model_conformance.rs` re-hashes it and fails if the two drift apart.
+checkout. `model_conformance.rs` re-hashes it and fails if the two drift apart;
+regenerating the fixture re-pins the hash in `model_reference_fr3.json`.

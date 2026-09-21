@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "franka-vr-teleop"
+# The workspace version, and franka-node-client pinned to it: the teleop client reads and writes
+# the node's bytes through that package. tests/test_version.py keeps all three equal.
+version = "0.4.0"
+description = "Drive a Franka arm served by franka-node from a Meta Quest controller"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "franka_vr/quest_bridge/oculus_reader/LICENSE"]
+requires-python = ">=3.9"
+# The bridge's and the client's together; `adb` itself comes from the Android platform-tools.
+dependencies = [
+    "franka-node-client==0.4.0",
+    "numpy>=1.24",
+    "pure-python-adb>=0.3.0.dev0",
+    "pyzmq>=25",
+    "scipy>=1.10",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+# The offline suite: everything else it imports is a runtime dependency above, and
+# tests/conftest.py skips what is missing rather than erroring.
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+franka-vr-bridge = "franka_vr.quest_bridge.bridge:main"
+franka-vr-probe = "franka_vr.quest_bridge.probe:main"
+franka-vr-fetch-apk = "franka_vr.quest_bridge.oculus_reader.fetch_apk:main"
+franka-vr-install-apk = "franka_vr.quest_bridge.oculus_reader.install:main"
+franka-vr-teleop = "franka_vr.teleop.cli:main"
+
+[project.urls]
+Homepage = "https://barisyazici.github.io/franka-rs/howto/vr-teleop.html"
+Repository = "https://github.com/BarisYazici/franka-rs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["franka_vr"]
+
+# The package, not the checkout: `tests/` needs `fixtures/` and `wire_tools/` to run at all, and
+# tests/test_no_lab_details.py -- the merge gate -- reads the whole repository, which no sdist
+# contains. It guards the tree before anything is built from it, so it does not ship.
+[tool.hatch.build.targets.sdist]
+only-include = ["franka_vr", "README.md", "NOTICE", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

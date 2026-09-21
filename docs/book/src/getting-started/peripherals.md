@@ -50,9 +50,9 @@ captured it at, and reports each camera once a second. It belongs on the same ho
 `franka-node`, because the two then stamp frames and arm states with the same clock and a
 policy or a recording can line them up.
 
-Install it as you installed the node: from the checkout,
-`cargo build --release -p franka-cam`, or `cargo binstall franka-cam` once a matching
-release exists. A minimal configuration:
+Install it as you installed the node: `cargo binstall franka-cam` fetches the prebuilt binary
+from the release, `cargo install franka-cam --locked` compiles it from crates.io, and from a
+checkout it is `cargo build --release -p franka-cam`. A minimal configuration:
 
 ```toml
 name = "cameras"                       # distinct from the arm node name

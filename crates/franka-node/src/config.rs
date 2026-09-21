@@ -229,12 +229,12 @@ pub struct ArmConfig {
     pub ik_nullspace_gain: f64,
     /// [`ImpedanceOptions::velocity_feedforward`] of both session kinds: with it off, `dq_goal`
     /// is zero and the joint damping acts on the measured velocity alone, dissipatively. Default
-    /// true.
+    /// false: real arms vibrated with it on; try `velocity_feedforward_cutoff` when enabling it.
     #[serde(default = "default_velocity_feedforward")]
     pub velocity_feedforward: bool,
     /// [`ImpedanceOptions::velocity_feedforward_gain`] of both session kinds, in [0, 1]: the
-    /// weight of the goal velocity in the damping term. 0 is `velocity_feedforward = false`.
-    /// Default 1.
+    /// weight of the goal velocity in the damping term, inert while `velocity_feedforward` is
+    /// false. 0 is `velocity_feedforward = false`. Default 1.
     #[serde(default = "default_velocity_feedforward_gain")]
     pub velocity_feedforward_gain: f64,
     /// [`ImpedanceOptions::velocity_feedforward_cutoff`], Hz, of a Cartesian session; `1000`
