@@ -4,6 +4,10 @@ At the end of this page a Python program running at its own rate drives the arm 
 same target control as the [first program](./first-program.md), and you know where the
 notebook and the examples are.
 
+To experiment without installing anything locally, open the
+[online target-control lab](./simulation-lab.md): edit Python cells, change motion limits,
+and watch a simulated FR3 in the notebook.
+
 ```sh
 pip install franka-rs
 ```

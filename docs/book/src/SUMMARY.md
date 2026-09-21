@@ -23,6 +23,7 @@
 - [The realtime machine](./getting-started/realtime-machine.md)
 - [First program](./getting-started/first-program.md)
 - [From Python](./getting-started/python.md)
+- [Try target control online](./getting-started/simulation-lab.md)
 
 # Add capabilities
 

@@ -34,6 +34,11 @@ __pycache__/
 # Local experimental measurements; preserved, not release inputs.
 /crates/franka-node/tests/sim_sweep.rs
 /crates/franka-node/tests/sweep/
+/.binder/assets/
+/.binder/sim-venv/
+/.binder/notebook-venv/
+/.binder/wheels/
+**/.ipynb_checkpoints/
 
 # Only the three curated website clips are versioned; local source recordings stay private.
 /docs/site/media/*.mp4
