@@ -6,26 +6,40 @@ on your laptop, then reads the arm's state. Motion is a separate, marked section
 
 ## Install franka-node on the Pi
 
-**From a release**, `cargo binstall franka-node` (prebuilt) or `cargo install franka-node --locked`.
+The node is released from 0.4.0 on. On a 64-bit Raspberry Pi OS or Ubuntu, take the prebuilt
+binary; no compiler is needed:
 
-**From a source checkout.** Install Rust 1.89 or newer with [rustup](https://rustup.rs).
-Put a copy of this repository on the Pi, at a revision that contains `crates/franka-node`,
-and from its root run:
+```sh
+cargo binstall franka-node
+```
+
+It fetches `franka-node-<version>-aarch64-unknown-linux-gnu.tar.gz`, built with `record` and
+linked against glibc 2.31, so it runs on Raspberry Pi OS Bookworm; the
+[how-to page](../howto/franka-node.md#installing) has the static musl and x86_64 tarballs and
+the command for a Pi without cargo.
+
+Only if no tarball matches your platform, compile the same release from crates.io instead
+(Rust 1.89 or newer). Run this **or** the command above, never both: it replaces a prebuilt
+binary with one built from source, which has no recording unless you add the feature below.
+
+```sh
+cargo install franka-node --locked
+```
+
+Either way the binary lands in Cargo's binary directory, normally `~/.cargo/bin`.
+
+**From a source checkout**, for a platform the release does not build or a revision it does not
+contain yet. Install Rust 1.89 or newer with [rustup](https://rustup.rs), put a copy of this
+repository on the Pi and from its root run:
 
 ```sh
 cargo install --path crates/franka-node --locked
 ```
 
-The binary lands in Cargo's binary directory, normally `~/.cargo/bin`. Building on the Pi
-takes a while; [Build for another machine](../howto/cross-compile.md) builds it on a PC
-instead. Per-session recording needs `--features record` and Rust 1.96, see
-[Peripherals](./peripherals.md#recording).
-
-**From a published release.** Only when a node release of the matching version exists on
-crates.io and GitHub; older core-only releases do not include it. `cargo binstall franka-node`
-fetches the prebuilt aarch64 binary, `cargo install franka-node --locked` compiles it from
-crates.io, and the [how-to page](../howto/franka-node.md#installing) has the release tarball
-for a Pi without cargo. When in doubt, use the source checkout.
+Building on the Pi takes a while; [Build for another machine](../howto/cross-compile.md)
+builds it on a PC instead. A compiled install, from crates.io or from the checkout, records
+per session only with `--features record` and Rust 1.96, see
+[Peripherals](./peripherals.md#recording); the prebuilt tarballs already have it.
 
 ## A minimal configuration
 
@@ -70,13 +84,13 @@ log shows no `Realtime` error and that port 7447 is open on any firewall the Pi 
 
 ## Install the Python client on the laptop
 
-With Python 3.9 or newer, the release of the node's version is `pip install franka-node-client`;
-from the root of the node's repository revision:
+The client is `franka-node-client` on PyPI, released with the node and of the same version.
+With Python 3.9 or newer:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./crates/franka-node/python
+python -m pip install franka-node-client
 ```
 
 <details>
@@ -85,15 +99,22 @@ python -m pip install ./crates/franka-node/python
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install .\crates\franka-node\python
+python -m pip install franka-node-client
 ```
 
 </details>
 
-The package imports as `franka_node` and depends only on `eclipse-zenoh` and numpy. Once a
-release of the matching version is on PyPI, `pip install franka-node-client` installs the
-same package. The [Python bindings](./python.md) need the robot link on the machine they run
-on, so they are not what this setup wants.
+The package imports as `franka_node` and depends only on `eclipse-zenoh` and numpy. If you
+built the node from a checkout, install the client from the same revision instead, with
+`python -m pip install ./crates/franka-node/python` from the repository root. The
+[Python bindings](./python.md) need the robot link on the machine they run on, so they are
+not what this setup wants.
+
+The client also installs `franka-tuning-panel`, a browser panel that changes a running
+controller's gains and budgets without restarting the node; `pip install franka-vr-teleop`
+adds a Meta Quest teleoperation stack that drives an arm through this node. Neither is needed
+for the rest of this page: [Tune a running controller](../howto/live-tuning.md) and
+[Teleoperate with a Quest](../howto/vr-teleop.md) cover them.
 
 ## Read the state, no motion
 
@@ -149,7 +170,9 @@ failure and stops it with SIGINT so every arm settles first;
 <details>
 <summary>Install the binary, the configuration and the unit</summary>
 
-From the repository root on the Pi, with the `node.toml` you just tested:
+Run these on the Pi from the directory holding the `node.toml` you just tested. The unit is
+`crates/franka-node/deploy/franka-node.service` in the checkout and beside the binary in the
+release tarball; point the last line at whichever copy you have.
 
 ```sh
 sudo install -m 755 "$(command -v franka-node)" /usr/local/bin/franka-node

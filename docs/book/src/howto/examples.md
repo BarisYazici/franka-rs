@@ -43,7 +43,7 @@ offered). Have the user stop button at hand and free space around the arm.
 
 | example | what it does |
 |---|---|
-| `nonrealtime_commander` | A scripted (or stdin) commander sets stepped, bursty, stalling Cartesian targets through `start_cartesian_target_control` (`--bridged`, the default; `--budget V,A,J`; `--rotate` adds a yaw sweep), or hands them to a bare `control_cartesian_pose` so the robot refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--yes] [--budget V,A,J] [--rotate]`. |
+| `nonrealtime_commander` | A scripted (or stdin) commander sets stepped, bursty, stalling Cartesian targets through `start_cartesian_target_control` (`--bridged`, the default; `--budget V,A,J`; `--rotate` adds a yaw sweep), or hands them to a bare `control_cartesian_pose` so the robot refuses the first step (`--raw`). Takes `[--bridged \| --raw] [--stdin] [--log PATH] [--yes] [--budget V,A,J] [--rotate] [--backend robot\|impedance] [--stiffness KX] [--damping KXD] [--feedforward] [--project-joint-gains] [--leash M] [--thresholds N]`; `--rotate`, `--backend` and the impedance flags need `--bridged`. |
 
 ## Gripper and recovery
 

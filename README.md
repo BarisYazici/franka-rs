@@ -23,12 +23,13 @@ It implements the Franka Control Interface in Rust, without libfranka or C++.
 [Documentation](https://barisyazici.github.io/franka-rs/introduction.html) ·
 [API](https://docs.rs/franka-rs) · [Changelog](CHANGELOG.md)
 
-## Two ways to use it
+## Which part do I need
 
 | Your setup | What to install | Where control runs |
 |---|---|---|
 | A Rust or Python program connected directly to the arm | `franka-rs` | Your Linux realtime machine |
 | A laptop or GPU workstation commanding an arm through a Raspberry Pi 5 | `franka-node` on the Pi, `franka-node-client` on the laptop | The Pi, running `franka-rs` |
+| A Meta Quest controller driving an arm the node serves | [`franka-vr-teleop`](docs/book/src/howto/vr-teleop.md) from PyPI, on top of the row above | The Pi, running `franka-rs` |
 
 For direct control, install the published library in your project:
 
@@ -69,14 +70,16 @@ installation, configuration, first state read, and a short Python motion example
 | `franka-cam` | USB camera streams over Zenoh, in a separate process |
 | `franka-rerun` / the node's `record` feature | Record arm state and commands, then inspect them in Rerun |
 | `franka-description` | Robot meshes used by the visualizer; usually pulled in for you |
+| `franka-tuning-panel` | [Tune a running Cartesian session](docs/book/src/howto/live-tuning.md) from a browser, within the node's own bounds; `pip install franka-node-client` ships the command |
 
 [Peripherals and recording](docs/book/src/getting-started/peripherals.md) explains how
 these fit together, including current hardware-validation limits. Cameras and Zenoh
 are optional when using the core library directly.
 
 Use the pieces to build a policy loop, a teleoperation application, or recorded experiments.
-You supply the policy or input-device integration; this repository supplies robot control,
-transport, and recording. Detailed configuration lives in the
+This repository supplies robot control, transport, recording, and a working teleoperation
+application for the Meta Quest, `franka-vr-teleop`. A policy, or an integration for another
+input device, is yours. Detailed configuration lives in the
 [node guide](docs/book/src/howto/franka-node.md).
 
 ## Quick example

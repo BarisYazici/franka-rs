@@ -22,3 +22,10 @@ grip of the controller you named before the arm moves. The package
 the APK, the `vr.sh` launcher and the offline tests; its
 [design notes](https://github.com/BarisYazici/franka-rs/blob/main/tools/vr-teleop/docs/design.md)
 give the measurement behind every threshold. Read them before changing one.
+
+## Status
+
+Verified on a Quest 3. The motion scales, the axis remap and the freshness thresholds were
+measured with one headset, one operator and one workspace: the kind of number is general, the
+exact value is not. A different room orientation needs a different reorder matrix, and the
+scales are worth checking against the commanded peaks the summary prints before you raise them.

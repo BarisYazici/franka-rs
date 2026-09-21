@@ -25,6 +25,11 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 
+# The offline suite: everything else it imports is a runtime dependency above, and
+# tests/conftest.py skips what is missing rather than erroring.
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
 [project.scripts]
 franka-vr-bridge = "franka_vr.quest_bridge.bridge:main"
 franka-vr-probe = "franka_vr.quest_bridge.probe:main"
@@ -39,6 +44,9 @@ Repository = "https://github.com/BarisYazici/franka-rs"
 [tool.hatch.build.targets.wheel]
 packages = ["franka_vr"]
 
+# The package, not the checkout: `tests/` needs `fixtures/` and `wire_tools/` to run at all, and
+# tests/test_no_lab_details.py -- the merge gate -- reads the whole repository, which no sdist
+# contains. It guards the tree before anything is built from it, so it does not ship.
 [tool.hatch.build.targets.sdist]
 only-include = ["franka_vr", "README.md", "NOTICE", "LICENSE"]
 

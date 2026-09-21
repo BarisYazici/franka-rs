@@ -49,10 +49,11 @@ realtime loop never sees Zenoh, the channel or an allocation from the node.
 `franka/node/*` is the status and `franka/cam/*` belongs to a camera node); `<client_id>` is a
 non-zero `u32` the client picks; `<name>` is the node's `name`.
 
-The status is `{"node": "node1", "version": "0.1.0", "uptime_s": 61, "arms": [{"name": "fr3",
+The status is `{"node": "node1", "version": "<node version>", "uptime_s": 61, "arms": [{"name": "fr3",
 "phase": "active", "holder": 7, "mode": "cartesian", "accepted": 1210, "refused": 0,
 "dropped": 0, "decode_failures": 0, "success_rate": 0.99, "recording": null, "episode":
-null, "gripper": {"width": 0.04, "calibrated": true, "grasped": false, "fault": false}}]}`: `phase`
+null, "gripper": {"width": 0.04, "calibrated": true, "grasped": false, "fault": false}}]}`: `version`
+is the node's own crate version, `phase`
 and `mode` are the lowercase names (`mode` is `null` without a session), `accepted`,
 `refused` and `dropped` count since enable as in `StateMsg` (`refused` includes refused
 gripper commands), `decode_failures` counts targets and gripper commands whose bytes were
@@ -559,6 +560,8 @@ reflex), lease loss when a client is killed, the episode topic, and recording on
 Pushed past the leash, a held arm settles at a force plateau of 40 to 50 N whatever the
 distance; a hard, fast push trips a `cartesian_reflex`.
 
-Not yet validated on hardware: pushing the arm in a joints session, and the gripper (the
-trait, the Franka Hand driver, the keys and verbs), which is tested against franka-sim's
-gripper server only.
+Not yet validated on hardware: pushing the arm in a joints session; the gripper (the trait,
+the Franka Hand driver, the keys and verbs), tested against franka-sim's gripper server only;
+and live tuning, whose `params/*` path is asserted against franka-sim down to the torque the
+loop produced (`--test sim_tuning`, not run in CI) and whose panel runs against a mock owner
+(`python/tests/panel_tests`).

@@ -19,8 +19,10 @@ session returns `not_ready` when asked to change parameters.
 ## Open the optional panel
 
 Start the node and your Cartesian client using [Serve arms over Zenoh](./franka-node.md).
-The panel is the `franka-tuning-panel` command of the Python client; install the client as
-described in [From Python](./franka-node.md#from-python), then:
+The panel is the `franka-tuning-panel` command of the Python client, so
+`pip install franka-node-client` of the node's version installs it (from a checkout,
+`python -m pip install ./crates/franka-node/python`; [From Python](./franka-node.md#from-python)
+covers the client itself). Then:
 
 ```sh
 franka-tuning-panel --connect tcp/127.0.0.1:7447 --no-multicast \
@@ -35,6 +37,8 @@ default): it dials out and is never dialled, which is what works through a tunne
 scouts by multicast, so a node on the same LAN needs no `--connect`. A client will not start
 with nothing to reach — start the node first, or pass `--mode peer` to hold a session open
 while you wait. `--listen` needs `--mode peer`; `--zenoh-config` wins over all of these flags.
+`--timeout` is the Zenoh query timeout in seconds, 1.0 by default; raise it on a slow link,
+where a query would otherwise give up before the node answers.
 
 For a Pi-hosted bridge, tunnel it from the laptop:
 
@@ -72,8 +76,10 @@ mean that a teleoperation service is included in `franka-node`.
 
 ## Reach it from another machine
 
-A tunnel is not the only way. `--expose-to-network` serves the panel to the network it binds,
-so a laptop or a tablet opens it like any other service on the bench:
+A tunnel is not the only way. Exposure takes both flags: a `--host` beyond loopback, and
+`--expose-to-network` to say you mean it. Without the flag that `--host` is refused; with it, on
+the default `--host 127.0.0.1`, nothing changes. Together they serve the panel to the network it
+binds, so a laptop or a tablet opens it like any other service on the bench:
 
 ```sh
 franka-tuning-panel --host 0.0.0.0 --expose-to-network --connect tcp/127.0.0.1:7447
@@ -86,15 +92,15 @@ the bench, and stop it afterwards. The startup line names the URLs it has opened
 reach them:
 
 ```text
-WARNING tuning-bridge: the panel is at http://192.0.2.5:8765/, reachable by anyone on that
+WARNING tuning-bridge: the panel is at http://203.0.113.5:8765/, reachable by anyone on that
 network: it has no authentication, so any of them can set every live parameter of every arm on
 the bus, while it moves
 ```
 
 Exposed, the panel serves a request whose `Host` header is an **IP address**, alongside the
-loopback names, so `http://192.0.2.5:8765/` works from another machine whatever the address
+loopback names, so `http://203.0.113.5:8765/` works from another machine whatever the address
 is. A `Host` that is a DNS name is still refused — including one that merely contains an
-address, such as `192.0.2.5.evil.example` — and that refusal is what keeps the panel's one
+address, such as `203.0.113.5.evil.example` — and that refusal is what keeps the panel's one
 browser-side defence: any page on the internet can point its own name at this port (DNS
 rebinding), and the browser would then count it same-origin with the panel and let it drive the
 arm; a rebound name is never an IP literal. Bound to loopback, the loopback names stay the only
@@ -103,14 +109,15 @@ ones served, whatever page asks.
 To reach the panel by name, name it — exactly, and repeat the flag for more than one:
 
 ```sh
-franka-tuning-panel --host 0.0.0.0 --expose-to-network --allowed-host bench-host.local
+franka-tuning-panel --host 0.0.0.0 --expose-to-network --allowed-host <bench-host>.local
 ```
 
-`--allowed-host` matches the whole name, never a suffix, so allowing `bench-host.local` does not
-allow `bench-host.local.evil.example`. It requires `--expose-to-network`, and it is only as
-trustworthy as whoever can answer for that name: `.local` names are answered by mDNS, which
-anyone on the network can claim, and a page served from a name the panel accepts is same-origin
-with the panel. Prefer the address.
+`--allowed-host` matches the whole name, never a suffix, so allowing `<bench-host>.local` does
+not allow `<bench-host>.local.evil.example`. It needs the exposed bind above: on a loopback
+bind the panel exits with an error instead of serving that name. It is only as trustworthy as
+whoever can answer for the name: `.local` names are answered by mDNS, which anyone on the
+network can claim, and a page served from a name the panel accepts is same-origin with the
+panel. Prefer the address.
 
 What the `Origin` check does, and does not, protect: a **browser** that posts a change must send
 an `Origin` equal to the address in its own URL bar, so a page served from anywhere else cannot
@@ -121,9 +128,11 @@ path. Exposure is a decision about who is on that network, not a permission the 
 
 ## What the controls change
 
-There are nine named fields containing 25 scalar values. The panel gets ranges, units,
-defaults and confirmation thresholds from the running node's schema, generated from the
-same `LiveTuning::BOUNDS` table that checks updates. There is no separate panel limits table.
+The panel gets ranges, units, defaults and confirmation thresholds from the running node's
+schema, generated from the same `LiveTuning::BOUNDS` table that checks updates. There is no
+separate panel limits table. The library-level contract — the fields, what is refused and what
+is clamped, and how each value crosses into the loop — is in
+[Tune the law while it runs](./target-control.md#tune-the-law-while-it-runs).
 
 | Field | Meaning |
 |---|---|
@@ -145,11 +154,12 @@ being above it does not ask again. The wrist joints' damping (joints 5 to 7) is 
 than the others', at 40 instead of 60 Nm·s/rad, to keep the velocity barrier stable on their
 lighter inertia.
 
-Gains approach their targets with a 0.3 s time constant. Budget velocity and acceleration
-limits rise immediately but ramp downward, to avoid abruptly truncating the generator's
-velocity or acceleration. Budget jerk and the feedforward filter cutoff step immediately.
-This handling removes the need to design those parameter transitions in the client; it does
-not make every combination or every robot pose feasible.
+How an accepted value reaches the arm depends on the field. The gains — the joint springs and
+dampers, the Cartesian stiffness, the two IK fields and the feedforward gain — slew in over
+0.3 s. A budget's velocity and acceleration rise at once but ramp down. Only the two jerks and
+the feedforward filter cutoff step immediately. So most changes show in the motion over the
+cycles after they are applied. This removes the need to design those transitions in the client;
+it does not make every combination or every robot pose feasible.
 
 A lowered budget never steps the command, but lowering its acceleration or jerk while the arm
 moves lengthens the stop (toward v²/2a, plus the jerk's ramp), so a near goal is overshot and
@@ -209,3 +219,9 @@ effect. Those guards are not loosened by tuning a budget.
 
 For client implementations and precise message semantics, see the
 [node parameters protocol](../reference/node-parameters.md).
+
+## Status
+
+Live tuning is asserted against the simulator, down to the torque the loop produced, and the
+panel is tested against a mock owner. Neither has been exercised on an arm yet, and no
+velocity-feedforward setting reachable from here has been validated on hardware.

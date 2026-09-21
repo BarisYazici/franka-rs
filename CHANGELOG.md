@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-09-19
+## [0.4.0] - 2026-09-21
 
 ### Added
 
@@ -22,8 +22,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   two-arm node example retains the shipped defaults and shows optional CPU pinning and Hands.
 
 - **The tuning panel ships in `franka-node-client`** as the `franka-tuning-panel` command
-  (`pip install franka-node-client`, then `franka-tuning-panel --connect tcp/<host>:7447`); it
-  decodes state with the client's own wire module instead of a copy.
+  (`pip install franka-node-client`, then `franka-tuning-panel --connect tcp/<host>:7447`): a
+  browser page that discovers the arms on the bus, draws every slider from the node's own
+  schema, and moves the parameters of a running session through the node's bounds, refusals
+  and confirmation gates, with the live estimates, markers and presets beside them. It decodes
+  state with the client's own wire module instead of a copy, and binds to loopback.
 
 - **Live tuning: a running Cartesian session takes a change to the law and the plan, and
   `franka-node` serves it over Zenoh.** `LiveTuning` is the set of parameters an operator may

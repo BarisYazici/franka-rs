@@ -34,7 +34,7 @@ rotation vectors in the base frame, `O_T_EE` as a `(4, 4)` matrix, robot mode na
   it is configured and never closed.
 - `Arm`: `state(timeout=1.0) -> ArmState`, `on_state(callback) -> Subscription`,
   `acquire(timeout=3.0)`, `release()`, context manager, `home(speed=0.2, *, episode=None,
-  timeout=90.0)`, `stop()`, `recover()`, `gripper`,
+  timeout=90.0)`, `stop(timeout=10.0)`, `recover(timeout=10.0)`, `gripper`,
   `cartesian_targets(*, episode=None, max_velocity=0.1, max_angular_velocity=0.3, lead=0.03,
   angular_lead=0.15, rate=50.0)` and `joint_targets(*, episode=None, max_velocity=0.5,
   lead=0.15, rate=50.0)`.
@@ -54,7 +54,8 @@ What the client does for you (the lease, the keepalive, pacing under the node's 
 
 The client installs `franka-tuning-panel`, a browser page for the live parameters of a running
 Cartesian impedance session: `franka-tuning-panel --connect tcp/<node-host>:7447`. It opens a
-Zenoh client session (`--mode peer` if you need a peer, which `--listen` requires) and binds to
+Zenoh client session (`--mode peer` if you need a peer, which `--listen` requires), queries it
+with a `--timeout` of 1.0 s by default, and binds to
 loopback, reachable from another machine through an ssh tunnel. `--expose-to-network` (with
 `--host 0.0.0.0`) serves it on the network instead, which has no authentication of any kind:
 anyone who can reach the port can change any live parameter of a moving robot. See

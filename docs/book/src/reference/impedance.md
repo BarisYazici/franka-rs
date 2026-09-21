@@ -393,6 +393,22 @@ leash bounds the *position* error, not the force: a fast push adds the damping t
 damper together, beyond the torque clamp.
 The backend is not yet validated on an FR3.
 
+## Tuning the law while it runs
+
+A Cartesian impedance session accepts changes to its gains, its inverse kinematics and its
+budgets while the arm moves; the API, the clamping and how a change crosses into the loop
+are in [Command from a low-rate program](../howto/target-control.md#tune-the-law-while-it-runs).
+Two of the limits in
+`LiveTuning::BOUNDS` are this page's. The joint damping ceiling is 60 Nm s/rad on joints 1 to
+4 and 40 on the wrist, below the reference stack's 80, because near a joint's velocity limit
+the barrier's 20 Nm per rad/s is added to the law's own damping and it is the sum the
+stability bound `K × 1 ms / I < 1` applies to ([The joint velocity
+envelope](#the-joint-velocity-envelope)). And each joint damping has a floor of
+`MIN_JOINT_DAMPING_RATIO √K`, the ratio 0.25, under every shipped preset's own `D / √K`:
+without it one change reaches a spring of up to 1200 Nm/rad with no damping at all, and the
+barrier is no help there, since it engages only past `velocity_barrier_fraction` of the
+joint's velocity limit and contributes nothing at working speed.
+
 ## Compared with the operational-space law
 
 `examples/cartesian_impedance_active_control.rs` is libfranka's Cartesian impedance example:

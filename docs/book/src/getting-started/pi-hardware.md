@@ -65,8 +65,10 @@ generic camera housings; the sensor and lens are not verified by these models. C
 camera's V4L2 formats before choosing it for `franka-cam`.
 [Manufacturer example](https://www.elpcctv.com/elp-2mp-ar0234-sensor-1200p-1080p-90fps-global-shutter-usb-camera-p-388.html).
 
-Neither cameras nor a VR headset are required for control. Your application provides
-any joystick or VR integration. See [peripherals and recording](./peripherals.md).
+Cameras are not required for control, and a Quest headset is optional:
+[`franka-vr-teleop`](../howto/vr-teleop.md) drives a node-served arm from one. An
+integration for any other input device is yours. See
+[peripherals and recording](./peripherals.md).
 
 </details>
 

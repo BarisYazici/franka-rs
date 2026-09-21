@@ -84,6 +84,8 @@ example from behind NAT, which the how-to page covers under `mode = "client"`.
 | Franka Hand gripper | open, close and grasp over the hand's own connection on port 1338; in setup B, served by the node under the arm's lease | [Peripherals](./peripherals.md), [Use the gripper](../howto/gripper.md) |
 | USB cameras | frames with capture timestamps, published over Zenoh by `franka-cam` next to the node, so a frame can be lined up with the arm state of the same instant | [Peripherals](./peripherals.md) |
 | Recording | every 1 kHz cycle, the commands and the accepted targets as a [Rerun](https://rerun.io) file per session; camera frames can join the same recording | [Peripherals](./peripherals.md), [Record and replay a run](../howto/flight-recorder.md) |
+| The tuning panel | gains, inverse-kinematics damping and the motion budgets of a running Cartesian session, changed from a browser within the node's own bounds; in setup B it is the `franka-tuning-panel` command of `franka-node-client`, in setup A your program changes the same parameters through the library | [Tune a running controller](../howto/live-tuning.md) |
+| Quest teleoperation | a Meta Quest controller drives one arm, clutched on the grip, with every target clamped against the arm's measured pose; setup B only, since it commands an arm served by the node | [Teleoperate with a Quest](../howto/vr-teleop.md) |
 | The simulator | a MuJoCo robot that speaks the same wire protocol, for trying either setup without an arm | [Without a robot: franka-sim](./simulator.md) |
 
 ## A decision in one table

@@ -50,10 +50,13 @@ impl CartesianTargetControl {
     pub fn target_orientation(&self) -> [f64; 4];
     pub fn target_pose(&self) -> [f64; 16];
     pub fn state(&self) -> RobotState;
+    pub fn tune(&self, update: &TuningUpdate) -> FrankaResult<Vec<&'static FieldBound>>;
+    pub fn tuning(&self) -> FrankaResult<LiveTuning>;
     pub fn is_running(&self) -> bool;
     pub fn stop(self) -> FrankaResult<()>;
 }
-// JointTargetControl is the same with set_joints([f64; 7]) and target() -> [f64; 7].
+// JointTargetControl is the same with set_joints([f64; 7]) and target() -> [f64; 7],
+// and without tune / tuning (below).
 ```
 
 The Cartesian target is a pose, absolute in the base frame. `set_position` moves its
@@ -177,6 +180,8 @@ law by default is that the generator is leashed to the arm (below).
 | `torque_limits` (Nm) | 86, 86, 86, 86, 11.5, 11.5, 11.5 | same |
 | `cutoff_frequency` (Hz) | 100 | 100 |
 | `velocity_feedforward` | `false` | `false` |
+| `velocity_feedforward_gain` `g`, in [0, 1] | 1 | 1 |
+| `velocity_feedforward_cutoff` (Hz) | 1000 (`MAX_CUTOFF_FREQUENCY`: off) | same |
 | `leash: Leash` | 0.025 m, 0.15 rad | 0.1 rad per joint (the torque clamp, not the leash, bounds the torque: 600 × 0.1 = 60 Nm on joints 1 to 4, under their 86 Nm clamp; on joints 5 and 6 the 11.5 Nm clamp binds first) |
 | `project_joint_gains` | `false` | `false` |
 | `posture` (IK nullspace reference) | `None`: the start configuration | not used |
@@ -202,7 +207,16 @@ trained on it. The joint column is the `fer_joint_impedance` example's gains. Wh
   (below); on the joint interface they are the whole law.
 - `torque_limits`: the per-joint clamp on the command, before the filter.
 - `cutoff_frequency`: the low-pass filter on the torques; `MAX_CUTOFF_FREQUENCY` turns it off.
-- `velocity_feedforward`: `Kd (g dq_goal − dq)` when on, `−Kd dq` when off (the default).
+- `velocity_feedforward`: `Kd (g dq_goal − dq)` when on, `−Kd dq` when off, which is the
+  default because real arms vibrated with it on.
+- `velocity_feedforward_gain`: `g`, the weight of the goal velocity, when the feedforward is
+  on. At the default 1 the damping acts on the velocity *error*, so a goal at steady speed
+  needs no lag; lower values trade that lag, `(Kqd / Kq) v` at 0, against how much of the
+  goal's own ripple the law forwards.
+- `velocity_feedforward_cutoff`: a first-order low-pass on `dq_goal` before it is fed
+  forward. The default 1000 Hz is `MAX_CUTOFF_FREQUENCY`, the filter off; the floor
+  `validate()` accepts is `MIN_FEEDFORWARD_CUTOFF`, 1 Hz. No value has been validated on
+  hardware.
 - `leash`: how far the desired state may run ahead of the measured one. Every cycle the
   generator is anchored on the measured pose (the model's, for the measured `q`) pulled
   toward the previous desired by at most the leash, the torque-mode form of the third
@@ -262,10 +276,9 @@ let gains = ImpedanceGains {
 };
 let options = TargetControlOptions::default()
     .with_backend(Backend::Impedance(ImpedanceOptions::cartesian().with_gains(gains)));
-// DROID's law as it ran, for replaying policies trained on it:
-let parity = ImpedanceOptions::cartesian()
-    .with_gains(ImpedanceGains::DROID)
-    .with_velocity_feedforward(false);
+// DROID's law as it ran, for replaying policies trained on it: the feedforward the preset
+// needs off is off by default.
+let parity = ImpedanceOptions::cartesian().with_gains(ImpedanceGains::DROID);
 ```
 
 **Collision thresholds.** Target control does not set collision thresholds;
@@ -317,6 +330,76 @@ What changes between the two:
   controller refuses a pose stream it cannot follow.
 - **The finish waits for the arm.** `stop()` in the impedance backend sets `motion_finished`
   only once every joint is slower than `REST_JOINT_VELOCITY`, or after the 5 s timeout.
+
+## Tune the law while it runs
+
+A Cartesian session on the impedance backend takes changes to its gains, its inverse
+kinematics and its two budgets while the arm moves:
+
+```rust,ignore
+use franka::robot::target_control::TuningUpdate;
+
+let mut update = TuningUpdate::default();
+update.cartesian_stiffness = Some(400.0);
+update.budget = Some([0.2, 0.4, 20.0]);
+let clamped = control.tune(&update)?;   // any thread, any rate; the bounds that had to clamp
+let targets = control.tuning()?;        // the targets in force
+```
+
+`TuningUpdate` is `#[non_exhaustive]`, so start from `Default` and assign what the update
+carries; a field it does not carry keeps its value and is not re-checked. The nine fields are
+`joint_stiffness[7]`, `joint_damping[7]`, `cartesian_stiffness`, `ik_damping`,
+`ik_nullspace_gain`, `velocity_feedforward_gain`, `velocity_feedforward_cutoff`, `budget[3]`
+and `rotation_budget[3]`: 25 scalars, together a `LiveTuning`. One Cartesian stiffness stands
+for all twelve Cartesian gains, the six stiffnesses and six dampings
+`ImpedanceGains::scaled_cartesian` derives from it, which is what holds the preset's damping
+ratio. Only this kind of session has live tuning. `tune` and `tuning` return
+`InvalidOperation` with `NO_TUNING_MESSAGE` on the robot-controller backend, and with
+`DERIVED_GAINS_MESSAGE` on a Cartesian session whose gains one stiffness cannot rebuild
+(`ImpedanceGains::DROID` is such a preset). `tune` alone also returns `ENDED_MESSAGE` once the
+loop has ended; `tuning` has no such check and still reports the last published targets.
+`JointTargetControl` has neither method: a joint session runs the options it was started with
+for its whole life.
+
+**The bounds.** `LiveTuning::BOUNDS` is one `FieldBound` per scalar: name, unit, `min`, `max`,
+group, the transition policy and the presentation hints (`log_slider`, `slider_max`, `off_at`,
+`norm`). It is a second and tighter gate than `ImpedanceOptions::validate`, which asks only
+whether a session can be built at all and has to stay permissive for every caller of the
+crate; `BOUNDS` asks how far a *running* session may be moved by hand. The table is the clamp
+itself, so a caller that publishes it — the node serves its schema from it — cannot drift from
+what is enforced.
+
+An update is all or nothing and then clamped. A value that is not finite, or a zero where zero
+means something other than "softer" (`cartesian_stiffness`, `ik_damping`), is refused with
+`InvalidArgument` naming the field and nothing is written. Anything out of range is clamped
+instead, and the bounds that had to clamp come back so that a caller can show the value it
+will really get; read that value out of `tuning()`, not out of the bound. Raising a joint
+spring also raises any joint damping below `LiveTuning::joint_damping_floor` of it (0.25 √K),
+even one the update does not carry: the pair, not either half, is what has to stay damped.
+`FieldBound::danger` is advice for whoever publishes the table, not a gate this crate applies
+— `TuningDanger::Advise` on the fields that reach the torque directly, and
+`TuningDanger::ConfirmAbove(v)` on the ones that widen what the arm may do above `v`, both
+budgets and `velocity_feedforward_gain` above zero.
+
+**Reaching the loop.** `tune` validates, clamps and publishes the whole set on the calling
+thread, allocating as it goes, into a single-writer seqlock beside the target slot. The loop
+takes a complete snapshot or keeps the previous one, never blocking and never seeing half an
+update; the slot holds the latest value rather than a queue, so two updates between cycles
+collapse into one. [Live parameter protocol](../reference/node-parameters.md) draws that
+slot and defines the node's JSON layer on top of it.
+
+**Crossing to it.** What is published are targets, and the loop moves its own copy toward them
+under each field's `TuningPolicy`. A parameter that multiplies a generally-nonzero state would
+be a step in the torque, so the gains, the IK fields and the feedforward gain slew over
+`SLEW_TAU`, 0.3 s. The feedforward cutoff and both jerks step. A budget's velocity and
+acceleration are raised on the cycle they arrive and lowered as a ramp at the next order's
+limit (`TuningPolicy::StepUpGateDown`), because a narrower budget clamps the generator's
+stored state rather than re-planning it; the
+[fourth OTG rule](../reference/otg.md#the-three-rules) is what `Otg::set_limits` owes a
+running generator. `TuningPolicy::remaining` reads how much of a crossing is still to come
+off the clock, so nothing has to be published back out of the realtime thread. The command
+never steps, but lowering an acceleration or jerk while the arm moves lengthens the stop
+toward `v² / 2a`: lower the velocity first, apply it, then the rest.
 
 ## What the loop does every cycle
 
