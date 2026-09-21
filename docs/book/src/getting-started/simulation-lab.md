@@ -4,10 +4,10 @@ Experiment with Cartesian targets on a simulated FR3 in a Jupyter notebook, with
 installation. Edit Python code, change velocity, acceleration and jerk limits, then watch
 the arm and compare its measured motion.
 
-**[Launch the notebook on Binder](https://mybinder.org/v2/gh/BarisYazici/franka-rs/codex%2Fbinder-simulation-lab?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)**
+**[Launch the notebook on Binder](https://mybinder.org/v2/gh/BarisYazici/franka-rs/main?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)**
 
-This preview launches the `codex/binder-simulation-lab` branch. You can also
-[read the notebook source](https://github.com/BarisYazici/franka-rs/blob/codex/binder-simulation-lab/crates/franka-py/examples/cartesian_sim_lab.ipynb).
+This notebook launches the public repository’s `main` branch. You can also
+[read the notebook source](https://github.com/BarisYazici/franka-rs/blob/main/crates/franka-py/examples/cartesian_sim_lab.ipynb).
 
 ## Run an experiment
 

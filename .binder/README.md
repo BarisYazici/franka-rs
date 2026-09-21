@@ -1,6 +1,6 @@
 # Binder simulation lab: maintainer notes
 
-[Launch this branch](https://mybinder.org/v2/gh/BarisYazici/franka-rs/codex%2Fbinder-simulation-lab?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)
+[Launch the notebook](https://mybinder.org/v2/gh/BarisYazici/franka-rs/main?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)
 opens `crates/franka-py/examples/cartesian_sim_lab.ipynb`. The public image build and
 Jupyter launch have been exercised. Before promoting a release, test its exact revision
 and point stable documentation links at that tested release or commit.
