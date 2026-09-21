@@ -23,6 +23,15 @@ It implements the Franka Control Interface in Rust, without libfranka or C++.
 [Documentation](https://barisyazici.github.io/franka-rs/introduction.html) ·
 [API](https://docs.rs/franka-rs) · [Changelog](CHANGELOG.md)
 
+## Try it online
+
+Want to get a feel for the API? [Open the interactive notebook on Binder](https://mybinder.org/v2/gh/BarisYazici/franka-rs/main?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)
+and control a simulated FR3 in your browser, with no local installation or robot needed.
+Start with a small movement, change the velocity, acceleration and jerk limits, and
+play back the robot's response. See the [guided lab](docs/book/src/getting-started/simulation-lab.md)
+for details. The first launch can take a few minutes; download your edits before the
+session ends.
+
 ## Which part do I need
 
 | Your setup | What to install | Where control runs |

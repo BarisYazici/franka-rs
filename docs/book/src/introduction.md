@@ -8,6 +8,12 @@ Send targets from your program. Let Rust handle the realtime control.
 libfranka or C++. Your application can send goals at its own rate while the library
 runs the 1 kHz loop, or you can write your own controller.
 
+Want to try the API before installing anything? [Launch the interactive Binder notebook](https://mybinder.org/v2/gh/BarisYazici/franka-rs/main?urlpath=lab/tree/crates/franka-py/examples/cartesian_sim_lab.ipynb)
+to move a simulated FR3, edit Python targets and explore motion limits in your browser.
+The [guided simulation lab](./getting-started/simulation-lab.md) starts with small examples
+and builds up to longer experiments. Binder sessions are temporary, so download any edits
+you want to keep.
+
 [See the architecture](./getting-started/architecture.md): what runs where, how a Python goal
 becomes motion, and which components you actually need.
 
@@ -17,7 +23,7 @@ becomes motion, and which components you actually need.
 |---|---|
 | Use Rust or Python on the machine connected to the arm | [Install the library](./getting-started/install.md), then [prepare the realtime machine](./getting-started/realtime-machine.md) |
 | Keep control on a Raspberry Pi 5 and use my laptop for the application | [Set up the Pi and remote Python client](./getting-started/raspberry-pi.md) |
-| Try it without hardware | [Run the simulator](./getting-started/simulator.md) |
+| Try it without hardware | [Try the online notebook](./getting-started/simulation-lab.md) or [run the simulator](./getting-started/simulator.md) |
 | Add cameras, a gripper, or recordings | [Peripherals and recording](./getting-started/peripherals.md) |
 | Drive a node-served arm from a Meta Quest controller | [Teleoperate with a Quest](./howto/vr-teleop.md) |
 
