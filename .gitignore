@@ -22,6 +22,11 @@
 # The advisory lock bench/run.sh and the simulator tests take at the repository root.
 .sim.lock
 __pycache__/
+/.binder/assets/
+/.binder/sim-venv/
+/.binder/notebook-venv/
+/.binder/wheels/
+**/.ipynb_checkpoints/
 /.private/
 
 # Only the three curated website clips are versioned; local source recordings stay private.

@@ -1,0 +1,4 @@
+# This lives in a separate interpreter: Rerun requires NumPy 2, the simulator 1.26.
+franka-sim==1.1.7
+numpy==1.26.4
+mujoco==3.2.7

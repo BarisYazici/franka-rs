@@ -1,0 +1,5 @@
+libgl1
+libegl1
+libglfw3
+build-essential
+curl

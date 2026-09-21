@@ -4,6 +4,9 @@ Run a simulated FR3 locally, connect a Rust or Python client, and optionally wat
 in a MuJoCo window. Choose the [desktop viewer](#start-with-visualization) to watch motion,
 or the [headless server](#start-without-a-window) for scripts and CI.
 
+For a browser-only start, use the [online target-control lab](./simulation-lab.md).
+It runs a simulator inside your temporary Jupyter session and needs no local installation.
+
 ## Start without a window
 
 Prerequisites: Docker on Linux. Check that no other simulator is using ports 1337/1338.
