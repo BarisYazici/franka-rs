@@ -440,7 +440,7 @@ def main() -> None:
                          "port, with no authentication")
     ap.add_argument("--allowed-host", action="append", default=[], metavar="NAME",
                     help="with --expose-to-network, also serve requests whose Host is exactly NAME, e.g. "
-                         "bench-host.local (repeatable); exact match, never a suffix, and only as "
+                         "panel.example.com (repeatable); exact match, never a suffix, and only as "
                          "trustworthy as whoever can answer for that name")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--presets", default=os.path.expanduser("~/.local/state/franka-tuning/presets.json"))

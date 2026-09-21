@@ -22,7 +22,18 @@
 # The advisory lock bench/run.sh and the simulator tests take at the repository root.
 .sim.lock
 __pycache__/
-/.private/
+# The owner's private notes. `.private` is a symlink here, and a trailing slash would match
+# only a real directory, so the pattern carries none.
+/.private
+/CLAUDE.md
+# Agent scratch trees.
+/.superpowers/
+/docs/superpowers/
+# Local recordings and demo material.
+/videos/
+# Local experimental measurements; preserved, not release inputs.
+/crates/franka-node/tests/sim_sweep.rs
+/crates/franka-node/tests/sweep/
 
 # Only the three curated website clips are versioned; local source recordings stay private.
 /docs/site/media/*.mp4

@@ -87,14 +87,14 @@ mod tests {
     fn episode_json_round_trips() {
         let msg = EpisodeMsg {
             arm: "L".into(),
-            recording_id: "L-20260101T142627Z".into(),
-            file: Some("L-20260101T142627Z.rrd".into()),
+            recording_id: "L-20260101T120000Z".into(),
+            file: Some("L-20260101T120000Z.rrd".into()),
             t_node_ns: 12,
             phase: EpisodePhase::Start,
         };
         assert_eq!(
             msg.to_json(),
-            r#"{"arm":"L","recording_id":"L-20260101T142627Z","file":"L-20260101T142627Z.rrd","t_node_ns":12,"phase":"start"}"#
+            r#"{"arm":"L","recording_id":"L-20260101T120000Z","file":"L-20260101T120000Z.rrd","t_node_ns":12,"phase":"start"}"#
         );
         let end = EpisodeMsg {
             file: None,

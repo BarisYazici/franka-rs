@@ -191,9 +191,9 @@ def diagnose(s: ProbeSummary) -> str:
         return (
             "DIAGNOSIS: engaged, but the published position never moved -- no "
             "motion detected. The controller is not being TRACKED (out of the "
-            "headset cameras' view, or the headset is face-down). The robot "
-            "would freeze mid-takeover: this is the classic 'the intervention "
-            "didn't work'."
+            "headset cameras' view, or the headset is face-down). The pose "
+            "published to the arm therefore never changes and the arm stands "
+            "still, while the stream itself still looks healthy."
         )
     return (
         "DIAGNOSIS: the Quest path is HEALTHY (fresh stream + grip + motion). If "

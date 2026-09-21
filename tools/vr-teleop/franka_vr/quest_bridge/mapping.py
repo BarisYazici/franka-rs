@@ -16,9 +16,9 @@ THE THREE THINGS THAT MATTER HERE
 1. FRESHNESS. `OculusReader.get_transformations_and_buttons()` returns the LAST
    CACHED frame forever -- when the headset sleeps, the controller loses
    tracking, or adb drops, it keeps handing back the same 4x4 with no error.
-   That stale cache is the root cause of the historical "the intervention
-   didn't work / the arm froze but the UI looked fine" incidents. So freshness
-   is derived from CHANGE in the raw matrix: identical consecutive matrices are
+   A consumer that trusts the reader therefore keeps driving from a frozen
+   pose while every downstream indicator still reads healthy. So freshness is
+   derived from CHANGE in the raw matrix: identical consecutive matrices are
    normal for a tick or two (50 Hz polling of a ~72 Hz stream), but 250 ms of
    ZERO change means a dead stream. The consumer applies a SECOND, independent
    guard (receive-time staleness on the ZMQ message), so both a dead reader and
@@ -83,8 +83,9 @@ FRESH_TIMEOUT_S = 0.25
 
 # Zero CHANGE in the raw 4x4 for longer than this clears `controller_on`
 # (DROID's `num_wait_sec`, repurposed here as the same change-detector with a
-# longer window). Published for the future intervention-ratchet UI; it is NOT
-# what gates driving -- `engaged` is.
+# longer window). Published as a status flag only -- long enough that a
+# controller resting between moves still reads as on; it is NOT what gates
+# driving -- `engaged` is.
 CONTROLLER_ON_TIMEOUT_S = 5.0
 
 

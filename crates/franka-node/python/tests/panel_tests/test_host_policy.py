@@ -21,7 +21,7 @@ from .conftest import build_stack
 
 LOOPBACK = HostPolicy()
 EXPOSED = HostPolicy(expose=True)
-NAMED = HostPolicy(expose=True, allowed=["bench-host.local"])
+NAMED = HostPolicy(expose=True, allowed=["example-panel.local"])
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +63,7 @@ def test_loopback_names_are_served_either_way(host):
     assert LOOPBACK.accepts(host) and EXPOSED.accepts(host)
 
 
-@pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "bench-host.local:8765",
+@pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "example-panel.local:8765",
                                   "192.0.2.5:8765", "198.51.100.2", "[fe80::1]:8765", "",
                                   "localhost.", "127.0.0.1.", "192.0.2.5:notaport"])
 def test_loopback_bound_serves_nothing_else(host):
@@ -91,9 +91,9 @@ def test_exposed_serves_any_ip_not_only_this_host_s_own():
     assert EXPOSED.accepts(foreign)
 
 
-@pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "bench-host.local:8765",
+@pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "example-panel.local:8765",
                                   "192.0.2.5.evil.example", "192.0.2.5.evil.example:8765",
-                                  "10-42-0-2.evil.example", "1.2.3.4.nip.io", "192.0.2.5x",
+                                  "198-51-100-2.evil.example", "1.2.3.4.nip.io", "192.0.2.5x",
                                   "0x7f000001", "2130706433", "192.0.2.5.", "localhost.",
                                   "192.0.2.5:8765:9", "[fe80::1"])
 def test_exposed_still_refuses_names(host):
@@ -103,12 +103,13 @@ def test_exposed_still_refuses_names(host):
 
 
 def test_allowed_names_are_exact():
-    assert NAMED.accepts("bench-host.local") and NAMED.accepts("bench-host.local:8765")
-    assert NAMED.accepts("PANDA-RT.local:8765")  # names are case insensitive
-    for near in ("bench-host.local.evil.example", "evil.bench-host.local", "bench-host.localhost",
-                 "bench-host.local.", "local", ".local", "rt.local"):
+    assert NAMED.accepts("example-panel.local") and NAMED.accepts("example-panel.local:8765")
+    assert NAMED.accepts("EXAMPLE-PANEL.local:8765")  # names are case insensitive
+    for near in ("example-panel.local.evil.example", "evil.example-panel.local",
+                 "example-panel.localhost", "example-panel.local.", "local", ".local",
+                 "panel.local"):
         assert not NAMED.accepts(near), near
-    assert not LOOPBACK.accepts("bench-host.local")  # only where the operator wrote it out
+    assert not LOOPBACK.accepts("example-panel.local")  # only where the operator wrote it out
 
 
 def test_allowed_names_need_exposure():
@@ -116,11 +117,12 @@ def test_allowed_names_need_exposure():
     flag and the book give -- is answered by mDNS, which anyone on the network can spoof. Serving
     such a name on a loopback bind would be the rebinding attack with no rebinding needed, so the
     policy ignores names unless exposed and the CLI refuses the combination outright."""
-    assert not HostPolicy(expose=False, allowed=["bench-host.local"]).accepts("bench-host.local")
+    named = HostPolicy(expose=False, allowed=["example-panel.local"])
+    assert not named.accepts("example-panel.local")
     for bind in ("127.0.0.1", "localhost", "::1"):
         with pytest.raises(SystemExit, match="--allowed-host needs --expose-to-network"):
-            host_policy(bind, ["bench-host.local"])
-    assert host_policy("0.0.0.0", ["bench-host.local"]).accepts("bench-host.local")
+            host_policy(bind, ["example-panel.local"])
+    assert host_policy("0.0.0.0", ["example-panel.local"]).accepts("example-panel.local")
 
 
 def test_the_bind_is_the_flag():
@@ -130,12 +132,13 @@ def test_the_bind_is_the_flag():
         assert not host_policy(bind).expose and not host_policy(bind).accepts("192.0.2.5:8765")
     for bind in ("0.0.0.0", "::", "192.0.2.5"):
         assert host_policy(bind).expose and host_policy(bind).accepts("192.0.2.5:8765")
-    assert host_policy("0.0.0.0", ["bench-host.local"]).accepts("bench-host.local")
+    assert host_policy("0.0.0.0", ["example-panel.local"]).accepts("example-panel.local")
 
 
 def test_refusal_says_what_is_served():
     assert HostPolicy().refusal() == "served on loopback names only"
-    assert HostPolicy(expose=False, allowed=["bench-host.local"]).refusal() == "served on loopback names only"
+    assert (HostPolicy(expose=False, allowed=["example-panel.local"]).refusal()
+            == "served on loopback names only")
     assert "IP addresses" in EXPOSED.refusal() and "--allowed-host" not in EXPOSED.refusal()
     assert "--allowed-host" in NAMED.refusal()
 
@@ -153,7 +156,7 @@ def test_loopback_bound_server_refuses_foreign_names(stack):
     port = http.base.rsplit(":", 1)[1]
     for host in (f"localhost:{port}", "127.0.0.1:9000", "[::1]:9000"):
         assert get(http, "/api/arms", host)[0] == 200
-    for host in ("evil.example:8765", "bench-host.local:8765", "192.0.2.5:8765"):
+    for host in ("evil.example:8765", "example-panel.local:8765", "192.0.2.5:8765"):
         status, body = get(http, "/api/arms", host)
         assert (status, body["reason"]) == (403, "host"), host
         assert body["error"] == "served on loopback names only"

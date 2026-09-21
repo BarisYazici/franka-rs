@@ -23,8 +23,8 @@ enforces its own step, lead and rate limits whatever a client sends.
 **Freshness is derived from change, not from the reader.**
 `OculusReader.get_transformations_and_buttons()` returns the last cached frame forever —
 when the headset sleeps, a controller loses tracking or adb drops, it hands back the same
-4×4 with no error. That stale cache is the root cause of the historical "the intervention
-did nothing / the arm froze but the UI looked fine" class of incident. So identical
+4×4 with no error. A consumer that trusts the reader keeps driving from a frozen pose: the
+arm stands still while every downstream indicator still reads healthy. So identical
 consecutive matrices are normal for a tick or two (50 Hz polling of a ~72 Hz stream), but
 **250 ms of zero change reads as not fresh**. `controller_on` is the same detector with a
 **5 s** window: "has this controller reported anything at all lately", a UI-level
